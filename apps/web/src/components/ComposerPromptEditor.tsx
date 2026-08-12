@@ -6,7 +6,10 @@ import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import { type ServerProviderSkill } from "@t3tools/contracts";
-import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
+import {
+  serializeComposerFileLink,
+  serializeComposerMentionPath,
+} from "@t3tools/shared/composerTrigger";
 import {
   $applyNodeReplacement,
   $createRangeSelectionFromDom,
@@ -1121,6 +1124,20 @@ function ComposerInlineTokenBackspacePlugin() {
         const removeInlineTokenNode = (candidate: unknown): boolean => {
           if (!isComposerInlineTokenNode(candidate)) {
             return false;
+          }
+          // A mention chip backtracks instead of vanishing: it reopens as the
+          // editable `@path` text it came from, caret at the end, which
+          // re-arms the path trigger so the suggestion menu picks up where
+          // the chip left off. Deleting outright is still one more backspace
+          // away, matching what deleting a plain word costs.
+          if (candidate instanceof ComposerMentionNode) {
+            const editableText = $createTextNode(
+              `@${serializeComposerMentionPath(candidate.__path)}`,
+            );
+            candidate.replace(editableText);
+            editableText.select();
+            event?.preventDefault();
+            return true;
           }
           const tokenStart = getAbsoluteOffsetForPoint(candidate, 0);
           candidate.remove();

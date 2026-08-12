@@ -97,18 +97,20 @@ describe("parseChangeRequestUrl", () => {
   });
 
   it("survives trailing segments, a trailing slash and a query string", () => {
-    expect(parseChangeRequestUrl("https://github.com/t3tools/t3code/pull/123/files?w=1")).toEqual({
-      host: "github.com",
-      repository: "t3tools/codeslop",
-      number: 123,
-    });
+    expect(parseChangeRequestUrl("https://github.com/t3tools/codeslop/pull/123/files?w=1")).toEqual(
+      {
+        host: "github.com",
+        repository: "t3tools/codeslop",
+        number: 123,
+      },
+    );
     expect(
       parseChangeRequestUrl("https://gitlab.com/team/project/-/merge_requests/42/diffs#note_1"),
     ).toEqual({ host: "gitlab.com", repository: "team/project", number: 42 });
     expect(
       parseChangeRequestUrl("https://bitbucket.org/team/repo/pull-requests/5/commits"),
     ).toEqual({ host: "bitbucket.org", repository: "team/repo", number: 5 });
-    expect(parseChangeRequestUrl("https://github.com/t3tools/t3code/pull/123/")).toEqual({
+    expect(parseChangeRequestUrl("https://github.com/t3tools/codeslop/pull/123/")).toEqual({
       host: "github.com",
       repository: "t3tools/codeslop",
       number: 123,

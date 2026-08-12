@@ -1649,6 +1649,29 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     };
   }, [readComposerSnapshot]);
 
+  /**
+   * Tab completes a path suggestion into the trigger text instead of finalizing
+   * it, shell-style: a directory keeps the menu open inside it, and either kind
+   * stays editable. Paths a bare `@` token cannot carry (whitespace, quotes)
+   * fall back to the finalizing select.
+   */
+  const continueComposerPathItem = useCallback(
+    (item: Extract<ComposerCommandItem, { type: "path" }>): boolean => {
+      if (/[\s"\\]/.test(item.path)) return false;
+      const { snapshot, trigger } = resolveActiveComposerTrigger();
+      if (!trigger || trigger.kind !== "path") return false;
+      const replacement = `@${item.path}${item.pathKind === "directory" ? "/" : ""}`;
+      const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, replacement, {
+        expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+      });
+      if (applied) {
+        setComposerHighlightedItemId(null);
+      }
+      return applied;
+    },
+    [applyPromptReplacement, resolveActiveComposerTrigger, setComposerHighlightedItemId],
+  );
+
   const onSelectComposerItem = useCallback(
     (item: ComposerCommandItem) => {
       if (composerSelectLockRef.current) return;
@@ -1887,6 +1910,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         return true;
       }
       if ((key === "Enter" || key === "Tab") && selectedItem) {
+        if (
+          key === "Tab" &&
+          selectedItem.type === "path" &&
+          continueComposerPathItem(selectedItem)
+        ) {
+          return true;
+        }
         onSelectComposerItem(selectedItem);
         return true;
       }

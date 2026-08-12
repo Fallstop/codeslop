@@ -1,5 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFSP from "node:fs/promises";
+import * as NodeOS from "node:os";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { FileFinder } from "@ff-labs/fff-node";
 import { it, afterEach, describe, expect } from "@effect/vitest";
@@ -19,6 +20,11 @@ import * as WorkspacePaths from "./WorkspacePaths.ts";
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
   return { ...actual, readdir: vi.fn(actual.readdir) };
+});
+
+vi.mock("node:os", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:os")>();
+  return { ...actual, homedir: vi.fn(actual.homedir) };
 });
 
 const TestLayer = Layer.empty.pipe(
@@ -353,13 +359,59 @@ it.layer(TestLayer, { excludeTestServices: true })("WorkspaceEntries", (it) => {
             expect.arrayContaining([
               { path: "../sibling", kind: "directory" },
               { path: "../notes.md", kind: "file" },
-              { path: "../.hidden.txt", kind: "file" },
             ]),
           );
-          // The workspace root itself resolves to an empty relative path and
-          // must not appear as a completion.
+          // Dotfiles stay hidden until a `.` fragment asks for them, and the
+          // workspace root itself resolves to an empty relative path and must
+          // not appear as a completion.
+          expect(result.entries.some((entry) => entry.path.includes(".hidden"))).toBe(false);
           expect(result.entries.every((entry) => entry.path.startsWith("../"))).toBe(true);
           expect(result.truncated).toBe(false);
+        }),
+      );
+
+      it.effect("surfaces hidden entries for a dot fragment", () =>
+        Effect.gen(function* () {
+          const { cwd } = yield* makeSiblingWorkspace();
+
+          const result = yield* searchWorkspaceEntries({ cwd, query: "../.h", limit: 100 });
+
+          expect(result.entries).toEqual([{ path: "../.hidden.txt", kind: "file" }]);
+        }),
+      );
+
+      it.effect("completes `~/` queries against the home directory", () =>
+        Effect.gen(function* () {
+          const { parent, cwd } = yield* makeSiblingWorkspace();
+          vi.mocked(NodeOS.homedir).mockReturnValue(parent);
+
+          const listed = yield* searchWorkspaceEntries({ cwd, query: "~/", limit: 100 });
+          expect(listed.entries).toEqual(
+            expect.arrayContaining([
+              { path: "~/sibling", kind: "directory" },
+              { path: "~/notes.md", kind: "file" },
+            ]),
+          );
+          expect(listed.entries.every((entry) => entry.path.startsWith("~/"))).toBe(true);
+
+          const prefixed = yield* searchWorkspaceEntries({ cwd, query: "~/sib", limit: 100 });
+          expect(prefixed.entries).toEqual([{ path: "~/sibling", kind: "directory" }]);
+
+          const nested = yield* searchWorkspaceEntries({ cwd, query: "~/sibling/", limit: 100 });
+          expect(nested.entries).toEqual([{ path: "~/sibling/file.ts", kind: "file" }]);
+        }),
+      );
+
+      it.effect("treats a bare `~` as the home directory listing", () =>
+        Effect.gen(function* () {
+          const { parent, cwd } = yield* makeSiblingWorkspace();
+          vi.mocked(NodeOS.homedir).mockReturnValue(parent);
+
+          const result = yield* searchWorkspaceEntries({ cwd, query: "~", limit: 100 });
+
+          expect(result.entries).toEqual(
+            expect.arrayContaining([{ path: "~/sibling", kind: "directory" }]),
+          );
         }),
       );
 

@@ -140,15 +140,16 @@ const resolveBrowseTarget = Effect.fn("WorkspaceEntries.resolveBrowseTarget")(fu
   return path.resolve(expandHomePath(input.cwd, path), input.partialPath);
 });
 
-// Queries that begin with a `..` segment reference paths the workspace index
-// can never contain, so they bypass fuzzy search entirely.
-const ROOT_ESCAPING_QUERY_REGEX = /^\.\.(?:[\\/]|$)/;
+// Queries that begin with a `..` segment or `~` reference paths the workspace
+// index can never contain, so they bypass fuzzy search entirely.
+const ROOT_ESCAPING_QUERY_REGEX = /^(?:\.\.|~)(?:[\\/]|$)/;
 
 /**
- * Shell-style completion for `../`-prefixed queries: list the referenced
- * directory and match the final segment as a name prefix (falling back to
- * substring), returning cwd-relative paths so mentions keep their `../` form
- * and resolve against the agent's cwd like in-project mentions do.
+ * Shell-style completion for `../`- and `~`-prefixed queries: list the
+ * referenced directory and match the final segment as a name prefix (falling
+ * back to substring). Results keep the form the query used — cwd-relative
+ * `../` paths or home-relative `~/` paths — so mentions resolve the same way
+ * a shell would against the agent's cwd.
  */
 const searchOutsideRoot = Effect.fn("WorkspaceEntries.searchOutsideRoot")(function* (
   input: ProjectSearchEntriesInput,
@@ -156,8 +157,14 @@ const searchOutsideRoot = Effect.fn("WorkspaceEntries.searchOutsideRoot")(functi
   path: Path.Path,
 ): Effect.fn.Return<ProjectSearchEntriesResult> {
   const query = input.query.trim();
-  const endsWithSeparator = /[\\/]$/.test(query);
-  const resolvedQueryPath = path.resolve(normalizedCwd, query);
+  const isHomeQuery = query === "~" || query.startsWith("~/") || query.startsWith("~\\");
+  const homeDir = NodeOS.homedir();
+  // A bare `~` reads as "list the home directory", not as a completion of
+  // `~` among its siblings.
+  const endsWithSeparator = query === "~" || /[\\/]$/.test(query);
+  const resolvedQueryPath = isHomeQuery
+    ? path.resolve(expandHomePath(query, path))
+    : path.resolve(normalizedCwd, query);
   const parentPath = endsWithSeparator ? resolvedQueryPath : path.dirname(resolvedQueryPath);
   const prefix = endsWithSeparator ? "" : path.basename(resolvedQueryPath);
 
@@ -167,7 +174,10 @@ const searchOutsideRoot = Effect.fn("WorkspaceEntries.searchOutsideRoot")(functi
     NodeFSP.readdir(parentPath, { withFileTypes: true }),
   ).pipe(Effect.orElseSucceed(() => []));
 
-  const showHidden = endsWithSeparator || prefix.startsWith(".");
+  // Shell completion behavior: dotfiles only surface when asked for with a
+  // `.` fragment. Listing them unprompted would bury a home directory's real
+  // contents under its config noise.
+  const showHidden = prefix.startsWith(".");
   const lowerPrefix = prefix.toLowerCase();
   const prefixMatches: ProjectEntry[] = [];
   const substringMatches: ProjectEntry[] = [];
@@ -185,10 +195,11 @@ const searchOutsideRoot = Effect.fn("WorkspaceEntries.searchOutsideRoot")(functi
     if (input.imageOnly && (kind !== "file" || !isWorkspaceImagePreviewPath(dirent.name))) {
       continue;
     }
-    const relativePath = path
-      .relative(normalizedCwd, path.join(parentPath, dirent.name))
-      .replaceAll("\\", "/");
-    if (!relativePath) {
+    const absolutePath = path.join(parentPath, dirent.name);
+    const relativePath = isHomeQuery
+      ? `~/${path.relative(homeDir, absolutePath).replaceAll("\\", "/")}`
+      : path.relative(normalizedCwd, absolutePath).replaceAll("\\", "/");
+    if (!relativePath || relativePath === "~/") {
       continue;
     }
     const lowerName = dirent.name.toLowerCase();
