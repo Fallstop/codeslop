@@ -36,9 +36,9 @@ describe("openPullRequestLink", () => {
 
 describe("parseChangeRequestUrl", () => {
   it("reads a GitHub pull request", () => {
-    expect(parseChangeRequestUrl("https://github.com/T3Tools/T3Code/pull/123")).toEqual({
+    expect(parseChangeRequestUrl("https://github.com/T3Tools/codeslop/pull/123")).toEqual({
       host: "github.com",
-      repository: "t3tools/t3code",
+      repository: "t3tools/codeslop",
       number: 123,
     });
   });
@@ -99,7 +99,7 @@ describe("parseChangeRequestUrl", () => {
   it("survives trailing segments, a trailing slash and a query string", () => {
     expect(parseChangeRequestUrl("https://github.com/t3tools/t3code/pull/123/files?w=1")).toEqual({
       host: "github.com",
-      repository: "t3tools/t3code",
+      repository: "t3tools/codeslop",
       number: 123,
     });
     expect(
@@ -110,7 +110,7 @@ describe("parseChangeRequestUrl", () => {
     ).toEqual({ host: "bitbucket.org", repository: "team/repo", number: 5 });
     expect(parseChangeRequestUrl("https://github.com/t3tools/t3code/pull/123/")).toEqual({
       host: "github.com",
-      repository: "t3tools/t3code",
+      repository: "t3tools/codeslop",
       number: 123,
     });
   });

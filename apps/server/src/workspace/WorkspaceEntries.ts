@@ -12,6 +12,7 @@ import * as Schema from "effect/Schema";
 import type {
   FilesystemBrowseInput,
   FilesystemBrowseResult,
+  ProjectEntry,
   ProjectListEntriesInput,
   ProjectListEntriesResult,
   ProjectSearchContentsInput,
@@ -19,6 +20,7 @@ import type {
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
 } from "@t3tools/contracts";
+import { isWorkspaceImagePreviewPath } from "@t3tools/shared/filePreview";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { isExplicitRelativePath, isWindowsAbsolutePath } from "@t3tools/shared/path";
 import { normalizeSearchQuery } from "@t3tools/shared/searchRanking";
@@ -138,6 +140,73 @@ const resolveBrowseTarget = Effect.fn("WorkspaceEntries.resolveBrowseTarget")(fu
   return path.resolve(expandHomePath(input.cwd, path), input.partialPath);
 });
 
+// Queries that begin with a `..` segment reference paths the workspace index
+// can never contain, so they bypass fuzzy search entirely.
+const ROOT_ESCAPING_QUERY_REGEX = /^\.\.(?:[\\/]|$)/;
+
+/**
+ * Shell-style completion for `../`-prefixed queries: list the referenced
+ * directory and match the final segment as a name prefix (falling back to
+ * substring), returning cwd-relative paths so mentions keep their `../` form
+ * and resolve against the agent's cwd like in-project mentions do.
+ */
+const searchOutsideRoot = Effect.fn("WorkspaceEntries.searchOutsideRoot")(function* (
+  input: ProjectSearchEntriesInput,
+  normalizedCwd: string,
+  path: Path.Path,
+): Effect.fn.Return<ProjectSearchEntriesResult> {
+  const query = input.query.trim();
+  const endsWithSeparator = /[\\/]$/.test(query);
+  const resolvedQueryPath = path.resolve(normalizedCwd, query);
+  const parentPath = endsWithSeparator ? resolvedQueryPath : path.dirname(resolvedQueryPath);
+  const prefix = endsWithSeparator ? "" : path.basename(resolvedQueryPath);
+
+  // Mid-typing targets are routinely nonexistent or unreadable; completion
+  // answers with no entries rather than failing the search.
+  const dirents = yield* Effect.tryPromise(() =>
+    NodeFSP.readdir(parentPath, { withFileTypes: true }),
+  ).pipe(Effect.orElseSucceed(() => []));
+
+  const showHidden = endsWithSeparator || prefix.startsWith(".");
+  const lowerPrefix = prefix.toLowerCase();
+  const prefixMatches: ProjectEntry[] = [];
+  const substringMatches: ProjectEntry[] = [];
+  for (const dirent of dirents) {
+    if (!showHidden && dirent.name.startsWith(".")) {
+      continue;
+    }
+    if (!dirent.isDirectory() && !dirent.isFile() && !dirent.isSymbolicLink()) {
+      continue;
+    }
+    const kind = dirent.isDirectory() ? "directory" : "file";
+    if (input.kind && input.kind !== kind) {
+      continue;
+    }
+    if (input.imageOnly && (kind !== "file" || !isWorkspaceImagePreviewPath(dirent.name))) {
+      continue;
+    }
+    const relativePath = path
+      .relative(normalizedCwd, path.join(parentPath, dirent.name))
+      .replaceAll("\\", "/");
+    if (!relativePath) {
+      continue;
+    }
+    const lowerName = dirent.name.toLowerCase();
+    if (lowerName.startsWith(lowerPrefix)) {
+      prefixMatches.push({ path: relativePath, kind });
+    } else if (lowerPrefix && lowerName.includes(lowerPrefix)) {
+      substringMatches.push({ path: relativePath, kind });
+    }
+  }
+
+  const byName = (left: ProjectEntry, right: ProjectEntry) => left.path.localeCompare(right.path);
+  const entries = [...prefixMatches.toSorted(byName), ...substringMatches.toSorted(byName)];
+  return {
+    entries: entries.slice(0, input.limit),
+    truncated: entries.length > input.limit,
+  };
+});
+
 export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
@@ -240,6 +309,9 @@ export const make = Effect.gen(function* () {
   const search: WorkspaceEntries["Service"]["search"] = Effect.fn("WorkspaceEntries.search")(
     function* (input) {
       const normalizedCwd = yield* normalizeWorkspaceRoot(input.cwd);
+      if (ROOT_ESCAPING_QUERY_REGEX.test(input.query.trim())) {
+        return yield* searchOutsideRoot(input, normalizedCwd, path);
+      }
       const normalizedQuery = normalizeSearchQuery(input.query, {
         trimLeadingPattern: /^[@./]+/,
       });

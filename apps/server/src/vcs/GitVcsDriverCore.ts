@@ -2869,7 +2869,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         yield* executeGit(
           "GitVcsDriver.refreshCheckedOutBranch.keepPrevious",
           input.cwd,
-          ["update-ref", "refs/t3code/pre-refresh", headCommit],
+          ["update-ref", "refs/slop/pre-refresh", headCommit],
           { fallbackErrorDetail: "git failed to record the previous checkout commit" },
         );
       }

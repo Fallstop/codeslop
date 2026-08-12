@@ -931,6 +931,134 @@ it.effect("tries another workspace on the same host for the viewer", () =>
   }),
 );
 
+it.effect("confines the all listing to repositories the viewer can push to", () =>
+  Effect.gen(function* () {
+    const reads: string[] = [];
+    const service = yield* makeService({
+      projects: [
+        project({ id: "p1", title: "mine", workspaceRoot: "/mine", repository: "bilal/mine" }),
+        project({
+          id: "p2",
+          title: "upstream",
+          workspaceRoot: "/upstream",
+          repository: "acme/upstream",
+        }),
+      ],
+      providers: [
+        fakeProvider("github", {
+          getRepositoryWriteAccess: (input) => Effect.succeed(input.repository === "bilal/mine"),
+          listChangeRequests: (input) => {
+            reads.push(input.repository);
+            return Effect.succeed({
+              items: [changeRequest(1, "2026-07-02T00:00:00Z")],
+              truncated: false,
+              continues: true,
+            });
+          },
+        }),
+      ],
+    });
+
+    const result = yield* service.list({ state: "open" });
+
+    // The read-only checkout is neither read nor reported: its absence is the feature.
+    assert.deepStrictEqual(reads, ["bilal/mine"]);
+    assert.deepStrictEqual(
+      result.entries.map((entry) => entry.repository),
+      ["bilal/mine"],
+    );
+    assert.deepStrictEqual(result.errors, []);
+  }),
+);
+
+it.effect("keeps a read-only repository in the viewer's own listings", () =>
+  Effect.gen(function* () {
+    const service = yield* makeService({
+      projects: [
+        project({
+          id: "p1",
+          title: "upstream",
+          workspaceRoot: "/upstream",
+          repository: "acme/upstream",
+        }),
+      ],
+      providers: [
+        fakeProvider("github", {
+          getRepositoryWriteAccess: () => Effect.succeed(false),
+          listChangeRequests: () =>
+            Effect.succeed({
+              items: [changeRequest(1, "2026-07-02T00:00:00Z")],
+              truncated: false,
+              continues: true,
+            }),
+        }),
+      ],
+    });
+
+    const result = yield* service.list({ state: "open", involvement: "authored" });
+
+    assert.strictEqual(result.entries.length, 1);
+  }),
+);
+
+it.effect("keeps a repository whose write access cannot be asked", () =>
+  Effect.gen(function* () {
+    const service = yield* makeService({
+      projects: [
+        project({ id: "p1", title: "t3code", workspaceRoot: "/a", repository: "pingdotgg/t3code" }),
+      ],
+      providers: [
+        fakeProvider("github", {
+          getRepositoryWriteAccess: () =>
+            Effect.fail(
+              new PullRequestProviderError({
+                provider: "github",
+                operation: "getRepositoryWriteAccess",
+                reason: "failed",
+                detail: "HTTP 500",
+              }),
+            ),
+          listChangeRequests: () =>
+            Effect.succeed({
+              items: [changeRequest(1, "2026-07-02T00:00:00Z")],
+              truncated: false,
+              continues: true,
+            }),
+        }),
+      ],
+    });
+
+    const result = yield* service.list({ state: "open" });
+
+    assert.strictEqual(result.entries.length, 1);
+  }),
+);
+
+it.effect("asks one repository's write access once across reads", () =>
+  Effect.gen(function* () {
+    let accessReads = 0;
+    const service = yield* makeService({
+      projects: [
+        project({ id: "p1", title: "t3code", workspaceRoot: "/a", repository: "pingdotgg/t3code" }),
+      ],
+      providers: [
+        fakeProvider("github", {
+          getRepositoryWriteAccess: () => {
+            accessReads += 1;
+            return Effect.succeed(true);
+          },
+        }),
+      ],
+    });
+
+    // Different states, so the second read misses the list cache and asks the hosts again.
+    yield* service.list({ state: "open" });
+    yield* service.list({ state: "closed" });
+
+    assert.strictEqual(accessReads, 1);
+  }),
+);
+
 it.effect("refuses an action the host never claimed it could run", () =>
   Effect.gen(function* () {
     let ran = false;

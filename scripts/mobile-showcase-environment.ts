@@ -115,7 +115,7 @@ const PROJECT_FAVICONS = {
 export const SHOWCASE_PROJECTS = [
   {
     id: "t3code",
-    title: "T3 Code",
+    title: "codeslop",
     directory: "t3code",
     repositoryUrl: "https://github.com/pingdotgg/t3code.git",
     favicon: PROJECT_FAVICONS.t3code,
@@ -162,9 +162,9 @@ export const SHOWCASE_THREADS = [
     branch: "feat/remote-command-center",
     minutesAgo: 3,
     request:
-      "Give T3 Code a remote-first command center. Make three machines feel one tap away, keep agent work in sync, and make every handoff feel instant.",
+      "Give codeslop a remote-first command center. Make three machines feel one tap away, keep agent work in sync, and make every handoff feel instant.",
     response:
-      "T3 Code now treats every machine like it is right here in the room. ✦\n\n- Moonbase, Suspense Station, and Kernel Cabin stay live together\n- Terminal state follows you without losing a single line\n- Agent work remains perfectly in sync across devices\n- Handoffs land before your train of thought can wander\n\nI also ran the changed workspace: **612 tests passed**.",
+      "codeslop now treats every machine like it is right here in the room. ✦\n\n- Moonbase, Suspense Station, and Kernel Cabin stay live together\n- Terminal state follows you without losing a single line\n- Agent work remains perfectly in sync across devices\n- Handoffs land before your train of thought can wander\n\nI also ran the changed workspace: **612 tests passed**.",
   },
   {
     id: "pocket-command-center",
@@ -278,7 +278,7 @@ async function initializeRepository(input: {
   await runGit(input.workspaceRoot, ["commit", "-m", input.commitMessage]);
 }
 
-async function seedT3CodeWorkspace(workspaceRoot: string): Promise<void> {
+async function seedcodeslopWorkspace(workspaceRoot: string): Promise<void> {
   await NodeFSP.mkdir(NodePath.join(workspaceRoot, "apps/mobile/src/features/home"), {
     recursive: true,
   });
@@ -317,7 +317,7 @@ async function seedCompanionWorkspace(input: {
   await NodeFSP.writeFile(NodePath.join(input.workspaceRoot, "favicon.svg"), input.favicon);
   await NodeFSP.writeFile(
     NodePath.join(input.workspaceRoot, "README.md"),
-    `# ${input.title}\n\nSeeded by the T3 Code mobile screenshot harness.\n`,
+    `# ${input.title}\n\nSeeded by the codeslop mobile screenshot harness.\n`,
   );
   await initializeRepository({
     workspaceRoot: input.workspaceRoot,
@@ -620,7 +620,7 @@ export async function seedShowcaseEnvironment(input: {
   if (!workspaceRoot) throw new Error("The primary showcase workspace is not configured.");
   const dbPath = NodePath.join(input.baseDir, "userdata", "state.sqlite");
   if (primaryProject.id === SHOWCASE_PROJECT_ID) {
-    await seedT3CodeWorkspace(workspaceRoot);
+    await seedcodeslopWorkspace(workspaceRoot);
   }
   await Promise.all(
     projects

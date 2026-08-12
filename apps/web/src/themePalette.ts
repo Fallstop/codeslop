@@ -3,7 +3,7 @@ import "culori/css";
 import { converter, parse } from "culori/fn";
 
 export const T3_CHAT_THEME_ID = "t3-chat" as const;
-export const T3_CHAT_THEME_LABEL = "T3 Chat";
+export const T3_CHAT_THEME_LABEL = "codeslop Acid";
 export const GROVE_THEME_ID = "grove" as const;
 export const GROVE_THEME_LABEL = "Grove";
 export const OCEAN_THEME_ID = "ocean" as const;
@@ -360,7 +360,7 @@ function themeIdFromPreference(theme: ThemePreference): string {
   return normalizeThemeId(theme);
 }
 
-// Older builds stored the dark T3 Chat palette as a separate theme. Keep
+// Older builds stored the dark codeslop Acid palette as a separate theme. Keep
 // those preferences readable while mapping them to the dark variant.
 function legacyThemeMode(theme: ThemePreference): ThemeAppearance | null {
   return theme === LEGACY_T3_CHAT_DARK_THEME_ID ? "dark" : null;
@@ -372,17 +372,17 @@ function legacyThemeMode(theme: ThemePreference): ThemeAppearance | null {
  */
 // Measured from the live t3.chat default theme. Translucent chat surfaces are
 // flattened over --chat-background so this opaque palette reproduces the
-// pixels users see after T3 Chat's blur and noise layers are composited.
+// pixels users see after codeslop Acid's blur and noise layers are composited.
 // Foreground pairs deviate where necessary to keep normal text at WCAG AA.
 const T3_CHAT_LIGHT_COLORS: ThemeColors = {
   canvas: "#fdf7fd",
-  // T3 Code's workspace header belongs to the chat panel, so keep it seamless
-  // with the light chat canvas rather than mapping it to T3 Chat's outer shell.
+  // codeslop's workspace header belongs to the chat panel, so keep it seamless
+  // with the light chat canvas rather than mapping it to codeslop Acid's outer shell.
   chrome: "#fdf7fd",
   toolbar: "#fdf7fd",
   toolbarForeground: "#501854",
   toolbarBorder: "#efbdeb",
-  // T3 Chat's light chrome controls sit on its pale gradient-noise surface,
+  // codeslop Acid's light chrome controls sit on its pale gradient-noise surface,
   // not the substantially darker solid accent token.
   toolbarControl: "#f3e6f5",
   toolbarControlForeground: "#501854",
@@ -420,11 +420,11 @@ const T3_CHAT_LIGHT_COLORS: ThemeColors = {
   messageAction: "#db2777",
   messageActionForeground: "#ffffff",
   messageActionHover: "#c12269",
-  // T3 Chat uses a light lavender code surface in light mode. Keeping the
-  // dark plum pair here also leaked the dark palette into T3 Code's diffs.
+  // codeslop Acid uses a light lavender code surface in light mode. Keeping the
+  // dark plum pair here also leaked the dark palette into codeslop's diffs.
   codeBackground: "#f5ecf9",
   codeForeground: "#673c8b",
-  // The live sidebar is transparent over T3 Chat's outer shell. Use that
+  // The live sidebar is transparent over codeslop Acid's outer shell. Use that
   // rendered shell color rather than its unused, darker sidebar token.
   sidebar: "#f2e1f4",
   sidebarForeground: "#454554",
@@ -444,8 +444,8 @@ const T3_CHAT_LIGHT_COLORS: ThemeColors = {
 
 const T3_CHAT_DARK_COLORS: ThemeColors = {
   canvas: "#1f1a24",
-  // T3 Code's workspace header belongs to the chat panel, so keep it seamless
-  // with the canvas rather than mapping it to T3 Chat's outer shell.
+  // codeslop's workspace header belongs to the chat panel, so keep it seamless
+  // with the canvas rather than mapping it to codeslop Acid's outer shell.
   chrome: "#1f1a24",
   toolbar: "#1f1a24",
   toolbarForeground: "#f9f8fb",
@@ -453,7 +453,7 @@ const T3_CHAT_DARK_COLORS: ThemeColors = {
   toolbarControl: "#362d3d",
   toolbarControlForeground: "#d4c7e1",
   toolbarControlHover: "#463753",
-  // Cards and panels stay in T3 Chat's plum surface family. Near-black here
+  // Cards and panels stay in codeslop Acid's plum surface family. Near-black here
   // made the right-panel surface picker look unrelated to the chat canvas.
   surface: "#29232d",
   // Pre-composited for the composer's 80% glass layer; this resolves to the
@@ -490,7 +490,7 @@ const T3_CHAT_DARK_COLORS: ThemeColors = {
   messageAction: "#a3004c",
   messageActionForeground: "#fbd0e8",
   messageActionHover: "#a2004c",
-  // Diffs and file previews are full workspace surfaces in T3 Code. Keep them
+  // Diffs and file previews are full workspace surfaces in codeslop. Keep them
   // continuous with the themed canvas instead of dropping to near-black.
   codeBackground: "#1f1a24",
   codeForeground: "#d8c3ef",
@@ -504,7 +504,7 @@ const T3_CHAT_DARK_COLORS: ThemeColors = {
   sidebarRowHover: "#261922",
   sidebarRowActive: "#261922",
   sidebarRowSelected: "#261922",
-  // T3 Chat draws the chat panel edge in this muted pink. The resize rail uses
+  // codeslop Acid draws the chat panel edge in this muted pink. The resize rail uses
   // the same role on hover, so it stays pink instead of falling back to black.
   sidebarBorder: "#322028",
   terminalBackground: "#1f1a24",
@@ -516,7 +516,7 @@ const T3_CHAT_DARK_COLORS: ThemeColors = {
 };
 
 /**
- * The palette T3 Code wears with no theme installed, captured from the app's
+ * The palette codeslop wears with no theme installed, captured from the app's
  * stock tokens (index.css) so a draft seeded from the default look paints the
  * pixels the user is already seeing. Alpha-bearing tokens are flattened over
  * their real backdrops (canvas, or the sidebar for its rows) because theme
@@ -643,9 +643,9 @@ const T3_CODE_DARK_THEME_COLORS: ThemeColors = {
 };
 
 /**
- * The standard T3 Code look as a theme palette, for seeding a new theme when
+ * The standard codeslop look as a theme palette, for seeding a new theme when
  * no theme is installed. Distinct from {@link getDefaultThemeColors}, which
- * carries the flagship T3 Chat palette used to fill roles omitted by theme
+ * carries the flagship codeslop Acid palette used to fill roles omitted by theme
  * files.
  */
 export function getStandardThemeColors(appearance: ThemeAppearance): ThemeColors {
@@ -952,7 +952,7 @@ function solveOklchLightness(
 }
 
 /**
- * The status colors T3 Code shows without a theme, read from the app's own
+ * The status colors codeslop shows without a theme, read from the app's own
  * tokens (red-500 / amber-500 families). Generated palettes fall back to
  * these instead of the flagship theme's, so an imported or created theme
  * never inherits a brand tint on destructive buttons and warnings.
@@ -1444,7 +1444,7 @@ export function getDefaultThemeColors(appearance: ThemeAppearance): ThemeColors 
 }
 
 /**
- * A companion action color in the T3 Chat mold. This gives send buttons,
+ * A companion action color in the codeslop Acid mold. This gives send buttons,
  * status pills, and theme previews a second voice; foreground and hover follow
  * the same rules as the managed generator.
  */

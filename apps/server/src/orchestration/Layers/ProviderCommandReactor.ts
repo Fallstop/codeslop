@@ -12,7 +12,11 @@ import {
   type RuntimeMode,
   type TurnId,
 } from "@t3tools/contracts";
-import { isTemporaryWorktreeBranch, WORKTREE_BRANCH_PREFIX } from "@t3tools/shared/git";
+import {
+  isTemporaryWorktreeBranch,
+  LEGACY_WORKTREE_BRANCH_PREFIX,
+  WORKTREE_BRANCH_PREFIX,
+} from "@t3tools/shared/git";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
@@ -296,7 +300,9 @@ function buildGeneratedWorktreeBranchName(raw: string): string {
 
   const withoutPrefix = normalized.startsWith(`${WORKTREE_BRANCH_PREFIX}/`)
     ? normalized.slice(`${WORKTREE_BRANCH_PREFIX}/`.length)
-    : normalized;
+    : normalized.startsWith(`${LEGACY_WORKTREE_BRANCH_PREFIX}/`)
+      ? normalized.slice(`${LEGACY_WORKTREE_BRANCH_PREFIX}/`.length)
+      : normalized;
 
   const branchFragment = withoutPrefix
     .replace(/[^a-z0-9/_-]+/g, "-")

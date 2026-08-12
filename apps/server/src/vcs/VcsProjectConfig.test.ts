@@ -96,7 +96,8 @@ describe("VcsProjectConfig", () => {
         const kind = yield* config.resolveKind({ cwd });
 
         assert.equal(kind, "jj");
-        const failedCandidate = path.join(cwd, ".t3code", "vcs.json");
+        // `.slop` is inspected first, so it is the first candidate whose failure is logged.
+        const failedCandidate = path.join(cwd, ".slop", "vcs.json");
         const [error] = messages[0] as ReadonlyArray<unknown>;
         assert.instanceOf(error, VcsProjectConfig.VcsProjectConfigError);
         assert.equal(

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+// @effect-diagnostics-next-line nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
@@ -67,9 +69,12 @@ export function isProxiableBindHost(host: string): boolean {
   );
 }
 
-export const DEFAULT_T3_HOME = Effect.map(Effect.service(Path.Path), (path) =>
-  path.join(NodeOS.homedir(), ".t3"),
-);
+// Matches the server's default: an existing pre-rebrand `~/.t3` keeps winning so dev state
+// stays where it is; fresh machines get `~/.codeslop`.
+export const DEFAULT_T3_HOME = Effect.map(Effect.service(Path.Path), (path) => {
+  const legacyHome = path.join(NodeOS.homedir(), ".t3");
+  return NodeFS.existsSync(legacyHome) ? legacyHome : path.join(NodeOS.homedir(), ".codeslop");
+});
 
 const MODE_ARGS = {
   dev: [
@@ -342,7 +347,7 @@ export function createDevRunnerEnv({
 
     // A dev-runner server is never launcher-managed. When the shell that runs
     // this script was itself spawned by the machine's managed t3 service (an
-    // agent working inside T3 Code), these leak through and the child server
+    // agent working inside codeslop), these leak through and the child server
     // fails startup with "The service launcher started a different t3 version"
     // (serviceLauncherClient.ts resolveStartup).
     delete output.T3_SERVICE_LAUNCHER_CONTEXT;
@@ -860,7 +865,7 @@ const devRunnerCli = Command.make("dev-runner", {
   ),
   t3Home: Flag.string("home-dir").pipe(
     Flag.withDescription(
-      "Explicit T3 Code data directory; runtime state is stored under userdata (equivalent to T3CODE_HOME). Inside a git worktree this defaults to that worktree's own .t3 so dev state stays off the shared home.",
+      "Explicit codeslop data directory; runtime state is stored under userdata (equivalent to T3CODE_HOME). Inside a git worktree this defaults to that worktree's own .t3 so dev state stays off the shared home.",
     ),
     Flag.optional,
     Flag.map(Option.getOrUndefined),

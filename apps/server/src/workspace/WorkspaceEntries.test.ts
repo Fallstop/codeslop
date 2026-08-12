@@ -331,6 +331,114 @@ it.layer(TestLayer, { excludeTestServices: true })("WorkspaceEntries", (it) => {
       }),
     );
 
+    describe("outside the workspace root", () => {
+      const makeSiblingWorkspace = Effect.fn(function* () {
+        const path = yield* Path.Path;
+        const parent = yield* makeTempDir({ prefix: "t3code-workspace-outside-" });
+        const cwd = path.join(parent, "project");
+        yield* writeTextFile(cwd, "inside.ts");
+        yield* writeTextFile(parent, "sibling/file.ts");
+        yield* writeTextFile(parent, "notes.md");
+        yield* writeTextFile(parent, ".hidden.txt");
+        return { parent, cwd };
+      });
+
+      it.effect("lists the parent directory for a `../` query", () =>
+        Effect.gen(function* () {
+          const { cwd } = yield* makeSiblingWorkspace();
+
+          const result = yield* searchWorkspaceEntries({ cwd, query: "../", limit: 100 });
+
+          expect(result.entries).toEqual(
+            expect.arrayContaining([
+              { path: "../sibling", kind: "directory" },
+              { path: "../notes.md", kind: "file" },
+              { path: "../.hidden.txt", kind: "file" },
+            ]),
+          );
+          // The workspace root itself resolves to an empty relative path and
+          // must not appear as a completion.
+          expect(result.entries.every((entry) => entry.path.startsWith("../"))).toBe(true);
+          expect(result.truncated).toBe(false);
+        }),
+      );
+
+      it.effect("completes the final segment as a name prefix", () =>
+        Effect.gen(function* () {
+          const { cwd } = yield* makeSiblingWorkspace();
+
+          const result = yield* searchWorkspaceEntries({ cwd, query: "../sib", limit: 100 });
+
+          expect(result.entries).toEqual([{ path: "../sibling", kind: "directory" }]);
+        }),
+      );
+
+      it.effect("falls back to substring matches for the final segment", () =>
+        Effect.gen(function* () {
+          const { cwd } = yield* makeSiblingWorkspace();
+
+          const result = yield* searchWorkspaceEntries({ cwd, query: "../otes", limit: 100 });
+
+          expect(result.entries).toEqual([{ path: "../notes.md", kind: "file" }]);
+        }),
+      );
+
+      it.effect("descends into out-of-root directories", () =>
+        Effect.gen(function* () {
+          const { cwd } = yield* makeSiblingWorkspace();
+
+          const result = yield* searchWorkspaceEntries({ cwd, query: "../sibling/", limit: 100 });
+
+          expect(result.entries).toEqual([{ path: "../sibling/file.ts", kind: "file" }]);
+        }),
+      );
+
+      it.effect("completes a bare `..` against the grandparent directory", () =>
+        Effect.gen(function* () {
+          const { cwd } = yield* makeSiblingWorkspace();
+
+          const result = yield* searchWorkspaceEntries({ cwd, query: "..", limit: 100 });
+
+          expect(result.entries).toEqual(
+            expect.arrayContaining([{ path: "..", kind: "directory" }]),
+          );
+        }),
+      );
+
+      it.effect("honors the kind filter and truncation limit", () =>
+        Effect.gen(function* () {
+          const { cwd } = yield* makeSiblingWorkspace();
+
+          const directoriesOnly = yield* searchWorkspaceEntries({
+            cwd,
+            query: "../",
+            limit: 100,
+            kind: "directory",
+          });
+          expect(directoriesOnly.entries).toEqual([{ path: "../sibling", kind: "directory" }]);
+
+          const limited = yield* searchWorkspaceEntries({ cwd, query: "../", limit: 1 });
+          expect(limited.entries).toHaveLength(1);
+          expect(limited.truncated).toBe(true);
+        }),
+      );
+
+      it.effect("returns no entries for a nonexistent out-of-root directory", () =>
+        Effect.gen(function* () {
+          const { cwd } = yield* makeSiblingWorkspace();
+
+          const result = yield* searchWorkspaceEntries({
+            cwd,
+            query: "../missing/fi",
+            limit: 100,
+          });
+
+          expect(result.entries).toEqual([]);
+          expect(result.truncated).toBe(false);
+        }),
+      );
+    });
+
     it.effect("rebuilds the cached index after refresh fails", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTempDir({ prefix: "t3code-workspace-refresh-failure-" });

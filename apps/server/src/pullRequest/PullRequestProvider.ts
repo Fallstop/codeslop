@@ -260,6 +260,16 @@ export interface PullRequestProviderApi {
     }>;
   }) => Effect.Effect<ReadonlyArray<ProviderChangeRequestStat>, PullRequestProviderError>;
 
+  /**
+   * Whether the signed-in account can push to the repository itself, which is what separates a
+   * repository somebody works on from a checkout they merely read — an upstream, a reference
+   * clone. Optional: a host that cannot answer it cheaply leaves it out, and the caller treats
+   * every repository as the viewer's own where it is absent, and where it fails.
+   */
+  readonly getRepositoryWriteAccess?: (
+    input: ProviderRepositoryRef,
+  ) => Effect.Effect<boolean, PullRequestProviderError>;
+
   readonly getChangeRequest: (
     input: ProviderRepositoryRef & { readonly number: number },
   ) => Effect.Effect<ProviderChangeRequestDetail, PullRequestProviderError>;

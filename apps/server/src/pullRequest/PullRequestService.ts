@@ -107,6 +107,11 @@ const DETAIL_STALE_WINDOW = Duration.minutes(5);
 const DIFF_STALE_WINDOW = Duration.minutes(10);
 /** How long one host's signed-in login is believed without asking its CLI again. */
 const VIEWER_CACHE_TTL = Duration.minutes(10);
+/**
+ * How long "may this account push to that repository" is believed. It moves when somebody edits
+ * a collaborator list, not while a page is open, so it is held as long as the login itself.
+ */
+const REPOSITORY_ACCESS_CACHE_TTL = Duration.minutes(10);
 const LIST_CACHE_CAPACITY = 64;
 const LIST_STATS_CACHE_CAPACITY = 32;
 const DETAIL_CACHE_CAPACITY = 128;
@@ -603,6 +608,56 @@ export const make = Effect.gen(function* () {
       { concurrency: REPOSITORY_CONCURRENCY },
     );
 
+  // Whether the viewer can push, per repository, so a page visit costs one `repo view` per
+  // repository per TTL rather than per read. Like the viewer cache, only an answer is held: a
+  // failed question is asked again next time rather than deciding a repository's fate for ten
+  // minutes.
+  const writeAccessByHostRepo = new Map<
+    string,
+    { readonly at: number; readonly canWrite: boolean }
+  >();
+
+  /**
+   * The repositories the signed-in account can push to. The "all" listing shows a repository's
+   * every change request, which is only wanted for repositories the viewer works on: a checkout
+   * of somebody else's repository — an upstream, a reference clone — would otherwise fill the
+   * page with strangers' rows. A host that cannot answer, or fails to, keeps its repositories:
+   * hiding rows on an unanswered question would read as the page losing data.
+   */
+  const keepWritableRepositories = (
+    projects: ReadonlyArray<SupportedProject>,
+  ): Effect.Effect<ReadonlyArray<SupportedProject>> =>
+    Effect.forEach(
+      projects,
+      (project): Effect.Effect<boolean> => {
+        const askWriteAccess = project.api.getRepositoryWriteAccess;
+        if (askWriteAccess === undefined) return Effect.succeed(true);
+        return Effect.flatMap(Clock.currentTimeMillis, (now) => {
+          const key = listCursorKey(project.host, project.repository);
+          const held = writeAccessByHostRepo.get(key);
+          if (
+            held !== undefined &&
+            now - held.at <= Duration.toMillis(REPOSITORY_ACCESS_CACHE_TTL)
+          ) {
+            return Effect.succeed(held.canWrite);
+          }
+          return askWriteAccess({
+            cwd: project.project.workspaceRoot,
+            repository: project.repository,
+            host: project.host,
+          }).pipe(
+            Effect.tap((canWrite) =>
+              Effect.map(Clock.currentTimeMillis, (at) =>
+                writeAccessByHostRepo.set(key, { at, canWrite }),
+              ),
+            ),
+            Effect.orElseSucceed(() => true),
+          );
+        });
+      },
+      { concurrency: REPOSITORY_CONCURRENCY },
+    ).pipe(Effect.map((held) => projects.filter((_, index) => held[index] === true)));
+
   const toEntry = (input: {
     readonly project: SupportedProject;
     readonly item: ProviderChangeRequest;
@@ -729,6 +784,12 @@ export const make = Effect.gen(function* () {
           nextCursors: {},
         };
       }
+
+      // An "all" listing is the only shape that shows rows the viewer had no hand in, so it is
+      // the only one confined to repositories the viewer can push to. Authored and reviewing
+      // listings ask about the viewer's own rows, which are wanted wherever they live —
+      // including an upstream the viewer sent one change to.
+      const listed = involvement === "all" ? yield* keepWritableRepositories(readable) : readable;
 
       const limit = input.limit ?? DEFAULT_REPOSITORY_LIST_LIMIT;
       const cursorOf = (project: SupportedProject): ListCursor | undefined =>
@@ -902,7 +963,7 @@ export const make = Effect.gen(function* () {
       // different questions, so they are grouped by the boundary they carry on from.
       const together = new Map<string, Array<SupportedProject>>();
       const separate: Array<SupportedProject> = [];
-      for (const project of readable) {
+      for (const project of listed) {
         if (project.api.listChangeRequestsAcross === undefined) {
           separate.push(project);
           continue;

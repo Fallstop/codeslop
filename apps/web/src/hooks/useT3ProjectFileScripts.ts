@@ -1,4 +1,5 @@
 import {
+  SLOP_PROJECT_FILE_NAME,
   T3_PROJECT_FILE_NAME,
   type EnvironmentId,
   type T3ProjectFile,
@@ -26,16 +27,31 @@ export interface T3ProjectFileState {
 }
 
 /**
- * Decoded state of the project's checked-in `t3.json`, including whether the
- * file exists but is broken — which the runtime otherwise swallows silently.
+ * Decoded state of the project's checked-in `slop.json` (falling back to
+ * `t3.json`), including whether the file exists but is broken — which the
+ * runtime otherwise swallows silently.
  */
 export function useT3ProjectFileState(
   environmentId: EnvironmentId,
   cwd: string | null,
 ): T3ProjectFileState {
-  const query = useProjectFileQuery(environmentId, cwd ?? "", T3_PROJECT_FILE_NAME, cwd !== null);
-  const contents = query.data && !query.data.truncated ? query.data.contents : null;
-  const isPending = query.isPending;
+  const slopQuery = useProjectFileQuery(
+    environmentId,
+    cwd ?? "",
+    SLOP_PROJECT_FILE_NAME,
+    cwd !== null,
+  );
+  const slopContents = slopQuery.data && !slopQuery.data.truncated ? slopQuery.data.contents : null;
+  const slopMissing = !slopQuery.isPending && slopContents === null;
+  const t3Query = useProjectFileQuery(
+    environmentId,
+    cwd ?? "",
+    T3_PROJECT_FILE_NAME,
+    cwd !== null && slopMissing,
+  );
+  const t3Contents = t3Query.data && !t3Query.data.truncated ? t3Query.data.contents : null;
+  const contents = slopContents ?? (slopMissing ? t3Contents : null);
+  const isPending = slopQuery.isPending || (slopMissing && t3Query.isPending);
   return useMemo(() => {
     if (contents === null) {
       return {

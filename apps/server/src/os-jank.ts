@@ -105,7 +105,15 @@ export const expandHomePath = Effect.fn(function* (input: string) {
 export const resolveBaseDir = Effect.fn(function* (raw: string | undefined) {
   const { join, resolve } = yield* Path.Path;
   if (!raw || raw.trim().length === 0) {
-    return join(NodeOS.homedir(), ".t3");
+    // `~/.codeslop` matches the desktop default. An existing pre-rebrand `~/.t3` keeps
+    // winning: it holds live state (a sqlite database and git worktrees registered under
+    // absolute paths), which a directory rename would silently orphan.
+    const legacyBaseDir = join(NodeOS.homedir(), ".t3");
+    const fileSystem = yield* FileSystem.FileSystem;
+    if (yield* fileSystem.exists(legacyBaseDir).pipe(Effect.orElseSucceed(() => false))) {
+      return legacyBaseDir;
+    }
+    return join(NodeOS.homedir(), ".codeslop");
   }
   return resolve(yield* expandHomePath(raw.trim()));
 });

@@ -4,8 +4,14 @@ import * as SchemaTransformation from "effect/SchemaTransformation";
 import { ThreadEnvMode } from "./environment.ts";
 import { ProjectScriptIcon } from "./orchestration.ts";
 
-/** File name of the checked-in T3 project file, resolved at the workspace root. */
+/** File name of the checked-in codeslop project file, resolved at the workspace root. */
+export const SLOP_PROJECT_FILE_NAME = "slop.json";
+
+/** Pre-rebrand name for the checked-in codeslop project file, still read as a fallback. */
 export const T3_PROJECT_FILE_NAME = "t3.json";
+
+/** Project file names in precedence order: `slop.json` wins when both exist. */
+export const T3_PROJECT_FILE_NAMES = [SLOP_PROJECT_FILE_NAME, T3_PROJECT_FILE_NAME] as const;
 
 /** Public URL of the published JSON Schema for {@link T3ProjectFile}. */
 export const T3_PROJECT_FILE_SCHEMA_URL = "https://t3.codes/schema/t3.json";
@@ -26,10 +32,10 @@ const trimmedNonEmpty = (annotations: { readonly description: string }, maxLengt
 
 export const T3ProjectFileScript = Schema.Struct({
   name: trimmedNonEmpty({
-    description: "Display name for the script, shown in the T3 Code scripts menu.",
+    description: "Display name for the script, shown in the codeslop scripts menu.",
   }),
   command: trimmedNonEmpty({
-    description: "Shell command executed in a T3 Code terminal at the project root.",
+    description: "Shell command executed in a codeslop terminal at the project root.",
   }),
   icon: Schema.optionalKey(
     ProjectScriptIcon.annotate({
@@ -55,7 +61,7 @@ export const T3ProjectFileScript = Schema.Struct({
     }),
   ),
 }).annotate({
-  description: "A project script that team members can import into T3 Code.",
+  description: "A project script that team members can import into codeslop.",
 });
 export type T3ProjectFileScript = typeof T3ProjectFileScript.Type;
 
@@ -69,7 +75,7 @@ export const T3ProjectFile = Schema.Struct({
     trimmedNonEmpty(
       {
         description:
-          'Workspace-relative path to the project icon (e.g. "assets/logo.svg"). Checked before T3 Code\'s built-in icon locations.',
+          'Workspace-relative path to the project icon (e.g. "assets/logo.svg"). Checked before codeslop\'s built-in icon locations.',
       },
       T3_PROJECT_FILE_PATH_MAX_LENGTH,
     ),
@@ -77,19 +83,19 @@ export const T3ProjectFile = Schema.Struct({
   defaultThreadEnvMode: Schema.optionalKey(
     ThreadEnvMode.annotate({
       description:
-        'Where new threads start for this repository: "worktree" for a fresh git worktree, "local" for the current checkout. A per-project setting in T3 Code overrides this; when neither is set, the global default applies.',
+        'Where new threads start for this repository: "worktree" for a fresh git worktree, "local" for the current checkout. A per-project setting in codeslop overrides this; when neither is set, the global default applies.',
     }),
   ),
   scripts: Schema.optionalKey(
     Schema.Array(T3ProjectFileScript)
       .annotate({
-        description: "Project scripts shared with everyone who opens this repository in T3 Code.",
+        description: "Project scripts shared with everyone who opens this repository in codeslop.",
       })
       .check(Schema.isMaxLength(T3_PROJECT_FILE_MAX_SCRIPTS)),
   ),
 }).annotate({
-  title: "T3 project file",
+  title: "codeslop project file",
   description:
-    "Checked-in project configuration for T3 Code (t3.json at the repository root). See https://t3.codes for documentation.",
+    "Checked-in project configuration for codeslop (t3.json at the repository root). See https://t3.codes for documentation.",
 });
 export type T3ProjectFile = typeof T3ProjectFile.Type;

@@ -30,6 +30,7 @@ import {
   type VcsStatusInput,
   type VcsStatusResult,
 } from "@t3tools/contracts";
+import { legacyCheckpointRef } from "../checkpointing/Utils.ts";
 import { makeGitVcsDriverCore } from "./GitVcsDriverCore.ts";
 import * as VcsDriver from "./VcsDriver.ts";
 import * as VcsProcess from "./VcsProcess.ts";
@@ -672,7 +673,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
       allowNonZeroExit: true,
     }).pipe(Effect.map((result) => result.exitCode === 0));
 
-  const resolveCheckpointCommit = (cwd: string, checkpointRef: string) =>
+  const resolveCommit = (cwd: string, checkpointRef: string) =>
     execute({
       operation: "GitVcsDriver.checkpoints.resolveCheckpointCommit",
       cwd,
@@ -685,6 +686,18 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         }
         const commit = result.stdout.trim();
         return commit.length > 0 ? commit : null;
+      }),
+    );
+
+  // Checkpoint refs are rebuilt from thread and turn rather than read back from stored events,
+  // so one written before the refs/slop rename only answers under its old name. Every reader
+  // goes through here, which is what keeps pre-rename checkpoints restorable and diffable.
+  const resolveCheckpointCommit = (cwd: string, checkpointRef: string) =>
+    resolveCommit(cwd, checkpointRef).pipe(
+      Effect.flatMap((commit) => {
+        if (commit !== null) return Effect.succeed(commit);
+        const legacyRef = legacyCheckpointRef(checkpointRef);
+        return legacyRef === null ? Effect.succeed(null) : resolveCommit(cwd, legacyRef);
       }),
     );
 
@@ -705,15 +718,15 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
       const gitCommonDir = yield* resolveGitCommonDir(input.cwd);
       const tempIndexPath = path.join(
         gitCommonDir,
-        `t3-checkpoint-index-${NodeCrypto.randomUUID()}`,
+        `slop-checkpoint-index-${NodeCrypto.randomUUID()}`,
       );
       const commitEnv: NodeJS.ProcessEnv = {
         ...process.env,
         GIT_INDEX_FILE: tempIndexPath,
-        GIT_AUTHOR_NAME: "T3 Code",
-        GIT_AUTHOR_EMAIL: "t3code@users.noreply.github.com",
-        GIT_COMMITTER_NAME: "T3 Code",
-        GIT_COMMITTER_EMAIL: "t3code@users.noreply.github.com",
+        GIT_AUTHOR_NAME: "codeslop",
+        GIT_AUTHOR_EMAIL: "codeslop@users.noreply.github.com",
+        GIT_COMMITTER_NAME: "codeslop",
+        GIT_COMMITTER_EMAIL: "codeslop@users.noreply.github.com",
       };
 
       const cleanupTempIndex = fileSystem
@@ -755,7 +768,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
           });
         }
 
-        const message = `t3 checkpoint ref=${input.checkpointRef}`;
+        const message = `slop checkpoint ref=${input.checkpointRef}`;
         const commitTreeResult = yield* execute({
           operation,
           cwd: input.cwd,
@@ -832,27 +845,24 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
         "checkpoint.fallback_from_to_head": input.fallbackFromToHead,
       });
 
-      let fromRevision: string = input.fromCheckpointRef;
-      if (input.fallbackFromToHead === true) {
-        const resolvedFromCommit = yield* resolveCheckpointCommit(
-          input.cwd,
-          input.fromCheckpointRef,
-        );
-        if (resolvedFromCommit) {
-          fromRevision = resolvedFromCommit;
-        } else {
-          const headCommit = yield* resolveHeadCommit(input.cwd);
-          if (!headCommit) {
-            return yield* new VcsProcessExitError({
-              operation,
-              command: "git diff",
-              cwd: input.cwd,
-              exitCode: 1,
-              detail: "Checkpoint ref is unavailable for diff operation.",
-            });
-          }
-          fromRevision = headCommit;
+      // Resolved through the legacy-aware lookup, falling back to the raw ref so an
+      // unresolvable one still reaches git and reports through the same error path.
+      const resolvedFromCommit = yield* resolveCheckpointCommit(input.cwd, input.fromCheckpointRef);
+      const toRevision =
+        (yield* resolveCheckpointCommit(input.cwd, input.toCheckpointRef)) ?? input.toCheckpointRef;
+      let fromRevision: string = resolvedFromCommit ?? input.fromCheckpointRef;
+      if (input.fallbackFromToHead === true && resolvedFromCommit === null) {
+        const headCommit = yield* resolveHeadCommit(input.cwd);
+        if (!headCommit) {
+          return yield* new VcsProcessExitError({
+            operation,
+            command: "git diff",
+            cwd: input.cwd,
+            exitCode: 1,
+            detail: "Checkpoint ref is unavailable for diff operation.",
+          });
         }
+        fromRevision = headCommit;
       }
 
       const result = yield* execute({
@@ -866,7 +876,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
           "--no-textconv",
           ...(input.ignoreWhitespace ? ["--ignore-all-space"] : []),
           `${fromRevision}^{commit}`,
-          `${input.toCheckpointRef}^{commit}`,
+          `${toRevision}^{commit}`,
         ],
         allowNonZeroExit: true,
         maxOutputBytes: CHECKPOINT_DIFF_MAX_OUTPUT_BYTES,
@@ -888,7 +898,12 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
     deleteCheckpointRefs: Effect.fn("GitVcsDriver.checkpoints.deleteCheckpointRefs")(
       function* (input) {
         yield* Effect.forEach(
-          input.checkpointRefs,
+          // A pre-rename checkpoint lives under the legacy namespace; deleting both spellings
+          // keeps cleanup honest either way, at the cost of one no-op update-ref.
+          input.checkpointRefs.flatMap((checkpointRef) => {
+            const legacyRef = legacyCheckpointRef(checkpointRef);
+            return legacyRef === null ? [checkpointRef] : [checkpointRef, legacyRef];
+          }),
           (checkpointRef) =>
             execute({
               operation: "GitVcsDriver.checkpoints.deleteCheckpointRefs",

@@ -71,23 +71,28 @@ export const make = Effect.gen(function* () {
   const findConfigPath = Effect.fn("VcsProjectConfig.findConfigPath")(function* (cwd: string) {
     let current = cwd;
     while (true) {
-      const candidate = path.join(current, ".t3code", "vcs.json");
-      const exists = yield* fileSystem.exists(candidate).pipe(
-        Effect.mapError(
-          (cause) =>
-            new VcsProjectConfigError({
-              operation: "inspect",
-              cwd,
-              configPath: candidate,
-              cause,
-            }),
-        ),
-        Effect.catchTags({
-          VcsProjectConfigError: (error) => logVcsProjectConfigError(error).pipe(Effect.as(false)),
-        }),
-      );
-      if (exists) {
-        return Option.some(candidate);
+      // `.slop` is the current name; `.t3code` is read for repositories that checked their
+      // config in before the rebrand.
+      for (const configDirName of [".slop", ".t3code"]) {
+        const candidate = path.join(current, configDirName, "vcs.json");
+        const exists = yield* fileSystem.exists(candidate).pipe(
+          Effect.mapError(
+            (cause) =>
+              new VcsProjectConfigError({
+                operation: "inspect",
+                cwd,
+                configPath: candidate,
+                cause,
+              }),
+          ),
+          Effect.catchTags({
+            VcsProjectConfigError: (error) =>
+              logVcsProjectConfigError(error).pipe(Effect.as(false)),
+          }),
+        );
+        if (exists) {
+          return Option.some(candidate);
+        }
       }
 
       const parent = path.dirname(current);

@@ -20,10 +20,14 @@ const makeTempDir = Effect.gen(function* () {
   });
 });
 
-const writeProjectFile = Effect.fn("writeProjectFile")(function* (cwd: string, contents: string) {
+const writeProjectFile = Effect.fn("writeProjectFile")(function* (
+  cwd: string,
+  contents: string,
+  fileName = "t3.json",
+) {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  yield* fileSystem.writeFileString(path.join(cwd, "t3.json"), contents).pipe(Effect.orDie);
+  yield* fileSystem.writeFileString(path.join(cwd, fileName), contents).pipe(Effect.orDie);
 });
 
 it.layer(TestLayer)("T3ProjectFileLoader", (it) => {
@@ -55,6 +59,50 @@ it.layer(TestLayer)("T3ProjectFileLoader", (it) => {
       Effect.gen(function* () {
         const loader = yield* T3ProjectFileLoader.T3ProjectFileLoader;
         const cwd = yield* makeTempDir;
+
+        const loaded = yield* loader.load(cwd);
+
+        expect(Option.isNone(loaded)).toBe(true);
+      }),
+    );
+
+    it.effect("loads slop.json when t3.json is missing", () =>
+      Effect.gen(function* () {
+        const loader = yield* T3ProjectFileLoader.T3ProjectFileLoader;
+        const cwd = yield* makeTempDir;
+        yield* writeProjectFile(cwd, '{ "iconPath": "assets/slop.svg" }', "slop.json");
+
+        const loaded = yield* loader.load(cwd);
+
+        expect(Option.isSome(loaded)).toBe(true);
+        if (Option.isSome(loaded)) {
+          expect(loaded.value.iconPath).toBe("assets/slop.svg");
+        }
+      }),
+    );
+
+    it.effect("prefers slop.json over t3.json when both exist", () =>
+      Effect.gen(function* () {
+        const loader = yield* T3ProjectFileLoader.T3ProjectFileLoader;
+        const cwd = yield* makeTempDir;
+        yield* writeProjectFile(cwd, '{ "iconPath": "assets/t3.svg" }');
+        yield* writeProjectFile(cwd, '{ "iconPath": "assets/slop.svg" }', "slop.json");
+
+        const loaded = yield* loader.load(cwd);
+
+        expect(Option.isSome(loaded)).toBe(true);
+        if (Option.isSome(loaded)) {
+          expect(loaded.value.iconPath).toBe("assets/slop.svg");
+        }
+      }),
+    );
+
+    it.effect("does not fall back to t3.json when slop.json is invalid", () =>
+      Effect.gen(function* () {
+        const loader = yield* T3ProjectFileLoader.T3ProjectFileLoader;
+        const cwd = yield* makeTempDir;
+        yield* writeProjectFile(cwd, "{ not json", "slop.json");
+        yield* writeProjectFile(cwd, '{ "iconPath": "assets/t3.svg" }');
 
         const loaded = yield* loader.load(cwd);
 

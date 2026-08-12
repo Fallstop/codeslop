@@ -1,6 +1,6 @@
 /**
  * Where development state lives, and how to keep it away from the shared
- * `~/.t3` that a user's installed T3 Code runs against.
+ * `~/.t3` that a user's installed codeslop runs against.
  *
  * A linked git worktree gets its own (gitignored) `.t3`: feature work in a
  * throwaway branch must not share a database with the real app, and an ambient
@@ -99,5 +99,12 @@ export const resolveWorktreeT3Home = (
       return undefined;
     }
     const path = yield* Path.Path;
-    return path.join(worktreePath, ".t3");
+    // A worktree that already carries pre-rebrand `.t3` state keeps using it; only a fresh
+    // worktree gets the `.slop` name.
+    const fileSystem = yield* FileSystem.FileSystem;
+    const legacyHome = path.join(worktreePath, ".t3");
+    if (yield* fileSystem.exists(legacyHome).pipe(Effect.orElseSucceed(() => false))) {
+      return legacyHome;
+    }
+    return path.join(worktreePath, ".slop");
   });

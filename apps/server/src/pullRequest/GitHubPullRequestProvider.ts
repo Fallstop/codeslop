@@ -117,6 +117,18 @@ export const make = Effect.gen(function* () {
     getViewer: (input) =>
       cli.getViewerLogin({ cwd: input.cwd }).pipe(Effect.mapError(fail("getViewer"))),
 
+    getRepositoryWriteAccess: (input) =>
+      cli
+        .getRepositoryAccess({
+          cwd: input.cwd,
+          repository: input.repository,
+          host: input.host,
+        })
+        .pipe(
+          Effect.map((access) => access.canWrite),
+          Effect.mapError(fail("getRepositoryWriteAccess")),
+        ),
+
     listChangeRequests: (input) =>
       cli
         .listPullRequests({
