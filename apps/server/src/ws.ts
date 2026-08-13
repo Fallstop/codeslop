@@ -31,6 +31,7 @@ import {
   OrchestrationSearchThreadsError,
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
+  SEMANTIC_SEARCH_WS_METHODS,
   type ProjectId,
   type ProjectEntriesFailure,
   type ProjectFileFailure,
@@ -73,6 +74,7 @@ import {
 import { normalizeDispatchCommand } from "./orchestration/Normalizer.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
+import { HybridThreadSearch } from "./semanticSearch/HybridThreadSearch.ts";
 import {
   observeRpcEffect as instrumentRpcEffect,
   observeRpcStream as instrumentRpcStream,
@@ -357,6 +359,7 @@ const makeWsRpcLayer = (
       const currentSessionId = currentSession.sessionId;
       const crypto = yield* Crypto.Crypto;
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+      const hybridThreadSearch = yield* HybridThreadSearch;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const checkpointDiffQuery = yield* CheckpointDiffQuery.CheckpointDiffQuery;
       const keybindings = yield* Keybindings.Keybindings;
@@ -1166,7 +1169,7 @@ const makeWsRpcLayer = (
         [ORCHESTRATION_WS_METHODS.searchThreads]: (input) =>
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.searchThreads,
-            projectionSnapshotQuery.searchThreads(input).pipe(
+            hybridThreadSearch.searchThreads(input).pipe(
               Effect.mapError(
                 (cause) =>
                   new OrchestrationSearchThreadsError({
@@ -1601,6 +1604,10 @@ const makeWsRpcLayer = (
           ),
         [WS_METHODS.serverGetBackgroundPolicy]: (_input) =>
           observeRpcEffect(WS_METHODS.serverGetBackgroundPolicy, backgroundPolicy.snapshot, {
+            "rpc.aggregate": "server",
+          }),
+        [SEMANTIC_SEARCH_WS_METHODS.getStatus]: (_input) =>
+          observeRpcEffect(SEMANTIC_SEARCH_WS_METHODS.getStatus, hybridThreadSearch.getStatus, {
             "rpc.aggregate": "server",
           }),
         [WS_METHODS.cloudGetRelayClientStatus]: (_input) =>

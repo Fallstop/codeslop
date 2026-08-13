@@ -6,6 +6,7 @@ import {
   type ServerLifecycleStreamReadyEvent,
   type ServerSelfUpdateProgressEvent,
   type ServerSelfUpdateResult,
+  SEMANTIC_SEARCH_WS_METHODS,
   WS_METHODS,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -713,6 +714,14 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:usage-summary",
       tag: WS_METHODS.serverGetUsageSummary,
       staleTimeMs: 60_000,
+    }),
+    // Polled while the settings page shows the model download / indexing
+    // progress; the atom goes idle once nothing subscribes.
+    semanticSearchStatus: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:server:semantic-search-status",
+      tag: SEMANTIC_SEARCH_WS_METHODS.getStatus,
+      staleTimeMs: 0,
+      refreshIntervalMs: 2_000,
     }),
     configProjection,
     welcome: createEnvironmentRpcSubscriptionAtomFamily(runtime, {

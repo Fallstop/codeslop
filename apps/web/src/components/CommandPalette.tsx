@@ -1012,6 +1012,7 @@ function OpenCommandPaletteDialog(props: {
                 source: match.source,
                 snippet: match.snippet,
                 query: threadSearchQuery,
+                ...(match.matchKind !== undefined ? { matchKind: match.matchKind } : {}),
               }
             : undefined;
         },

@@ -359,8 +359,23 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       ]);
       for (const config of [mac, linux, win]) {
         assert.deepStrictEqual(config.electronLanguages, DESKTOP_ELECTRON_LANGUAGES);
-        assert.deepStrictEqual(config.files, DESKTOP_FILE_EXCLUSIONS);
       }
+      // Each platform ships only its own onnxruntime binaries.
+      assert.deepStrictEqual(mac.files, [
+        ...DESKTOP_FILE_EXCLUSIONS,
+        "!**/node_modules/onnxruntime-node/bin/**/win32/**/*",
+        "!**/node_modules/onnxruntime-node/bin/**/linux/**/*",
+      ]);
+      assert.deepStrictEqual(win.files, [
+        ...DESKTOP_FILE_EXCLUSIONS,
+        "!**/node_modules/onnxruntime-node/bin/**/darwin/**/*",
+        "!**/node_modules/onnxruntime-node/bin/**/linux/**/*",
+      ]);
+      assert.deepStrictEqual(linux.files, [
+        ...DESKTOP_FILE_EXCLUSIONS,
+        "!**/node_modules/onnxruntime-node/bin/**/darwin/**/*",
+        "!**/node_modules/onnxruntime-node/bin/**/win32/**/*",
+      ]);
     }).pipe(Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })))),
   );
 

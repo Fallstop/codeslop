@@ -264,6 +264,52 @@ describe("buildThreadActionItems", () => {
     expect(item?.description).toBe("codeslop · #feat/search");
   });
 
+  it("keeps semantic content matches whose snippet lacks the query text", () => {
+    const threadItems = buildThreadActionItems({
+      threads: [
+        makeThread({
+          id: ThreadId.make("thread-semantic"),
+          title: "Untitled",
+          updatedAt: "2026-03-20T00:00:00.000Z",
+        }),
+        makeThread({
+          id: ThreadId.make("thread-title-match"),
+          title: "Rotate credentials",
+          createdAt: "2026-03-02T00:00:00.000Z",
+          updatedAt: "2026-03-19T00:00:00.000Z",
+        }),
+      ],
+      projectTitleById: new Map([[PROJECT_ID, "Project"]]),
+      sortOrder: "updated_at",
+      icon: null,
+      getContentMatch: (thread) =>
+        thread.id === "thread-semantic"
+          ? {
+              source: "assistant",
+              snippet: "Update the API keys from the settings page.",
+              query: "rotate credentials",
+              matchKind: "semantic",
+            }
+          : undefined,
+      runThread: async (_thread) => undefined,
+    });
+
+    const groups = filterCommandPaletteGroups({
+      activeGroups: [],
+      query: "rotate credentials",
+      isInSubmenu: false,
+      projectSearchItems: [],
+      threadSearchItems: threadItems,
+    });
+
+    // The semantic match survives the substring filter but ranks after the
+    // direct title match.
+    expect(groups[0]?.items.map((item) => item.value)).toEqual([
+      "thread:thread-title-match",
+      "thread:thread-semantic",
+    ]);
+  });
+
   it("filters archived threads out of thread search items", () => {
     const items = buildThreadActionItems({
       threads: [

@@ -173,6 +173,11 @@ import {
   ResourceTelemetryRetryResult,
   ResourceTelemetrySnapshot,
 } from "./resourceTelemetry.ts";
+import {
+  SEMANTIC_SEARCH_WS_METHODS,
+  SemanticSearchGetStatusInput,
+  SemanticSearchStatus,
+} from "./semanticSearch.ts";
 import { UsageReadError, UsageSummary, UsageSummaryInput } from "./usage.ts";
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
 import {
@@ -457,6 +462,12 @@ export const WsServerReportHostPowerStateRpc = Rpc.make(WS_METHODS.serverReportH
 export const WsServerGetBackgroundPolicyRpc = Rpc.make(WS_METHODS.serverGetBackgroundPolicy, {
   payload: Schema.Struct({}),
   success: BackgroundPolicySnapshot,
+  error: EnvironmentAuthorizationError,
+});
+
+export const WsSemanticSearchGetStatusRpc = Rpc.make(SEMANTIC_SEARCH_WS_METHODS.getStatus, {
+  payload: SemanticSearchGetStatusInput,
+  success: SemanticSearchStatus,
   error: EnvironmentAuthorizationError,
 });
 
@@ -968,6 +979,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerReportClientActivityRpc,
   WsServerReportHostPowerStateRpc,
   WsServerGetBackgroundPolicyRpc,
+  WsSemanticSearchGetStatusRpc,
   WsCloudGetRelayClientStatusRpc,
   WsCloudInstallRelayClientRpc,
   WsPullRequestsListRpc,

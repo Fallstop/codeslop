@@ -25,6 +25,11 @@ import { pullRequestHttpApiLayer } from "./pullRequest/http.ts";
 import * as PullRequestProviderRegistry from "./pullRequest/PullRequestProviderRegistry.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
+import { MessageEmbeddingRepositoryLive } from "./persistence/Layers/MessageEmbeddings.ts";
+import * as EmbeddingModel from "./semanticSearch/EmbeddingModel.ts";
+import { HybridThreadSearchLive } from "./semanticSearch/HybridThreadSearch.ts";
+import { MessageEmbeddingIndexLive } from "./semanticSearch/MessageEmbeddingIndex.ts";
+import { MessageEmbeddingIndexerLive } from "./semanticSearch/MessageEmbeddingIndexer.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory.ts";
@@ -412,7 +417,21 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   ),
 );
 
-const RuntimeDependenciesLive = RuntimeCoreDependenciesLive.pipe(
+// Semantic thread search: hybrid search service consumed by the ws RPC layer
+// plus the background embedding indexer. Depends on the sqlite client and
+// ProjectionSnapshotQuery from the core runtime stack and on BackgroundPolicy,
+// all provided below.
+const SemanticSearchLayerLive = Layer.mergeAll(
+  HybridThreadSearchLive,
+  MessageEmbeddingIndexerLive,
+).pipe(
+  Layer.provideMerge(MessageEmbeddingIndexLive),
+  Layer.provideMerge(EmbeddingModel.layer),
+  Layer.provideMerge(MessageEmbeddingRepositoryLive),
+);
+
+const RuntimeDependenciesLive = SemanticSearchLayerLive.pipe(
+  Layer.provideMerge(RuntimeCoreDependenciesLive),
   // Misc.
   Layer.provideMerge(BackgroundLayerLive),
   Layer.provideMerge(ResourceDiagnosticsLayerLive),

@@ -68,6 +68,8 @@ export interface CommandPaletteThreadContentMatch {
   readonly source: "user" | "assistant";
   readonly snippet: string;
   readonly query: string;
+  /** Semantic matches need not contain the query text literally. */
+  readonly matchKind?: "lexical" | "semantic";
 }
 
 export interface CommandPaletteItem {
@@ -307,7 +309,10 @@ export function filterCommandPaletteGroups(input: {
   return searchableGroups.flatMap((group) => {
     const items = Arr.filterMap(group.items, (item, index) => {
       const haystack = normalizeSearchText(item.searchTerms.join(" "));
-      if (!haystack.includes(normalizedQuery)) {
+      // Server content matches are already scoped to the current query and
+      // may be semantic, so they survive even when no term contains the
+      // query literally; rank 0 sorts them after direct matches.
+      if (!haystack.includes(normalizedQuery) && item.threadContentMatch === undefined) {
         return Result.failVoid;
       }
 

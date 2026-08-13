@@ -567,6 +567,9 @@ export const ServerSettings = Schema.Struct({
   newWorktreesStartFromOrigin: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(true)),
   ),
+  // Embedding-based thread search. Opt-in: enabling downloads a local
+  // embedding model (~25MB) and starts background indexing of chat history.
+  semanticSearchEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   addProjectBaseDirectory: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   textGenerationModelSelection: ModelSelection.pipe(
     Schema.withDecodingDefault(
@@ -721,6 +724,7 @@ export const ServerSettingsPatch = Schema.Struct({
   backgroundActivityProfile: Schema.optionalKey(BackgroundActivityProfile),
   defaultThreadEnvMode: Schema.optionalKey(ThreadEnvMode),
   newWorktreesStartFromOrigin: Schema.optionalKey(Schema.Boolean),
+  semanticSearchEnabled: Schema.optionalKey(Schema.Boolean),
   addProjectBaseDirectory: Schema.optionalKey(TrimmedString),
   textGenerationModelSelection: Schema.optionalKey(ModelSelectionPatch),
   sourceControlWritingStyle: Schema.optionalKey(

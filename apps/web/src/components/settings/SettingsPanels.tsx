@@ -141,6 +141,7 @@ import {
   useSettingsSearchTargetId,
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
+import { SemanticSearchSettingRow } from "./SemanticSearchSettings";
 import { ProjectFavicon } from "../ProjectFavicon";
 
 const ENVIRONMENT_IDENTIFICATION_LABELS: Record<EnvironmentIdentificationMode, string> = {
@@ -506,6 +507,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks
         ? ["Provider update checks"]
         : []),
+      ...(settings.semanticSearchEnabled !== DEFAULT_UNIFIED_SETTINGS.semanticSearchEnabled
+        ? ["Semantic search"]
+        : []),
       ...(isBackgroundActivityDirty ? ["Background activity"] : []),
       ...(settings.defaultThreadEnvMode !== DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode
         ? ["New thread mode"]
@@ -546,6 +550,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.glassOpacity,
       settings.enableLegacyTokenStreaming,
       settings.enableProviderUpdateChecks,
+      settings.semanticSearchEnabled,
       settings.sidebarAutoSettleAfterDays,
       settings.sidebarProjectGroupingMode,
       settings.sidebarThreadPreviewCount,
@@ -630,6 +635,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
       enableLegacyTokenStreaming: DEFAULT_UNIFIED_SETTINGS.enableLegacyTokenStreaming,
       enableProviderUpdateChecks: DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks,
+      semanticSearchEnabled: DEFAULT_UNIFIED_SETTINGS.semanticSearchEnabled,
       backgroundActivity: DEFAULT_UNIFIED_SETTINGS.backgroundActivity,
       backgroundActivityProfile: DEFAULT_UNIFIED_SETTINGS.backgroundActivityProfile,
       automaticGitFetchInterval: DEFAULT_UNIFIED_SETTINGS.automaticGitFetchInterval,
@@ -1963,6 +1969,8 @@ export function GeneralSettingsPanel() {
             />
           }
         />
+
+        <SemanticSearchSettingRow />
 
         <SettingsRow
           title={

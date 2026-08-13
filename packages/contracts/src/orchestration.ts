@@ -1587,12 +1587,18 @@ export const OrchestrationSearchThreadsInput = Schema.Struct({
 });
 export type OrchestrationSearchThreadsInput = typeof OrchestrationSearchThreadsInput.Type;
 
+// Lexical matches contain the query as a literal substring; semantic matches
+// come from the embedding index and usually do not.
+export const OrchestrationThreadSearchMatchKind = Schema.Literals(["lexical", "semantic"]);
+export type OrchestrationThreadSearchMatchKind = typeof OrchestrationThreadSearchMatchKind.Type;
+
 export const OrchestrationThreadSearchMatch = Schema.Struct({
   threadId: ThreadId,
   projectId: ProjectId,
   source: OrchestrationThreadSearchSource,
   snippet: Schema.String.check(Schema.isMaxLength(240)),
   messageCreatedAt: Schema.NullOr(IsoDateTime),
+  matchKind: Schema.optionalKey(OrchestrationThreadSearchMatchKind),
 });
 export type OrchestrationThreadSearchMatch = typeof OrchestrationThreadSearchMatch.Type;
 

@@ -633,6 +633,22 @@ export const DESKTOP_FILE_EXCLUSIONS = [
   // are dead weight. The trailing dash keeps the SDK's own JS package.
   "!**/node_modules/@anthropic-ai/claude-agent-sdk-*/**/*",
 ] as const;
+
+// onnxruntime-node (semantic thread search) bundles native binaries for every
+// OS in one package (~210MB); only the target OS's directory ships.
+const ONNXRUNTIME_OS_DIRS: Record<typeof BuildPlatform.Type, string> = {
+  mac: "darwin",
+  win: "win32",
+  linux: "linux",
+};
+
+export function resolveOnnxRuntimeExclusions(
+  platform: typeof BuildPlatform.Type,
+): ReadonlyArray<string> {
+  return Object.values(ONNXRUNTIME_OS_DIRS)
+    .filter((osDir) => osDir !== ONNXRUNTIME_OS_DIRS[platform])
+    .map((osDir) => `!**/node_modules/onnxruntime-node/bin/**/${osDir}/**/*`);
+}
 // The WSL backend launches the server with plain `wsl.exe -- node`, which
 // cannot read inside an asar archive — and the server bundle externalizes its
 // runtime deps, so the whole node_modules tree must be unpacked, not just the
@@ -1540,7 +1556,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     productName: resolveDesktopProductName(version),
     artifactName: "codeslop-${version}-${arch}.${ext}",
     electronLanguages: [...DESKTOP_ELECTRON_LANGUAGES],
-    files: [...DESKTOP_FILE_EXCLUSIONS],
+    files: [...DESKTOP_FILE_EXCLUSIONS, ...resolveOnnxRuntimeExclusions(platform)],
     directories: {
       buildResources: "apps/desktop/resources",
     },
