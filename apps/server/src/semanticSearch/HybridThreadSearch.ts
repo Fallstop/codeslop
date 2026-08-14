@@ -31,8 +31,21 @@ import { buildSemanticSnippet } from "./embeddingText.ts";
 const DEFAULT_LIMIT = 50;
 /** Chunk candidates scanned before per-thread dedupe. */
 const SEMANTIC_CANDIDATE_LIMIT = 48;
-/** Cosine floor below which MiniLM matches are noise rather than meaning. */
-const MIN_SEMANTIC_SCORE = 0.35;
+/**
+ * Absolute cosine floor. MiniLM is a symmetric similarity model, so scores
+ * scale with how closely the query's length matches the chunk's rather than
+ * with relevance alone: a one-word query tops out far lower than a sentence.
+ * This floor only has to exclude the noise band (unrelated chunks sit near 0);
+ * the relative cutoff below does the discriminating.
+ */
+const MIN_SEMANTIC_SCORE = 0.2;
+/**
+ * Keep hits within this fraction of the query's best score, so each query is
+ * judged against its own ceiling instead of one global number.
+ */
+const RELATIVE_SCORE_FLOOR_RATIO = 0.6;
+/** Bound on semantic hits entering fusion, so weak tails cannot swamp lexical. */
+const MAX_SEMANTIC_MATCHES = 12;
 /** Reciprocal-rank-fusion constant (standard k=60). */
 const RRF_K = 60;
 
@@ -65,7 +78,7 @@ export const make = Effect.fn("semanticSearch.hybridThreadSearch.make")(function
       if ((yield* model.runtimeState)._tag !== "ready") {
         return [];
       }
-      yield* index.ensureLoaded(model.modelId);
+      yield* index.ensureLoaded(model.indexKey);
       if ((yield* index.size) === 0) {
         return [];
       }
@@ -74,12 +87,13 @@ export const make = Effect.fn("semanticSearch.hybridThreadSearch.make")(function
       if (queryVector === undefined) {
         return [];
       }
-      const hits = (yield* index.search(queryVector, SEMANTIC_CANDIDATE_LIMIT)).filter(
-        (hit) => hit.score >= MIN_SEMANTIC_SCORE,
-      );
-      if (hits.length === 0) {
+      const candidates = yield* index.search(queryVector, SEMANTIC_CANDIDATE_LIMIT);
+      const bestScore = candidates[0]?.score ?? 0;
+      if (bestScore < MIN_SEMANTIC_SCORE) {
         return [];
       }
+      const scoreFloor = Math.max(MIN_SEMANTIC_SCORE, bestScore * RELATIVE_SCORE_FLOOR_RATIO);
+      const hits = candidates.filter((hit) => hit.score >= scoreFloor);
 
       // Hits are score-sorted; keep the best chunk per thread.
       const bestPerThread = new Map<ThreadId, (typeof hits)[number]>();
@@ -88,9 +102,9 @@ export const make = Effect.fn("semanticSearch.hybridThreadSearch.make")(function
           bestPerThread.set(hit.threadId, hit);
         }
       }
-      const winners = [...bestPerThread.values()];
+      const winners = [...bestPerThread.values()].slice(0, MAX_SEMANTIC_MATCHES);
       const metadata = yield* repository.listMatchMetadata({
-        model: model.modelId,
+        model: model.indexKey,
         messageIds: [...new Set(winners.map((hit) => hit.messageId))],
       });
       const metadataByChunk = new Map(
@@ -177,12 +191,12 @@ export const make = Effect.fn("semanticSearch.hybridThreadSearch.make")(function
     if (!(yield* model.isEnabled)) {
       return { ...base, state: "disabled" as const };
     }
-    yield* index.ensureLoaded(model.modelId).pipe(Effect.ignore);
+    yield* index.ensureLoaded(model.indexKey).pipe(Effect.ignore);
     const counters = {
       ...base,
       indexedMessages: yield* index.size,
       pendingMessages: yield* repository
-        .countStaleMessages({ model: model.modelId })
+        .countStaleMessages({ model: model.indexKey })
         .pipe(Effect.orElseSucceed(() => 0)),
     };
     const runtime = yield* model.runtimeState;

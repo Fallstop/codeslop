@@ -33,6 +33,15 @@ This will launch codeslop's backend on your machine as well as the local web app
 
 Tip: Use `npx t3@latest --help` for the full CLI reference.
 
+### Install the CLI
+
+```bash
+npm install -g t3
+```
+
+This installs the `slop` command. Run `slop` in any directory to start the server and open
+codeslop on that folder, or `slop --help` for the full CLI reference.
+
 ### Desktop app
 
 Install the latest version of the desktop app from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), or from your favorite package registry:

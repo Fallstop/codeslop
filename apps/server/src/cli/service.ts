@@ -51,7 +51,7 @@ export function formatServiceStatus(
     return "codeslop service\n  Status: unavailable on this machine\n  Supported on: Linux with systemd";
   }
   if (!status.installed) {
-    return "codeslop service\n  Status: not installed\n  Next: Run `t3 service install`.";
+    return "codeslop service\n  Status: not installed\n  Next: Run `slop service install`.";
   }
   return [
     "codeslop service",

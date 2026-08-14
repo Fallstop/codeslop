@@ -1,11 +1,13 @@
 import { memo, type PointerEventHandler } from "react";
-import { ChevronDownIcon, ChevronLeftIcon } from "lucide-react";
+import { ChevronDownIcon, ChevronLeftIcon, LayersIcon } from "lucide-react";
 import { useEnvironmentIdentificationMode } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
 import { StageBackdropButtonArt, useSidebarStageBackdropVariant } from "../SidebarStageBackdrop";
 import { Button } from "../ui/button";
+import { Kbd } from "../ui/kbd";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Spinner } from "../ui/spinner";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 interface PendingActionState {
   questionIndex: number;
@@ -28,8 +30,13 @@ interface ComposerPrimaryActionsProps {
   isPreparingWorktree: boolean;
   hasSendableContent: boolean;
   preserveComposerFocusOnPointerDown?: boolean;
+  /** Turns already waiting behind the running one. */
+  queuedTurnCount: number;
+  /** Shortcut label for the queue action, e.g. "⌘⇧↵". Null when unbound. */
+  queueShortcutLabel: string | null;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
+  onQueueAsNewTurn: () => void;
   onImplementPlanInNewThread: () => void;
 }
 
@@ -68,8 +75,11 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   isPreparingWorktree,
   hasSendableContent,
   preserveComposerFocusOnPointerDown = false,
+  queuedTurnCount,
+  queueShortcutLabel,
   onPreviousPendingQuestion,
   onInterrupt,
+  onQueueAsNewTurn,
   onImplementPlanInNewThread,
 }: ComposerPrimaryActionsProps) {
   const pointerFocusProps = preserveComposerFocusOnPointerDown
@@ -96,6 +106,51 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         <rect x="2" y="2" width="8" height="8" rx="1.5" />
       </svg>
     </button>
+  );
+
+  /**
+   * The second send affordance. Ordinary send folds into the turn already
+   * waiting; this always starts a new one, which is the only way to keep two
+   * queued thoughts as two turns.
+   */
+  const renderQueueAsNewTurnButton = () => (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            size={compact ? "icon-sm" : "sm"}
+            variant="outline"
+            className="rounded-full"
+            {...pointerFocusProps}
+            disabled={!hasSendableContent || isEnvironmentUnavailable}
+            aria-label={
+              queuedTurnCount > 0
+                ? `Queue as a new turn (${queuedTurnCount} already waiting)`
+                : "Queue as a new turn"
+            }
+            onClick={onQueueAsNewTurn}
+          >
+            <LayersIcon />
+            {compact ? null : "Queue"}
+            {queuedTurnCount > 0 ? (
+              <span className="text-muted-foreground text-xs tabular-nums">{queuedTurnCount}</span>
+            ) : null}
+          </Button>
+        }
+      />
+      <TooltipPopup side="top" className="max-w-64 whitespace-normal leading-tight">
+        Queue this as a separate turn. Pressing{" "}
+        <Kbd className="bg-transparent px-0 text-[11px]">↵</Kbd> instead adds it to the turn already
+        waiting.
+        {queueShortcutLabel ? (
+          <>
+            {" "}
+            <Kbd className="bg-transparent px-0 text-[11px]">{queueShortcutLabel}</Kbd>
+          </>
+        ) : null}
+      </TooltipPopup>
+    </Tooltip>
   );
 
   if (pendingAction) {
@@ -154,7 +209,12 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   }
 
   if (isRunning) {
-    return renderStopGenerationButton(false);
+    return (
+      <div className={cn("flex items-center justify-end", compact ? "gap-1.5" : "gap-2")}>
+        {renderQueueAsNewTurnButton()}
+        {renderStopGenerationButton(false)}
+      </div>
+    );
   }
 
   if (showPlanFollowUpPrompt) {
@@ -242,7 +302,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
                 ? "Preparing worktree"
                 : isSendBusy
                   ? "Sending"
-                  : "Send message"
+                  : queuedTurnCount > 0
+                    ? "Add to the queued turn"
+                    : "Send message"
       }
     >
       {stageBackdropVariant ? (

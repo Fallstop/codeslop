@@ -25,11 +25,31 @@ import type * as Stream from "effect/Stream";
 
 export type ProviderSessionModelSwitchMode = "in-session" | "unsupported";
 
+export type ProviderSideQuestionMode = "native" | "unsupported";
+
 export interface ProviderAdapterCapabilities {
   /**
    * Declares whether changing the model on an existing session is supported.
    */
   readonly sessionModelSwitch: ProviderSessionModelSwitchMode;
+
+  /**
+   * Declares whether the runtime can answer a question about a live session
+   * without disturbing its turn. `"native"` adapters implement
+   * `askSideQuestion`; everything else is answered from the stored transcript
+   * instead, which is weaker because that record holds no tool output.
+   */
+  readonly sideQuestion: ProviderSideQuestionMode;
+}
+
+/**
+ * One answer to a side question. `synthetic` marks text the runtime produced
+ * itself (e.g. the model tried to call a tool it was not given) rather than a
+ * real answer, so callers can present it as a notice.
+ */
+export interface ProviderSideQuestionAnswer {
+  readonly text: string;
+  readonly synthetic: boolean;
 }
 
 export interface ProviderThreadTurnSnapshot {
@@ -85,6 +105,18 @@ export interface ProviderAdapterShape<TError> {
     requestId: ApprovalRequestId,
     answers: ProviderUserInputAnswers,
   ) => Effect.Effect<void, TError>;
+
+  /**
+   * Answer a question against the live session without interrupting its turn.
+   *
+   * Present only when `capabilities.sideQuestion` is `"native"`. The answering
+   * agent shares the session's context — including tool results — but has no
+   * tools of its own and produces exactly one response.
+   */
+  readonly askSideQuestion?: (
+    threadId: ThreadId,
+    question: string,
+  ) => Effect.Effect<ProviderSideQuestionAnswer, TError>;
 
   /**
    * Stop one provider session.

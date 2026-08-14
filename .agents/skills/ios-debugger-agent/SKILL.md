@@ -15,7 +15,7 @@ If the tools are missing:
 
 1. Confirm the repository is trusted and its project MCP server was approved.
 2. Restart or recreate the agent session after approving configuration.
-3. Run `npx --yes xcodebuildmcp@2.6.2 doctor` when the server starts but simulator or UI-automation tools are unavailable. Follow its actionable Xcode or AXe setup guidance.
+3. Run `node node_modules/xcodebuildmcp/build/doctor-cli.js` when the server starts but simulator or UI-automation tools are unavailable. Follow its actionable Xcode or AXe setup guidance.
 4. Fall back to the pinned XcodeBuildMCP CLI or native Apple CLIs only when the current agent client cannot expose project MCP tools.
 
 Do not ask contributors to install the OpenAI `build-ios-apps` plugin globally.

@@ -1,5 +1,7 @@
 import {
   type ApprovalRequestId,
+  type AsideAskInput,
+  type AsideId,
   DEFAULT_MODEL,
   defaultInstanceIdForDriver,
   type EnvironmentId,
@@ -200,9 +202,12 @@ import { buildDraftThreadRouteParams } from "../threadRoutes";
 import {
   type ComposerImageAttachment,
   type DraftThreadEnvMode,
+  hydrateImagesFromPersisted,
   useComposerDraftStore,
   type DraftId,
 } from "../composerDraftStore";
+import { threadQueueHoldReason, type QueuedTurn, type ThreadQueueHoldReason } from "../threadQueue";
+import { useThreadQueueStore } from "../threadQueueStore";
 import {
   appendTerminalContextsToPrompt,
   formatTerminalContextLabel,
@@ -273,6 +278,11 @@ import {
 } from "./chat/ThreadErrorBanner";
 import { resolveThreadPr } from "./ThreadStatusIndicators";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
+import { ComposerAsidePanel } from "./chat/ComposerAsidePanel";
+import { AsidesPanel } from "./chat/AsidesPanel";
+import { findAside, parseAsideCommand } from "~/asidePanel";
+import { selectThreadAsideState, useAsidePanelStore } from "~/asidePanelStore";
+import { asideEnvironment } from "../state/asides";
 import { ThreadSyncStatusPill } from "./chat/ThreadSyncStatusPill";
 import {
   DRAFT_HERO_TRANSITION_ANIMATION_ID,
@@ -494,6 +504,9 @@ function formatOutgoingPrompt(params: {
   const promptEffort = resolvePromptInjectedEffort(caps, params.effort);
   return applyClaudePromptEffortPrefix(params.text, promptEffort);
 }
+/** Stable identity for threads with no queue, so the selector never re-renders. */
+const EMPTY_QUEUED_TURNS: ReadonlyArray<QueuedTurn> = [];
+
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
 
@@ -1589,6 +1602,123 @@ function ChatViewContent(props: ChatViewProps) {
   const activeRightPanelSurface = useRightPanelStore((state) =>
     selectActiveRightPanelSurface(state.byThreadKey, activeThreadRef),
   );
+  // --- Asides -------------------------------------------------------------
+  // Side questions about the work in flight. Answering never touches the turn,
+  // so none of this is gated on the thread being idle.
+  const asideThreadKey = activeThreadKey;
+  const asideState = useAsidePanelStore((state) =>
+    selectThreadAsideState(state, asideThreadKey ?? ""),
+  );
+  const openAsidePanel = useAsidePanelStore((state) => state.open);
+  const closeAsidePanel = useAsidePanelStore((state) => state.close);
+  const setAsides = useAsidePanelStore((state) => state.setAsides);
+  const recordAside = useAsidePanelStore((state) => state.recordAside);
+  const dropAside = useAsidePanelStore((state) => state.dropAside);
+  const setAsidePendingQuestion = useAsidePanelStore((state) => state.setPendingQuestion);
+  const setAsideError = useAsidePanelStore((state) => state.setError);
+  const listAsidesCommand = useAtomCommand(asideEnvironment.list, { reportFailure: false });
+  const askAsideCommand = useAtomCommand(asideEnvironment.ask, { reportFailure: false });
+  const removeAsideCommand = useAtomCommand(asideEnvironment.remove, { reportFailure: false });
+  const activeAside = findAside(asideState.asides, asideState.target);
+
+  const askAside = useCallback(
+    async (question: string, asideId?: AsideId) => {
+      if (!activeThreadRef || !asideThreadKey) return;
+      const modelSelection = composerRef.current?.getSendContext()?.selectedModelSelection;
+      if (!modelSelection) {
+        setAsideError(asideThreadKey, "Choose a model before asking an aside.");
+        return;
+      }
+      setAsidePendingQuestion(asideThreadKey, question);
+      // Annotated rather than inferred: the optional `asideId` spread widens
+      // the literal into a union, which defeats the command's success-type
+      // inference at the call site.
+      const input: AsideAskInput = {
+        threadId: activeThreadRef.threadId,
+        question,
+        modelSelection,
+        ...(asideId ? { asideId } : {}),
+      };
+      const result = await askAsideCommand({
+        environmentId: activeThreadRef.environmentId,
+        input,
+      });
+      if (result._tag === "Success") {
+        recordAside(asideThreadKey, result.value.aside);
+        return;
+      }
+      if (isAtomCommandInterrupted(result)) {
+        setAsidePendingQuestion(asideThreadKey, null);
+        return;
+      }
+      const failure = squashAtomCommandFailure(result);
+      setAsideError(
+        asideThreadKey,
+        failure instanceof Error ? failure.message : "Could not answer that question.",
+      );
+    },
+    [
+      activeThreadRef,
+      asideThreadKey,
+      askAsideCommand,
+      recordAside,
+      setAsideError,
+      setAsidePendingQuestion,
+    ],
+  );
+
+  const openAside = useCallback(
+    (question: string) => {
+      if (!asideThreadKey) return;
+      openAsidePanel(asideThreadKey, "new");
+      if (question.length > 0) {
+        void askAside(question);
+      }
+    },
+    [asideThreadKey, askAside, openAsidePanel],
+  );
+
+  const removeAside = useCallback(
+    async (asideId: AsideId) => {
+      if (!activeThreadRef || !asideThreadKey) return;
+      // Dropped locally first: the row is gone from the list either way, and a
+      // failed delete leaves a server row that the next list call restores.
+      dropAside(asideThreadKey, asideId);
+      await removeAsideCommand({
+        environmentId: activeThreadRef.environmentId,
+        input: { threadId: activeThreadRef.threadId, asideId },
+      });
+    },
+    [activeThreadRef, asideThreadKey, dropAside, removeAsideCommand],
+  );
+
+  const asidesPanelOpen = activeRightPanelSurface?.kind === "asides";
+  // Fetch once per thread, when something first wants to see the list.
+  useEffect(() => {
+    if (!activeThreadRef || !asideThreadKey) return;
+    if (asideState.loaded) return;
+    if (!asidesPanelOpen && asideState.target === null) return;
+    let cancelled = false;
+    void listAsidesCommand({
+      environmentId: activeThreadRef.environmentId,
+      input: { threadId: activeThreadRef.threadId },
+    }).then((result) => {
+      if (cancelled || result._tag !== "Success") return;
+      setAsides(asideThreadKey, result.value.asides);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeThreadRef,
+    asideThreadKey,
+    asideState.loaded,
+    asideState.target,
+    asidesPanelOpen,
+    listAsidesCommand,
+    setAsides,
+  ]);
+
   const [pullRequestTabStatuses, setPullRequestTabStatuses] = useState<
     Record<string, PullRequestTabStatus>
   >({});
@@ -2279,6 +2409,36 @@ function ChatViewContent(props: ChatViewProps) {
     activePendingUserInput: activePendingUserInput?.requestId ?? null,
     threadError,
   });
+  // ------------------------------------------------------------------
+  // Queued turns
+  // ------------------------------------------------------------------
+  const queuedTurnsForThread = useThreadQueueStore(
+    (state) =>
+      (activeThreadKey ? state.entriesByThreadKey[activeThreadKey] : undefined) ??
+      EMPTY_QUEUED_TURNS,
+  );
+  const removeQueuedTurn = useThreadQueueStore((state) => state.removeEntry);
+  const restoreQueuedTurnToFront = useThreadQueueStore((state) => state.restoreEntryToFront);
+  const queueHoldReason = useMemo<ThreadQueueHoldReason | null>(
+    () =>
+      threadQueueHoldReason({
+        sessionStatus: activeThread?.session?.status ?? null,
+        hasPendingApproval: pendingApprovals.length > 0,
+        hasPendingUserInput: pendingUserInputs.length > 0,
+        isSendBusy,
+        isConnecting,
+        environmentUnavailable: Boolean(activeEnvironmentUnavailable),
+      }),
+    [
+      activeEnvironmentUnavailable,
+      activeThread?.session?.status,
+      isConnecting,
+      isSendBusy,
+      pendingApprovals.length,
+      pendingUserInputs.length,
+    ],
+  );
+
   const isWorking = phase === "running" || isSendBusy || isConnecting || isRevertingCheckpoint;
   const activeWorkStartedAt = deriveActiveWorkStartedAt(
     activeLatestTurn,
@@ -4859,6 +5019,13 @@ function ChatViewContent(props: ChatViewProps) {
       annotation: PreviewAnnotationPayload;
       image: ComposerImageAttachment | null;
     },
+    /**
+     * When present, the turn's content comes from the queue instead of the
+     * live composer, which stays untouched. The composer is still consulted
+     * for provider availability — a queued turn cannot send to a thread whose
+     * provider has since been disabled.
+     */
+    queuedTurn?: QueuedTurn,
   ) => {
     e?.preventDefault();
     const notifyDirectAnnotationAttached = () => {
@@ -4906,26 +5073,45 @@ function ChatViewContent(props: ChatViewProps) {
     }
     const {
       images: sendContextImages,
-      terminalContexts: composerTerminalContexts,
-      elementContexts: composerElementContexts,
+      terminalContexts: sendContextTerminalContexts,
+      elementContexts: sendContextElementContexts,
       previewAnnotations: sendContextPreviewAnnotations,
-      reviewComments: composerReviewComments,
+      reviewComments: sendContextReviewComments,
       selectedProvider: ctxSelectedProvider,
-      selectedModel: ctxSelectedModel,
+      selectedModel: sendContextSelectedModel,
       selectedProviderModels: ctxSelectedProviderModels,
       selectedPromptEffort: ctxSelectedPromptEffort,
-      selectedModelSelection: ctxSelectedModelSelection,
+      selectedModelSelection: sendContextModelSelection,
     } = sendCtx;
-    const composerImages =
-      directAnnotation?.image &&
-      !sendContextImages.some((image) => image.id === directAnnotation.image?.id)
+    const composerTerminalContexts = queuedTurn
+      ? queuedTurn.terminalContexts
+      : sendContextTerminalContexts;
+    const composerElementContexts = queuedTurn
+      ? queuedTurn.elementContexts
+      : sendContextElementContexts;
+    const composerReviewComments = queuedTurn
+      ? queuedTurn.reviewComments
+      : sendContextReviewComments;
+    const ctxSelectedModelSelection = queuedTurn
+      ? queuedTurn.modelSelection
+      : sendContextModelSelection;
+    const ctxSelectedModel = queuedTurn
+      ? queuedTurn.modelSelection.model
+      : sendContextSelectedModel;
+    const runtimeModeForSend = queuedTurn ? queuedTurn.runtimeMode : runtimeMode;
+    const interactionModeForSend = queuedTurn ? queuedTurn.interactionMode : interactionMode;
+    const composerImages = queuedTurn
+      ? hydrateImagesFromPersisted(queuedTurn.attachments)
+      : directAnnotation?.image &&
+          !sendContextImages.some((image) => image.id === directAnnotation.image?.id)
         ? [...sendContextImages, directAnnotation.image]
         : sendContextImages;
-    const composerPreviewAnnotations =
-      directAnnotation &&
-      !sendContextPreviewAnnotations.some(
-        (annotation) => annotation.id === directAnnotation.annotation.id,
-      )
+    const composerPreviewAnnotations = queuedTurn
+      ? queuedTurn.previewAnnotations
+      : directAnnotation &&
+          !sendContextPreviewAnnotations.some(
+            (annotation) => annotation.id === directAnnotation.annotation.id,
+          )
         ? [
             ...sendContextPreviewAnnotations,
             {
@@ -4936,7 +5122,7 @@ function ChatViewContent(props: ChatViewProps) {
             },
           ]
         : sendContextPreviewAnnotations;
-    const promptForSend = promptRef.current;
+    const promptForSend = queuedTurn ? queuedTurn.text : promptRef.current;
     const {
       trimmedPrompt: trimmed,
       sendableTerminalContexts: sendableComposerTerminalContexts,
@@ -4951,7 +5137,7 @@ function ChatViewContent(props: ChatViewProps) {
         composerPreviewAnnotations.length +
         composerReviewComments.length,
     });
-    if (!directAnnotation && showPlanFollowUpPrompt && activeProposedPlan) {
+    if (!queuedTurn && !directAnnotation && showPlanFollowUpPrompt && activeProposedPlan) {
       const followUp = resolvePlanFollowUpSubmission({
         draftText: trimmed,
         planMarkdown: activeProposedPlan.planMarkdown,
@@ -4965,9 +5151,22 @@ function ChatViewContent(props: ChatViewProps) {
       });
       return;
     }
+    // `/btw` opens an aside instead of sending a turn. Checked before the other
+    // slash commands and without a feature gate: it is the only way to reach
+    // the panel from the keyboard, and it must never reach the agent as text.
+    // Queued turns are exempt — a queue drains into the thread, not an aside.
+    const asideCommand = queuedTurn ? null : parseAsideCommand(trimmed);
+    if (asideCommand) {
+      promptRef.current = "";
+      clearComposerDraftContent(composerDraftTarget);
+      composerRef.current?.resetCursorState();
+      openAside(asideCommand.question);
+      return;
+    }
     // Legacy plan mode: /plan and /default only act when the beta flag is on;
     // otherwise they send as plain text like any other message.
     const standaloneSlashCommand =
+      !queuedTurn &&
       settings.planModeEnabled &&
       composerImages.length === 0 &&
       sendableComposerTerminalContexts.length === 0 &&
@@ -5062,13 +5261,21 @@ function ChatViewContent(props: ChatViewProps) {
     );
     const messageIdForSend = newMessageId();
     const messageCreatedAt = new Date().toISOString();
-    const outgoingMessageText = formatOutgoingPrompt({
-      provider: ctxSelectedProvider,
-      model: ctxSelectedModel,
-      models: ctxSelectedProviderModels,
-      effort: ctxSelectedPromptEffort,
-      text: messageTextForSend || IMAGE_ONLY_BOOTSTRAP_PROMPT,
-    });
+    // A queued turn resolved its effort against the model it was queued with,
+    // so the prefix is applied from that snapshot rather than re-derived from
+    // whatever the composer points at now.
+    const outgoingMessageText = queuedTurn
+      ? applyClaudePromptEffortPrefix(
+          messageTextForSend || IMAGE_ONLY_BOOTSTRAP_PROMPT,
+          queuedTurn.injectedPromptEffort,
+        )
+      : formatOutgoingPrompt({
+          provider: ctxSelectedProvider,
+          model: ctxSelectedModel,
+          models: ctxSelectedProviderModels,
+          effort: ctxSelectedPromptEffort,
+          text: messageTextForSend || IMAGE_ONLY_BOOTSTRAP_PROMPT,
+        });
     const turnAttachmentsPromise = Promise.all(
       composerImagesSnapshot.map(async (image) => ({
         type: "image" as const,
@@ -5128,9 +5335,18 @@ function ChatViewContent(props: ChatViewProps) {
         }),
       );
     }
-    promptRef.current = "";
-    clearComposerDraftContent(composerDraftTarget);
-    composerRef.current?.resetCursorState();
+    if (queuedTurn) {
+      // Committed: past this point the turn is dispatching, so it leaves the
+      // queue and the failure path below is what puts it back.
+      const queueThreadKey = drainingQueueThreadKeyRef.current;
+      if (queueThreadKey) {
+        removeQueuedTurn(queueThreadKey, queuedTurn.id);
+      }
+    } else {
+      promptRef.current = "";
+      clearComposerDraftContent(composerDraftTarget);
+      composerRef.current?.resetCursorState();
+    }
 
     let firstComposerImageName: string | null = null;
     if (composerImagesSnapshot.length > 0) {
@@ -5181,8 +5397,8 @@ function ChatViewContent(props: ChatViewProps) {
         ...(localCheckoutBranchMismatch
           ? { branch: localCheckoutBranchMismatch.currentBranch }
           : {}),
-        runtimeMode,
-        interactionMode,
+        runtimeMode: runtimeModeForSend,
+        interactionMode: interactionModeForSend,
       });
       if (settingsResult._tag === "Failure") {
         failure = settingsResult;
@@ -5205,8 +5421,8 @@ function ChatViewContent(props: ChatViewProps) {
                       projectId: activeProject.id,
                       title,
                       modelSelection: threadCreateModelSelection,
-                      runtimeMode,
-                      interactionMode,
+                      runtimeMode: runtimeModeForSend,
+                      interactionMode: interactionModeForSend,
                       branch: activeThreadBranch,
                       worktreePath: activeThread.worktreePath,
                       createdAt: activeThread.createdAt,
@@ -5239,8 +5455,8 @@ function ChatViewContent(props: ChatViewProps) {
           },
           modelSelection: ctxSelectedModelSelection,
           titleSeed: title,
-          runtimeMode,
-          interactionMode,
+          runtimeMode: runtimeModeForSend,
+          interactionMode: interactionModeForSend,
           ...(bootstrap ? { bootstrap } : {}),
           createdAt: messageCreatedAt,
         },
@@ -5254,7 +5470,22 @@ function ChatViewContent(props: ChatViewProps) {
     }
 
     if (failure !== null) {
-      if (
+      if (queuedTurn) {
+        // The entry goes back to the front of the queue rather than into the
+        // composer, which may already hold the user's next message.
+        setOptimisticUserMessages((existing) => {
+          const removed = existing.filter((message) => message.id === messageIdForSend);
+          for (const message of removed) {
+            revokeUserMessagePreviewUrls(message);
+          }
+          const next = existing.filter((message) => message.id !== messageIdForSend);
+          return next.length === existing.length ? existing : next;
+        });
+        const queueThreadKey = drainingQueueThreadKeyRef.current;
+        if (queueThreadKey) {
+          restoreQueuedTurnToFront(queueThreadKey, queuedTurn);
+        }
+      } else if (
         promptRef.current.length === 0 &&
         composerImagesRef.current.length === 0 &&
         composerTerminalContextsRef.current.length === 0 &&
@@ -5305,6 +5536,51 @@ function ChatViewContent(props: ChatViewProps) {
       resetLocalDispatch();
     }
   };
+
+  // `onSend` is rebuilt every render, so the drain reads it through a ref
+  // rather than listing it as a dependency and re-running on every keystroke.
+  const onSendRef = useRef(onSend);
+  onSendRef.current = onSend;
+  const queueDrainInFlightRef = useRef(false);
+  /**
+   * The queue a draining turn came from. A failed send has to go back to that
+   * thread's queue, not to whichever thread is active by the time the send
+   * settles.
+   */
+  const drainingQueueThreadKeyRef = useRef<string | null>(null);
+
+  const drainNextQueuedTurn = useCallback(async () => {
+    if (queueDrainInFlightRef.current) return;
+    if (!activeThreadKey) return;
+    queueDrainInFlightRef.current = true;
+    drainingQueueThreadKeyRef.current = activeThreadKey;
+    try {
+      // The entry stays queued until `onSend` commits it. Its early returns
+      // (no thread, detail still loading) then leave the queue untouched and
+      // the next state change retries, rather than silently eating a turn.
+      const next = queuedTurnsForThread[0];
+      if (next) {
+        await onSendRef.current(undefined, undefined, next);
+      }
+    } finally {
+      drainingQueueThreadKeyRef.current = null;
+      queueDrainInFlightRef.current = false;
+    }
+  }, [activeThreadKey, queuedTurnsForThread]);
+
+  // One turn at a time: the effect re-runs when the queue shrinks or the hold
+  // clears, so the next entry goes out on the following pass rather than in a
+  // loop that could outrun the session status it is gating on.
+  useEffect(() => {
+    if (queuedTurnsForThread.length === 0) return;
+    if (queueHoldReason !== null) return;
+    void drainNextQueuedTurn();
+  }, [drainNextQueuedTurn, queueHoldReason, queuedTurnsForThread.length]);
+
+  /** Releases a queue parked by an interrupt or a thread error. */
+  const onSendQueueNow = useCallback(() => {
+    void drainNextQueuedTurn();
+  }, [drainNextQueuedTurn]);
 
   const onInterrupt = async () => {
     if (!activeThread) return;
@@ -6087,6 +6363,15 @@ function ChatViewContent(props: ChatViewProps) {
         environmentId={activeThreadRef?.environmentId ?? null}
         threadId={activeThreadRef?.threadId ?? null}
       />
+    ) : activeRightPanelSurface?.kind === "asides" && activeThreadRef ? (
+      <AsidesPanel
+        asides={asideState.asides}
+        loaded={asideState.loaded}
+        cwd={activeThread?.worktreePath ?? activeProject?.workspaceRoot}
+        threadRef={activeThreadRef}
+        onContinue={(asideId) => asideThreadKey && openAsidePanel(asideThreadKey, asideId)}
+        onRemove={(asideId) => void removeAside(asideId)}
+      />
     ) : (activeRightPanelSurface?.kind === "files" || activeRightPanelSurface?.kind === "file") &&
       activeProject &&
       activeWorkspaceRoot ? (
@@ -6288,6 +6573,18 @@ function ChatViewContent(props: ChatViewProps) {
                   ) : (
                     <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
                   )}
+                  {asideThreadKey && asideState.target !== null && activeThreadRef ? (
+                    <ComposerAsidePanel
+                      className="relative z-0 mx-auto mb-1.5 w-full max-w-3xl"
+                      aside={activeAside}
+                      pendingQuestion={asideState.pendingQuestion}
+                      errorMessage={asideState.errorMessage}
+                      cwd={activeThread?.worktreePath ?? activeProject?.workspaceRoot}
+                      threadRef={activeThreadRef}
+                      onAsk={(question) => void askAside(question, activeAside?.asideId)}
+                      onClose={() => closeAsidePanel(asideThreadKey)}
+                    />
+                  ) : null}
                   {threadSyncPhase && !activeEnvironmentUnavailable ? (
                     <ThreadSyncStatusPill phase={threadSyncPhase} />
                   ) : null}
@@ -6338,6 +6635,8 @@ function ChatViewContent(props: ChatViewProps) {
                             respondingRequestIds={respondingRequestIds}
                             showPlanFollowUpPrompt={showPlanFollowUpPrompt}
                             activeProposedPlan={activeProposedPlan}
+                            queueHoldReason={queueHoldReason}
+                            onSendQueueNow={onSendQueueNow}
                             runtimeMode={runtimeMode}
                             interactionMode={interactionMode}
                             lockedProvider={lockedProvider}

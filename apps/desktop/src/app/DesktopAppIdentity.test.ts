@@ -107,7 +107,7 @@ const withIdentity = <A, E, R>(
   input: {
     readonly calls?: ElectronAppCalls;
     readonly environment?: TestEnvironmentInput;
-    readonly legacyPathExists?: boolean;
+    readonly legacyProfileExists?: boolean;
     readonly legacyPathProbeError?: PlatformError.PlatformError;
     readonly packageJson?: string;
     readonly pngIconPath?: Option.Option<string>;
@@ -127,7 +127,9 @@ const withIdentity = <A, E, R>(
             exists: (path) =>
               input.legacyPathProbeError
                 ? Effect.fail(input.legacyPathProbeError)
-                : Effect.succeed(input.legacyPathExists === true && path.includes("t3code")),
+                : Effect.succeed(
+                    input.legacyProfileExists === true && path.endsWith("t3code/Preferences"),
+                  ),
             readFileString: () =>
               Effect.succeed(input.packageJson ?? '{"t3codeCommitHash":"abcdef1234567890"}'),
           }),
@@ -141,7 +143,7 @@ const withIdentity = <A, E, R>(
 };
 
 describe("DesktopAppIdentity", () => {
-  it.effect("keeps using the legacy userData path when it already exists", () =>
+  it.effect("keeps using the legacy userData path when it holds a profile", () =>
     withIdentity(
       Effect.gen(function* () {
         const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
@@ -149,7 +151,19 @@ describe("DesktopAppIdentity", () => {
 
         assert.equal(userDataPath, "/Users/alice/Library/Application Support/t3code");
       }),
-      { legacyPathExists: true },
+      { legacyProfileExists: true },
+    ),
+  );
+
+  it.effect("ignores a legacy directory that holds only Chromium's early-startup stub", () =>
+    withIdentity(
+      Effect.gen(function* () {
+        const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
+        const userDataPath = yield* identity.resolveUserDataPath;
+
+        assert.equal(userDataPath, "/Users/alice/Library/Application Support/codeslop");
+      }),
+      { legacyProfileExists: false },
     ),
   );
 

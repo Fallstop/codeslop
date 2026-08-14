@@ -23,6 +23,7 @@ import * as Path from "effect/Path";
 
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { EMBEDDING_SCHEME_VERSION } from "./embeddingText.ts";
 
 export const DEFAULT_EMBEDDING_MODEL_ID = "Xenova/all-MiniLM-L6-v2";
 
@@ -67,6 +68,12 @@ export class EmbeddingModel extends Context.Service<
   EmbeddingModel,
   {
     readonly modelId: string;
+    /**
+     * Storage key for persisted vectors: the model id plus the chunking scheme
+     * version, so a chunking change invalidates rows instead of mixing
+     * incompatible vectors into one index.
+     */
+    readonly indexKey: string;
     /** Follows the `semanticSearchEnabled` setting; T3_SEMANTIC_SEARCH=0 forces off. */
     readonly isEnabled: Effect.Effect<boolean>;
     /** Download/load lifecycle for the settings-page status readout. */
@@ -105,6 +112,7 @@ export const make = Effect.fn("semanticSearch.embeddingModel.make")(function* ()
   const serverSettings = yield* ServerSettingsService;
   const path = yield* Path.Path;
   const modelId = DEFAULT_EMBEDDING_MODEL_ID;
+  const indexKey = `${modelId}@v${EMBEDDING_SCHEME_VERSION}`;
   const cacheDir = path.join(config.stateDir, "models");
 
   const loadState = yield* Ref.make<LoadState>({ _tag: "idle" });
@@ -234,7 +242,14 @@ export const make = Effect.fn("semanticSearch.embeddingModel.make")(function* ()
       return vectors;
     });
 
-  return EmbeddingModel.of({ modelId, isEnabled, runtimeState, ensureReady, embedTexts });
+  return EmbeddingModel.of({
+    modelId,
+    indexKey,
+    isEnabled,
+    runtimeState,
+    ensureReady,
+    embedTexts,
+  });
 });
 
 export const layer = Layer.effect(EmbeddingModel, make());

@@ -2,7 +2,7 @@
 // @effect-diagnostics globalDate:off
 // @effect-diagnostics globalTimers:off
 // This file is shipped as a standalone bundle and copied to a stable path by
-// `t3 service update`. Keep runtime imports limited to Node built-ins.
+// `slop service update`. Keep runtime imports limited to Node built-ins.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";

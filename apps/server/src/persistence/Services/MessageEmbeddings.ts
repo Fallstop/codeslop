@@ -151,6 +151,14 @@ export interface MessageEmbeddingRepositoryShape {
   readonly deleteOrphaned: (
     input: DeleteOrphanedEmbeddingsInput,
   ) => Effect.Effect<ReadonlyArray<MessageId>, ProjectionRepositoryError>;
+
+  /**
+   * Drop rows written under a different model/scheme key. The in-memory index
+   * only ever holds the current key, so this needs no index reconciliation.
+   */
+  readonly deleteOtherModels: (
+    input: DeleteOrphanedEmbeddingsInput,
+  ) => Effect.Effect<void, ProjectionRepositoryError>;
 }
 
 /**

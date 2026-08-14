@@ -1,10 +1,10 @@
 {
   "mcpServers": {
     "xcodebuildmcp": {
-      "command": "npx",
-      "args": ["--yes", "xcodebuildmcp@2.6.2", "mcp"],
+      "command": "node",
+      "args": ["node_modules/xcodebuildmcp/build/cli.js", "mcp"],
       "env": {
-        "XCODEBUILDMCP_ENABLED_WORKFLOWS": "simulator,ui-automation,debugging,logging"
+        "XCODEBUILDMCP_ENABLED_WORKFLOWS": "simulator,ui-automation,debugging"
       }
     }
   }

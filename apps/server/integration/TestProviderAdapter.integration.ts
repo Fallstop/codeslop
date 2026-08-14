@@ -483,6 +483,7 @@ export const makeTestProviderAdapterHarness = (options?: MakeTestProviderAdapter
       provider,
       capabilities: {
         sessionModelSwitch: "in-session",
+        sideQuestion: "unsupported",
       },
       startSession,
       sendTurn,

@@ -26,6 +26,8 @@ import * as PullRequestProviderRegistry from "./pullRequest/PullRequestProviderR
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import { MessageEmbeddingRepositoryLive } from "./persistence/Layers/MessageEmbeddings.ts";
+import { ThreadAsideRepositoryLive } from "./persistence/Layers/ThreadAsides.ts";
+import * as AsideService from "./aside/AsideService.ts";
 import * as EmbeddingModel from "./semanticSearch/EmbeddingModel.ts";
 import { HybridThreadSearchLive } from "./semanticSearch/HybridThreadSearch.ts";
 import { MessageEmbeddingIndexLive } from "./semanticSearch/MessageEmbeddingIndex.ts";
@@ -430,7 +432,16 @@ const SemanticSearchLayerLive = Layer.mergeAll(
   Layer.provideMerge(MessageEmbeddingRepositoryLive),
 );
 
-const RuntimeDependenciesLive = SemanticSearchLayerLive.pipe(
+// Thread asides: side questions answered either through the provider's live
+// session or from the stored transcript. Needs the provider adapter registry
+// and text generation from the core runtime stack, provided below.
+const AsideLayerLive = AsideService.layer.pipe(
+  Layer.provide(ProviderAdapterRegistryLive),
+  Layer.provide(TextGeneration.layer),
+  Layer.provide(ThreadAsideRepositoryLive),
+);
+
+const RuntimeDependenciesLive = Layer.mergeAll(SemanticSearchLayerLive, AsideLayerLive).pipe(
   Layer.provideMerge(RuntimeCoreDependenciesLive),
   // Misc.
   Layer.provideMerge(BackgroundLayerLive),

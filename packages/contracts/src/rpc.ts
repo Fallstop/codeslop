@@ -178,6 +178,16 @@ import {
   SemanticSearchGetStatusInput,
   SemanticSearchStatus,
 } from "./semanticSearch.ts";
+import {
+  ASIDE_WS_METHODS,
+  AsideAskInput,
+  AsideAskResult,
+  AsideError,
+  AsideListInput,
+  AsideListResult,
+  AsideRemoveInput,
+  AsideRemoveResult,
+} from "./aside.ts";
 import { UsageReadError, UsageSummary, UsageSummaryInput } from "./usage.ts";
 import { ServerSettings, ServerSettingsError, ServerSettingsPatch } from "./settings.ts";
 import {
@@ -469,6 +479,26 @@ export const WsSemanticSearchGetStatusRpc = Rpc.make(SEMANTIC_SEARCH_WS_METHODS.
   payload: SemanticSearchGetStatusInput,
   success: SemanticSearchStatus,
   error: EnvironmentAuthorizationError,
+});
+
+const AsideRpcError = Schema.Union([AsideError, EnvironmentAuthorizationError]);
+
+export const WsAsideListRpc = Rpc.make(ASIDE_WS_METHODS.list, {
+  payload: AsideListInput,
+  success: AsideListResult,
+  error: AsideRpcError,
+});
+
+export const WsAsideAskRpc = Rpc.make(ASIDE_WS_METHODS.ask, {
+  payload: AsideAskInput,
+  success: AsideAskResult,
+  error: AsideRpcError,
+});
+
+export const WsAsideRemoveRpc = Rpc.make(ASIDE_WS_METHODS.remove, {
+  payload: AsideRemoveInput,
+  success: AsideRemoveResult,
+  error: AsideRpcError,
 });
 
 const PullRequestRpcError = Schema.Union([
@@ -980,6 +1010,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerReportHostPowerStateRpc,
   WsServerGetBackgroundPolicyRpc,
   WsSemanticSearchGetStatusRpc,
+  WsAsideListRpc,
+  WsAsideAskRpc,
+  WsAsideRemoveRpc,
   WsCloudGetRelayClientStatusRpc,
   WsCloudInstallRelayClientRpc,
   WsPullRequestsListRpc,

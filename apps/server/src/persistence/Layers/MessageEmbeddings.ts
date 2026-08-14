@@ -158,6 +158,12 @@ const makeMessageEmbeddingRepository = Effect.gen(function* () {
       `,
   });
 
+  const deleteOtherModels: MessageEmbeddingRepositoryShape["deleteOtherModels"] = ({ model }) =>
+    sql`DELETE FROM message_embeddings WHERE model != ${model}`.pipe(
+      Effect.asVoid,
+      Effect.mapError(toPersistenceSqlError("MessageEmbeddingRepository.deleteOtherModels:query")),
+    );
+
   const replaceForMessage: MessageEmbeddingRepositoryShape["replaceForMessage"] = (input) =>
     sql
       .withTransaction(
@@ -245,6 +251,7 @@ const makeMessageEmbeddingRepository = Effect.gen(function* () {
     listVectors,
     listMatchMetadata,
     deleteOrphaned,
+    deleteOtherModels,
   } satisfies MessageEmbeddingRepositoryShape;
 });
 

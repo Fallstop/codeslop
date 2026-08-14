@@ -35,5 +35,6 @@ messages, and reasoning are not indexed. Edited messages are re-indexed automati
 embeddings for deleted threads are cleaned up in the background.
 
 The index lives inside the server's local state database (`state.sqlite`) next to the chats
-themselves. Turning the setting off stops indexing and semantic matching immediately; the search
+themselves. An update that changes how messages are indexed rebuilds it from scratch, so the
+settings page may show a pending count again after upgrading; search stays available throughout. Turning the setting off stops indexing and semantic matching immediately; the search
 falls back to exact-text matching only.

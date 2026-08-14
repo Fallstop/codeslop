@@ -252,6 +252,14 @@ interface ClaudeQueryRuntime extends AsyncIterable<SDKMessage> {
   readonly interrupt: () => Promise<void>;
   /** SDK Query.stopTask — present on real queries; optional for test doubles. */
   readonly stopTask?: (taskId: string) => Promise<void>;
+  /**
+   * SDK Query.askSideQuestion — answers one question against the live session
+   * without interrupting its turn. Absent from the SDK's published typings as
+   * of 0.3.170 and from older CLI builds, so callers must probe for it.
+   */
+  readonly askSideQuestion?: (
+    question: string,
+  ) => Promise<{ readonly response: string; readonly synthetic: boolean } | null>;
   readonly setModel: (model?: string) => Promise<void>;
   readonly setPermissionMode: (mode: PermissionMode) => Promise<void>;
   readonly setMaxThinkingTokens: (maxThinkingTokens: number | null) => Promise<void>;
@@ -4410,6 +4418,45 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     };
   });
 
+  const askSideQuestion = Effect.fn("askSideQuestion")(function* (
+    threadId: ThreadId,
+    question: string,
+  ) {
+    const context = yield* requireSession(threadId);
+    // Not in the SDK's published typings as of 0.3.170, and absent from CLI
+    // builds predating the control request — probe rather than assume.
+    const ask = context.query.askSideQuestion;
+    if (typeof ask !== "function") {
+      return yield* Effect.fail(
+        new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "turn/sideQuestion",
+          detail:
+            "This Claude runtime does not support side questions. Update the Claude CLI to ask one against the live session.",
+        }),
+      );
+    }
+
+    const answer = yield* Effect.tryPromise({
+      try: () => ask.call(context.query, question),
+      catch: (cause) => toRequestError(threadId, "turn/sideQuestion", cause),
+    });
+
+    // A null response means the runtime declined without erroring (e.g. the
+    // session is shutting down). Surface it rather than storing an empty answer.
+    if (answer === null) {
+      return yield* Effect.fail(
+        new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "turn/sideQuestion",
+          detail: "The Claude runtime returned no answer for the side question.",
+        }),
+      );
+    }
+
+    return { text: answer.response, synthetic: answer.synthetic };
+  });
+
   const interruptTurn: ClaudeAdapterShape["interruptTurn"] = Effect.fn("interruptTurn")(
     function* (threadId, _turnId) {
       const context = yield* requireSession(threadId);
@@ -4572,9 +4619,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     provider: PROVIDER,
     capabilities: {
       sessionModelSwitch: "in-session",
+      sideQuestion: "native",
     },
     startSession,
     sendTurn,
+    askSideQuestion,
     interruptTurn,
     readThread,
     rollbackThread,

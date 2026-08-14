@@ -49,6 +49,7 @@ import {
   type PrimaryEnvironmentTarget,
 } from "../environments/primary/target";
 import { clearComposerDraftsEnvironment } from "../composerDraftStore";
+import { clearThreadQueueEnvironment } from "../threadQueueStore";
 import { isHostedStaticApp } from "../hostedPairing";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { acknowledgeRpcRequest, trackRpcRequestSent } from "../rpc/requestLatencyState";
@@ -579,6 +580,7 @@ const environmentOwnedDataCleanupLayer = Layer.succeed(
     clear: (environmentId) =>
       Effect.sync(() => {
         clearComposerDraftsEnvironment(environmentId);
+        clearThreadQueueEnvironment(environmentId);
       }),
   }),
 );

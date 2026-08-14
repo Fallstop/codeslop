@@ -16,7 +16,7 @@ export type CliRunner = "npx" | "pnpm dlx" | "bunx";
  *   bunx     ~/.bun/install/cache/... or $TMPDIR/bunx-<uid>-<spec>/...
  *
  * Global installs and repo checkouts match none of these and return null.
- * Detection is best-effort; callers must fail closed to a plain `t3` command.
+ * Detection is best-effort; callers must fail closed to a plain `slop` command.
  */
 export function detectCliRunner(entryPath: string): CliRunner | null {
   const path = entryPath.replaceAll("\\", "/");
@@ -47,10 +47,11 @@ export function suggestedPackageSpec(version: string): string {
 }
 
 /**
- * Render a `t3 <subcommand>` suggestion that matches how this process was
+ * Render a `slop <subcommand>` suggestion that matches how this process was
  * launched, so copy/pasting it actually works: `npx t3 connect` suggests
- * `npx t3 serve`, a global install suggests `t3 serve`, and a nightly build
- * keeps the `@nightly` tag.
+ * `npx t3 serve` (the runner needs the package spec, not the `slop` bin name),
+ * a global install suggests `slop serve`, and a nightly build keeps the
+ * `@nightly` tag.
  */
 export function formatCliCommand(input: {
   readonly subcommand: string;
@@ -59,7 +60,7 @@ export function formatCliCommand(input: {
 }): string {
   const runner = detectCliRunner(input.entryPath);
   if (runner === null) {
-    return `t3 ${input.subcommand}`;
+    return `slop ${input.subcommand}`;
   }
   return `${runner} ${suggestedPackageSpec(input.version)} ${input.subcommand}`;
 }

@@ -5,10 +5,21 @@
  * @module embeddingText
  */
 
-export const EMBEDDING_CHUNK_MAX_CHARS = 1000;
-export const EMBEDDING_CHUNK_OVERLAP_CHARS = 200;
+/**
+ * Bumped whenever chunking changes shape enough to invalidate stored vectors.
+ * Part of the persisted model key, so a bump re-indexes every message.
+ */
+export const EMBEDDING_SCHEME_VERSION = 2;
+
+/**
+ * MiniLM mean-pools its token vectors, so a long chunk averages into a generic
+ * "prose" direction that short queries cannot match. Keeping chunks short holds
+ * each vector on one topic, which is what palette-length queries look like.
+ */
+export const EMBEDDING_CHUNK_MAX_CHARS = 320;
+export const EMBEDDING_CHUNK_OVERLAP_CHARS = 64;
 /** Very long messages (pasted logs, huge diffs) are truncated, not fully indexed. */
-export const EMBEDDING_MAX_CHUNKS_PER_MESSAGE = 24;
+export const EMBEDDING_MAX_CHUNKS_PER_MESSAGE = 48;
 /** Chunks shorter than this carry no useful signal (e.g. "ok", "thanks"). */
 const MIN_CHUNK_CHARS = 3;
 

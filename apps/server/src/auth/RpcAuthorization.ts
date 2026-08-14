@@ -1,4 +1,5 @@
 import {
+  ASIDE_WS_METHODS,
   AuthAccessReadScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
@@ -52,6 +53,11 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.serverReportHostPowerState]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverGetBackgroundPolicy]: AuthOrchestrationReadScope,
   [SEMANTIC_SEARCH_WS_METHODS.getStatus]: AuthOrchestrationReadScope,
+  [ASIDE_WS_METHODS.list]: AuthOrchestrationReadScope,
+  // Asking spends tokens against the thread's provider, and removing edits the
+  // thread's stored record — both are writes even though neither steers the agent.
+  [ASIDE_WS_METHODS.ask]: AuthOrchestrationOperateScope,
+  [ASIDE_WS_METHODS.remove]: AuthOrchestrationOperateScope,
   [WS_METHODS.cloudGetRelayClientStatus]: AuthRelayReadScope,
   [WS_METHODS.cloudInstallRelayClient]: AuthRelayWriteScope,
   [WS_METHODS.pullRequestsList]: AuthOrchestrationReadScope,

@@ -21,6 +21,7 @@ import * as DesktopLifecycle from "./DesktopLifecycle.ts";
 import * as DesktopLinuxUrlHandler from "./DesktopLinuxUrlHandler.ts";
 import * as DesktopObservability from "./DesktopObservability.ts";
 import * as DesktopPreReadyPlatform from "./DesktopPreReadyPlatform.ts";
+import * as DesktopSafeStorageMigration from "./DesktopSafeStorageMigration.ts";
 import * as DesktopShutdown from "./DesktopShutdown.ts";
 import * as DesktopServerExposure from "../backend/DesktopServerExposure.ts";
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
@@ -277,6 +278,15 @@ const startup = Effect.gen(function* () {
     Effect.catchCause((cause) => fatalStartupCause("whenReady", cause)),
   );
   yield* logStartupInfo("app ready");
+  // safeStorage is unusable before ready, so this is the earliest the legacy
+  // t3code key can be adopted — and it must happen before any window or
+  // backend exists that could decrypt (or lazily mint) the codeslop key. A
+  // failure only degrades to fresh-key behavior, so log and continue.
+  yield* DesktopSafeStorageMigration.adoptLegacySafeStorageKey.pipe(
+    Effect.catch((error) =>
+      Effect.logWarning("Could not adopt the legacy safe-storage key.", { error }),
+    ),
+  );
   if (environment.platform === "linux") {
     const selectedBackend = yield* safeStorage.selectedStorageBackend;
     yield* logStartupInfo("safe storage ready", {

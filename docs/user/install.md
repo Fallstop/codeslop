@@ -17,6 +17,16 @@ npx t3@latest
 This starts the codeslop server on your machine and opens the local web app. Use
 `npx t3@latest --help` for the full CLI reference.
 
+## Install The CLI
+
+```bash
+npm install -g t3
+```
+
+The installed command is `slop`. Run `slop` in any directory to start the server and open
+codeslop on that folder, `slop --help` for the full CLI reference, or one of the subcommands
+(`slop serve`, `slop pair`, `slop auth`, `slop project`, `slop service`).
+
 ## Desktop App
 
 Download the latest release from

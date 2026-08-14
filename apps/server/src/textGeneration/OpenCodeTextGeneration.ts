@@ -22,6 +22,7 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  asideAnswerOutputSchema,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
 import * as TextGeneration from "./TextGeneration.ts";
@@ -39,6 +40,7 @@ const OpenCodeTextGenerationOperation = Schema.Literals([
   "generatePrContent",
   "generateBranchName",
   "generateThreadTitle",
+  "generateAsideAnswer",
 ]);
 
 type OpenCodeTextGenerationOperation = typeof OpenCodeTextGenerationOperation.Type;
@@ -253,7 +255,8 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateAsideAnswer";
   }) =>
     sharedServerMutex.withPermit(
       Effect.gen(function* () {
@@ -615,10 +618,26 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       };
     });
 
+  const generateAsideAnswer: TextGeneration.TextGeneration["Service"]["generateAsideAnswer"] =
+    Effect.fn("OpenCodeTextGeneration.generateAsideAnswer")(function* (input) {
+      const generated = yield* runOpenCodeJson({
+        operation: "generateAsideAnswer",
+        cwd: input.cwd,
+        prompt: input.prompt,
+        outputSchemaJson: asideAnswerOutputSchema,
+        modelSelection: input.modelSelection,
+      });
+
+      return {
+        answer: generated.answer.trim(),
+      } satisfies TextGeneration.AsideAnswerGenerationResult;
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateAsideAnswer,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

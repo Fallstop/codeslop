@@ -12,6 +12,7 @@ import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 
 const COMMIT_HASH_PATTERN = /^[0-9a-f]{7,40}$/i;
 const COMMIT_HASH_DISPLAY_LENGTH = 12;
+const LEGACY_PROFILE_MARKER = "Preferences";
 
 const AppPackageMetadata = Schema.Struct({
   t3codeCommitHash: Schema.optional(Schema.String),
@@ -52,16 +53,22 @@ export const resolveUserDataPath = Effect.gen(function* () {
     environment.appDataDirectory,
     environment.legacyUserDataDirName,
   );
-  const legacyPathExists = yield* fileSystem.exists(legacyPath).pipe(
-    Effect.mapError(
-      (cause) =>
-        new DesktopUserDataPathResolutionError({
-          legacyPath,
-          cause,
-        }),
-    ),
-  );
-  return legacyPathExists
+  // Chromium writes a bare `Local State` into the pre-`setPath` directory during early
+  // startup, so a legacy directory can exist while holding no profile at all. Probing for
+  // `Preferences` distinguishes a real pre-rebrand profile from that stub — adopting the
+  // stub would silently orphan the current profile.
+  const legacyProfileExists = yield* fileSystem
+    .exists(environment.path.join(legacyPath, LEGACY_PROFILE_MARKER))
+    .pipe(
+      Effect.mapError(
+        (cause) =>
+          new DesktopUserDataPathResolutionError({
+            legacyPath,
+            cause,
+          }),
+      ),
+    );
+  return legacyProfileExists
     ? legacyPath
     : environment.path.join(environment.appDataDirectory, environment.userDataDirName);
 }).pipe(Effect.withSpan("desktop.appIdentity.resolveUserDataPath"));

@@ -21,12 +21,15 @@ import { packEmbedding } from "./embeddingText.ts";
 
 const MODEL = "fake-model";
 
-// Deterministic 2d "embeddings": the fake model maps known strings to fixed
-// unit vectors so cosine scores are exact.
+// Deterministic 3d "embeddings": the fake model maps known strings to fixed
+// unit vectors so cosine scores are exact. The third axis carries a weak-but-
+// best match, standing in for the low absolute scores short queries produce.
 const FAKE_VECTORS = new Map<string, ReadonlyArray<number>>([
-  ["credential rotation", [1, 0]],
-  ["Rotate them in the settings page.", [0.9, Math.sqrt(1 - 0.81)]],
-  ["Completely unrelated cooking recipe.", [0, 1]],
+  ["credential rotation", [1, 0, 0]],
+  ["Rotate them in the settings page.", [0.9, Math.sqrt(1 - 0.81), 0]],
+  ["Completely unrelated cooking recipe.", [0, 1, 0]],
+  ["shortcuts", [0, 0, 1]],
+  ["Only a faint echo of the query topic.", [0, 0.96, 0.28]],
 ]);
 
 const makeFakeModelLayer = (options?: { readonly enabled?: boolean }) => {
@@ -35,6 +38,7 @@ const makeFakeModelLayer = (options?: { readonly enabled?: boolean }) => {
     EmbeddingModel,
     EmbeddingModel.of({
       modelId: MODEL,
+      indexKey: MODEL,
       isEnabled: Effect.succeed(enabled),
       runtimeState: Effect.succeed(
         enabled ? { _tag: "ready" as const } : { _tag: "idle" as const },
@@ -99,6 +103,11 @@ const seedSemanticCorpus = Effect.gen(function* () {
         'thread-other', 'project-1', 'Recipes', '{"provider":"codex","model":"gpt-5-codex"}',
         'full-access', 'default', NULL, NULL, NULL, NULL, 0, 0, 0,
         '2026-05-01T00:00:04.000Z', '2026-05-01T00:00:05.000Z', NULL, NULL
+      ),
+      (
+        'thread-faint', 'project-1', 'Faint', '{"provider":"codex","model":"gpt-5-codex"}',
+        'full-access', 'default', NULL, NULL, NULL, NULL, 0, 0, 0,
+        '2026-05-01T00:00:06.000Z', '2026-05-01T00:00:07.000Z', NULL, NULL
       )
   `;
   yield* sql`
@@ -109,7 +118,9 @@ const seedSemanticCorpus = Effect.gen(function* () {
       ('msg-semantic', 'thread-semantic', NULL, 'assistant', 'Rotate them in the settings page.', 0,
         '2026-05-01T00:00:10.000Z', '2026-05-01T00:00:10.000Z'),
       ('msg-other', 'thread-other', NULL, 'user', 'Completely unrelated cooking recipe.', 0,
-        '2026-05-01T00:00:11.000Z', '2026-05-01T00:00:11.000Z')
+        '2026-05-01T00:00:11.000Z', '2026-05-01T00:00:11.000Z'),
+      ('msg-faint', 'thread-faint', NULL, 'user', 'Only a faint echo of the query topic.', 0,
+        '2026-05-01T00:00:12.000Z', '2026-05-01T00:00:12.000Z')
   `;
 
   for (const [messageId, threadId, text, messageUpdatedAt] of [
@@ -124,6 +135,12 @@ const seedSemanticCorpus = Effect.gen(function* () {
       "thread-other",
       "Completely unrelated cooking recipe.",
       "2026-05-01T00:00:11.000Z",
+    ],
+    [
+      "msg-faint",
+      "thread-faint",
+      "Only a faint echo of the query topic.",
+      "2026-05-01T00:00:12.000Z",
     ],
   ] as const) {
     yield* repository.replaceForMessage({
@@ -155,6 +172,32 @@ it.effect("surfaces semantic matches when the query shares no words with the tex
     );
     assert.equal(result.matches[0]?.source, "assistant");
     // The orthogonal "cooking recipe" vector stays below the score floor.
+  }).pipe(Effect.provide(makeTestLayer({ lexicalMatches: [] }))),
+);
+
+it.effect("keeps a query's best match even when its absolute score is low", () =>
+  Effect.gen(function* () {
+    yield* seedSemanticCorpus;
+    const search = yield* HybridThreadSearch;
+
+    // Short queries score low against every chunk; the best of them is still
+    // the answer, so the cutoff is relative to this query's own ceiling.
+    const result = yield* search.searchThreads({ query: "shortcuts" });
+    assert.deepStrictEqual(
+      result.matches.map((match) => match.threadId),
+      [ThreadId.make("thread-faint")],
+    );
+  }).pipe(Effect.provide(makeTestLayer({ lexicalMatches: [] }))),
+);
+
+it.effect("returns nothing semantic when the whole corpus is noise for the query", () =>
+  Effect.gen(function* () {
+    yield* seedSemanticCorpus;
+    const search = yield* HybridThreadSearch;
+
+    // "unknown" embeds to the zero vector, so every chunk scores 0.
+    const result = yield* search.searchThreads({ query: "unknown" });
+    assert.deepStrictEqual(result.matches, []);
   }).pipe(Effect.provide(makeTestLayer({ lexicalMatches: [] }))),
 );
 
@@ -205,7 +248,7 @@ it.effect("reports feature status for the settings page", () =>
     assert.deepStrictEqual(status, {
       state: "ready",
       modelId: MODEL,
-      indexedMessages: 2,
+      indexedMessages: 3,
       pendingMessages: 0,
     });
   }).pipe(Effect.provide(makeTestLayer({ lexicalMatches: [] }))),

@@ -585,13 +585,13 @@ sequenceDiagram
           <pre class="diagram mermaid">
 sequenceDiagram
   participant U as Operator
-  participant CLI as t3 connect CLI
+  participant CLI as slop connect CLI
   participant Clerk as Clerk OAuth
   participant S as Environment server on next start
   participant R as Relay Worker
   participant RC as Local relay client
 
-  U->>CLI: t3 connect link
+  U->>CLI: slop connect link
   CLI->>CLI: Resolve relay client
   alt relay client is missing
     CLI->>U: Confirm managed relay-client install
@@ -607,9 +607,9 @@ sequenceDiagram
   S->>RC: Start relay client
           </pre>
           <p>
-            <code>t3 connect login</code> stores authorization without enabling exposure.
-            <code>t3 connect unlink</code> disables exposure while retaining authorization.
-            <code>t3 connect logout</code> also removes the stored CLI authorization.
+            <code>slop connect login</code> stores authorization without enabling exposure.
+            <code>slop connect unlink</code> disables exposure while retaining authorization.
+            <code>slop connect logout</code> also removes the stored CLI authorization.
           </p>
         </article>
 

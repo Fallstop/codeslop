@@ -62,7 +62,7 @@ const startIndexer = Effect.gen(function* () {
         yield* repository.replaceForMessage({
           messageId: message.messageId,
           threadId: message.threadId,
-          model: model.modelId,
+          model: model.indexKey,
           messageUpdatedAt: message.updatedAt,
           updatedAt: now,
           chunks: chunkWrites,
@@ -89,11 +89,16 @@ const startIndexer = Effect.gen(function* () {
     // Load (download on first enable) even when there is nothing to index,
     // so the settings-page status reaches "ready" on empty histories too.
     yield* model.ensureReady;
-    yield* index.ensureLoaded(model.modelId);
+    yield* index.ensureLoaded(model.indexKey);
 
     tickCount += 1;
+    if (tickCount === 1) {
+      // Vectors from a superseded chunking scheme are dead weight once this
+      // key's re-index starts; drop them on the first working tick.
+      yield* repository.deleteOtherModels({ model: model.indexKey });
+    }
     if (tickCount % CLEANUP_EVERY_TICKS === 1) {
-      const removed = yield* repository.deleteOrphaned({ model: model.modelId });
+      const removed = yield* repository.deleteOrphaned({ model: model.indexKey });
       if (removed.length > 0) {
         yield* index.removeMessages(removed);
         yield* Effect.logDebug("semanticSearch.indexer.cleanup", { removed: removed.length });
@@ -107,7 +112,7 @@ const startIndexer = Effect.gen(function* () {
         break;
       }
       const stale = yield* repository.listStaleMessages({
-        model: model.modelId,
+        model: model.indexKey,
         limit: MESSAGE_BATCH_SIZE,
       });
       if (stale.length === 0) {
