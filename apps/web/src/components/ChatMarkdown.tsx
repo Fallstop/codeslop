@@ -45,6 +45,8 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { remarkGithubAlerts } from "../markdown-github-alerts";
 import { renderSkillInlineMarkdownChildren } from "./chat/SkillInlineText";
+import { ReviewFindingsCard } from "./chat/ReviewFindingsCard";
+import { parseReviewFindings } from "../reviewFindings";
 import { CHAT_FILE_TAG_CHIP_CLASS_NAME, FileTagChipContent } from "./chat/FileTagChip";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 import {
@@ -1656,6 +1658,23 @@ function ChatMarkdown({
 
         const language = extractFenceLanguage(codeBlock.className);
         const fenceTitle = extractFenceTitle(extractPreCodeMeta(node));
+        // A review report is a JSON array of findings. It is data the reader is meant to act on —
+        // each entry names a file, a line and what breaks there — so it renders as a list of those
+        // places instead of as quoted JSON. Anything else in a json fence stays a code block, and
+        // so does a half-streamed report, until the array closes and parses.
+        const reviewFindings =
+          language === "json" && !isStreaming ? parseReviewFindings(codeBlock.code) : null;
+        if (reviewFindings) {
+          return (
+            <RenderErrorBoundary fallback={<pre {...props}>{children}</pre>}>
+              <ReviewFindingsCard
+                findings={reviewFindings}
+                messageText={text}
+                threadRef={threadRef}
+              />
+            </RenderErrorBoundary>
+          );
+        }
         return (
           <MarkdownCodeBlock
             code={codeBlock.code}

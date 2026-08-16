@@ -43,11 +43,14 @@ export const MessageCopyButton = memo(function MessageCopyButton({
   size = "xs",
   variant = "outline",
   className,
+  label = "Copy link",
 }: {
   text: string;
   size?: "xs" | "icon-xs";
   variant?: "outline" | "ghost";
   className?: string;
+  /** What the button copies, for screen readers — several things are copied this way. */
+  label?: string;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
   const { copyToClipboard, isCopied } = useCopyToClipboard<void>({
@@ -61,7 +64,7 @@ export const MessageCopyButton = memo(function MessageCopyButton({
       <TooltipTrigger
         render={
           <Button
-            aria-label="Copy link"
+            aria-label={label}
             disabled={isCopied}
             onClick={() => copyToClipboard(text)}
             ref={ref}

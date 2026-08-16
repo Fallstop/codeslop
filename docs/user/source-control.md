@@ -44,6 +44,13 @@ codeslop works with the platforms your team already uses:
 - Open the review directly in your browser with one click
 - Check out a teammate's branch to review code locally
 
+**Read what a review agent found**
+
+- When an agent finishes a code review, its findings are shown as a list instead of raw JSON
+- Each finding names its file and line — click it to open that spot in the pull request diff on
+  GitHub, or open the file beside the conversation when the review is of local changes
+- Copy one finding, or the whole list, as ready-to-paste markdown
+
 ### Know Your Setup at a Glance
 
 The **Source Control settings** page shows you exactly what's connected:
