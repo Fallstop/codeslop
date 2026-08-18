@@ -464,6 +464,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         "**/node_modules/@anthropic-ai/claude-agent-sdk-*/**",
         "**/node_modules/.bin",
         "**/node_modules/.bin/**",
+        "**/node_modules/onnxruntime-node/bin/**/darwin/**",
       ]);
       assert.deepStrictEqual(mac.dmg, {
         title: "codeslop 1.2.3 Installer",

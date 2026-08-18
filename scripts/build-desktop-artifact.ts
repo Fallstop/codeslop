@@ -818,6 +818,10 @@ export const WINDOWS_SERVER_ASAR_IGNORE_GLOBS = [
   "**/node_modules/@anthropic-ai/claude-agent-sdk-*/**",
   "**/node_modules/.bin",
   "**/node_modules/.bin/**",
+  // onnxruntime-node ships every OS's binaries in one package. This sidecar
+  // serves the Windows primary and the WSL backend, so win32 and linux both
+  // stay; macOS is dead weight in a Windows artifact.
+  "**/node_modules/onnxruntime-node/bin/**/darwin/**",
 ] as const;
 export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 80;
 export const WINDOWS_SERVER_RESOURCE_SOURCE_DIR = "apps/desktop/prod-resources/windows-server";
@@ -1483,6 +1487,44 @@ const findStorePackageDirectory = Effect.fn("findStorePackageDirectory")(functio
   return null;
 });
 
+/**
+ * Depth of the shipped-addon scan. Prebuilt binaries sit a few levels down:
+ * onnxruntime-node keeps its at bin/napi-v6/<os>/<arch>/.
+ */
+const NATIVE_ADDON_SCAN_DEPTH = 5;
+
+/**
+ * Whether a package ships a `.node` addon anywhere in its own tree.
+ *
+ * The marker files below only describe packages that build or fetch their
+ * addon. onnxruntime-node ships prebuilt binaries in the tarball under a path
+ * of its own invention, so it carries no marker at all and was inlined into the
+ * bundle unnoticed, which broke semantic search in every packaged build.
+ */
+const shipsNativeAddon = Effect.fn("shipsNativeAddon")(function* (packageDir: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const pending = [{ directory: packageDir, depth: 0 }];
+
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (current === undefined) break;
+    const entries = yield* fs
+      .readDirectory(current.directory)
+      .pipe(Effect.orElseSucceed(() => [] as ReadonlyArray<string>));
+    for (const entry of entries) {
+      if (entry.endsWith(".node")) return true;
+      // A package's own dependencies are separate packages; each is judged on
+      // its own when it shows up in the scan.
+      if (current.depth >= NATIVE_ADDON_SCAN_DEPTH || entry === "node_modules") continue;
+      const child = path.join(current.directory, entry);
+      const stat = yield* fs.stat(child).pipe(Effect.orElseSucceed(() => null));
+      if (stat?.type === "Directory") pending.push({ directory: child, depth: current.depth + 1 });
+    }
+  }
+  return false;
+});
+
 /** Whether a package builds or ships a native addon it loads at runtime. */
 const hasNativeLoaderMarkers = Effect.fn("hasNativeLoaderMarkers")(function* (packageDir: string) {
   const fs = yield* FileSystem.FileSystem;
@@ -1492,6 +1534,7 @@ const hasNativeLoaderMarkers = Effect.fn("hasNativeLoaderMarkers")(function* (pa
 
   if (yield* exists(path.join(packageDir, "binding.gyp"))) return true;
   if (yield* exists(path.join(packageDir, "prebuilds"))) return true;
+  if (yield* shipsNativeAddon(packageDir)) return true;
 
   const manifestPath = path.join(packageDir, "package.json");
   if (!(yield* exists(manifestPath))) return false;

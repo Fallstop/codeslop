@@ -12,6 +12,7 @@ import serverPackageJson from "../../apps/server/package.json" with { type: "jso
 import {
   CLI_RUNTIME_EXTERNAL_PREFIXES,
   findInlinedExternalPackages,
+  isInstallOnlyExternalDependency,
   selectCliRuntimeExternalDependencies,
   shouldBundleCliDependency,
 } from "./cli-external-packages.ts";
@@ -50,6 +51,10 @@ describe("shouldBundleCliDependency", () => {
       "@clerk/electron-passkeys",
       "msgpackr-extract",
       "@msgpackr-extract/msgpackr-extract-win32-x64",
+      // Ships prebuilt addons rather than building them, and reaches them by a
+      // path relative to its own directory -- unreachable from a bundle chunk.
+      "onnxruntime-node",
+      "onnxruntime-common",
     ]) {
       assert.strictEqual(shouldBundleCliDependency(id), false, id);
     }
@@ -87,7 +92,7 @@ describe("selectCliRuntimeExternalDependencies", () => {
   it("selects every external root declared by the server", () => {
     assert.deepStrictEqual(
       Object.keys(selectCliRuntimeExternalDependencies(serverPackageJson.dependencies)).sort(),
-      ["@ff-labs/fff-node", "msgpackr-extract", "node-pty"],
+      ["@ff-labs/fff-node", "msgpackr-extract", "node-pty", "onnxruntime-node"],
     );
   });
 });
@@ -161,7 +166,12 @@ it.layer(NodeServices.layer)("external package dependency closure", (it) => {
       // Without this the closure check below can pass vacuously: if nothing is
       // read, nothing is checked. These are the packages whose closure actually
       // broke WSL, so require them by name.
-      for (const required of ["node-pty", "node-gyp-build-optional-packages", "detect-libc"]) {
+      for (const required of [
+        "node-pty",
+        "node-gyp-build-optional-packages",
+        "detect-libc",
+        "onnxruntime-node",
+      ]) {
         assert.ok(
           found.includes(required),
           `expected ${required} in the pnpm store; the closure check is only meaningful if it can read these (found ${found.length})`,
@@ -194,6 +204,9 @@ it.layer(NodeServices.layer)("external package dependency closure", (it) => {
           ...(manifest.peerDependencies ?? {}),
         };
         for (const dependency of Object.keys(declared)) {
+          // Install-script-only dependencies never resolve at runtime, so they
+          // do not have to follow their root out of the bundle.
+          if (isInstallOnlyExternalDependency(dependency)) continue;
           if (!isRuntimeExternal(dependency)) {
             violations.push(`${name} -> ${dependency}`);
           }

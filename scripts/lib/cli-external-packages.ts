@@ -48,7 +48,36 @@ export const CLI_RUNTIME_EXTERNAL_PREFIXES = [
   // becoming real if either is ever declared as a dependency.
   "bufferutil",
   "utf-8-validate",
+  // Semantic search's embedding runtime. onnxruntime-node loads its prebuilt
+  // addon with `require("../bin/napi-v6/<platform>/<arch>/onnxruntime_binding.node")`,
+  // a path relative to its own lib directory. Inlined into a bundle chunk that
+  // path resolves against apps/server/dist instead and misses, so the model
+  // never loads and semantic search silently degrades to lexical-only.
+  // onnxruntime-common follows it because the runtime requires it by name.
+  // @huggingface/transformers itself stays bundled: it reaches onnxruntime-node
+  // through a bare specifier, which resolves from disk either way.
+  "onnxruntime-node",
+  "onnxruntime-common",
 ] as const;
+
+/**
+ * Declared dependencies of an external package that Node never loads.
+ *
+ * The closure rule above exists because an external package's runtime
+ * `require` resolves from the real filesystem. A dependency reached only by an
+ * install script is not part of that closure: onnxruntime-node names adm-zip
+ * and global-agent for its postinstall downloader, which pnpm-workspace.yaml
+ * disables (`allowBuilds: onnxruntime-node: false`) since the package already
+ * ships the CPU binaries we use. Bundling them away is therefore harmless, and
+ * exempting them keeps semver, type-fest, escape-string-regexp and the rest of
+ * global-agent's tree inside the bundle where they belong.
+ */
+export const CLI_EXTERNAL_INSTALL_ONLY_DEPENDENCIES = ["adm-zip", "global-agent"] as const;
+
+/** True when `name` is only reached by an external package's install script. */
+export function isInstallOnlyExternalDependency(name: string): boolean {
+  return CLI_EXTERNAL_INSTALL_ONLY_DEPENDENCIES.some((entry) => entry === name);
+}
 
 /**
  * External only so the bundler never has to resolve them.
