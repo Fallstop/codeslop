@@ -5,12 +5,7 @@ import { create } from "zustand";
 
 import { PersistedComposerImageAttachment } from "./composerDraftStore";
 import { createMemoryStorage, type StateStorage } from "./lib/storage";
-import {
-  applyQueueIntent,
-  type QueueIntent,
-  type QueuedTurn,
-  type QueuedTurnContent,
-} from "./threadQueue";
+import type { QueuedTurn, QueuedTurnContent } from "./threadQueue";
 
 export const THREAD_QUEUE_STORAGE_KEY = "t3code:thread-queue:v1";
 const THREAD_QUEUE_STORAGE_VERSION = 1;
@@ -145,10 +140,8 @@ function readPersistedEntries(): Record<string, QueuedTurn[]> | null {
 }
 
 export interface EnqueueResult {
-  /** The entry as it now sits in the queue (already merged, when coalesced). */
+  /** The entry as it now sits in the queue. */
   entry: QueuedTurn;
-  /** True when the content folded into an existing turn instead of adding one. */
-  coalesced: boolean;
   /** False when the queue is at its cap and nothing was added. */
   accepted: boolean;
   /** False when the write will not survive a reload. */
@@ -161,7 +154,6 @@ interface ThreadQueueStoreState {
   entriesByThreadKey: Record<string, QueuedTurn[]>;
   enqueue: (
     threadKey: string,
-    intent: QueueIntent,
     content: QueuedTurnContent,
     identity: { id: string; createdAt: string },
   ) => EnqueueResult;
@@ -211,7 +203,7 @@ function commitThreadEntries(
 export const useThreadQueueStore = create<ThreadQueueStoreState>()((set, get) => ({
   entriesByThreadKey: {},
 
-  enqueue: (threadKey, intent, content, identity) => {
+  enqueue: (threadKey, content, identity) => {
     const existing = get().entriesByThreadKey[threadKey] ?? [];
     const { kept, droppedNames } = partitionQueueAttachments(content.attachments);
     const candidate: QueuedTurn = {
@@ -222,25 +214,18 @@ export const useThreadQueueStore = create<ThreadQueueStoreState>()((set, get) =>
       createdAt: identity.createdAt,
     };
 
-    // The cap only blocks turns that would *add* to the queue. Coalescing
-    // into the back of a full queue is still allowed: it is the user editing
-    // work they already queued, not piling on more.
-    const wouldAppend = intent === "append" || existing.length === 0;
-    if (wouldAppend && existing.length >= MAX_QUEUED_TURNS_PER_THREAD) {
+    if (existing.length >= MAX_QUEUED_TURNS_PER_THREAD) {
       return {
         entry: candidate,
-        coalesced: false,
         accepted: false,
         durable: false,
         droppedImageNames: droppedNames,
       };
     }
 
-    const nextEntries = applyQueueIntent(existing, intent, candidate);
-    const durable = commitThreadEntries(get, set, threadKey, nextEntries);
+    const durable = commitThreadEntries(get, set, threadKey, [...existing, candidate]);
     return {
-      entry: nextEntries[nextEntries.length - 1]!,
-      coalesced: !wouldAppend,
+      entry: candidate,
       accepted: true,
       durable,
       droppedImageNames: droppedNames,

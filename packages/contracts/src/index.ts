@@ -30,6 +30,5 @@ export * from "./preview.ts";
 export * from "./previewAutomation.ts";
 export * from "./resourceTelemetry.ts";
 export * from "./semanticSearch.ts";
-export * from "./aside.ts";
 export * from "./usage.ts";
 export * from "./rpc.ts";

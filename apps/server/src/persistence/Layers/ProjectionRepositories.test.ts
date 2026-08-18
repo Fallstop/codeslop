@@ -88,6 +88,7 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         interactionMode: "default",
         branch: null,
         worktreePath: null,
+        parentThreadId: null,
         latestTurnId: null,
         createdAt: "2026-03-24T00:00:00.000Z",
         updatedAt: "2026-03-24T00:00:00.000Z",
@@ -135,6 +136,58 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
     }),
   );
 
+  it.effect("lists live side chats of a thread and ignores deleted or unrelated ones", () =>
+    Effect.gen(function* () {
+      const threads = yield* ProjectionThreadRepository;
+      const parentThreadId = ThreadId.make("parent-with-side-chats");
+
+      const thread = (threadId: string, parent: string | null, deletedAt: string | null) => ({
+        threadId: ThreadId.make(threadId),
+        projectId: ProjectId.make("project-side-chats"),
+        title: threadId,
+        modelSelection: {
+          instanceId: ProviderInstanceId.make("claudeAgent"),
+          model: "claude-opus-4-6",
+        },
+        runtimeMode: "full-access" as const,
+        interactionMode: "default" as const,
+        branch: null,
+        worktreePath: null,
+        parentThreadId: parent === null ? null : ThreadId.make(parent),
+        latestTurnId: null,
+        createdAt: "2026-03-24T00:00:00.000Z",
+        updatedAt: "2026-03-24T00:00:00.000Z",
+        archivedAt: null,
+        settledOverride: null,
+        settledAt: null,
+        snoozedUntil: null,
+        snoozedAt: null,
+        pinnedAt: null,
+        latestUserMessageAt: null,
+        pendingApprovalCount: 0,
+        pendingUserInputCount: 0,
+        hasActionableProposedPlan: 0,
+        deletedAt,
+      });
+
+      yield* threads.upsert(thread("parent-with-side-chats", null, null));
+      yield* threads.upsert(thread("side-live", "parent-with-side-chats", null));
+      yield* threads.upsert(
+        // Already deleted: a cascade must not keep re-deleting it.
+        thread("side-deleted", "parent-with-side-chats", "2026-03-24T00:00:01.000Z"),
+      );
+      yield* threads.upsert(thread("side-of-other", "some-other-thread", null));
+      yield* threads.upsert(thread("root-thread", null, null));
+
+      const children = yield* threads.listByParentThreadId({ parentThreadId });
+
+      assert.deepStrictEqual(
+        children.map((child) => child.threadId),
+        [ThreadId.make("side-live")],
+      );
+    }),
+  );
+
   it.effect("round-trips non-null settlement values through the thread row", () =>
     Effect.gen(function* () {
       const threads = yield* ProjectionThreadRepository;
@@ -151,6 +204,7 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         interactionMode: "default",
         branch: null,
         worktreePath: null,
+        parentThreadId: null,
         latestTurnId: null,
         createdAt: "2026-03-24T00:00:00.000Z",
         updatedAt: "2026-03-25T00:00:00.000Z",

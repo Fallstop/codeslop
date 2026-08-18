@@ -1,29 +1,27 @@
 # Queueing turns
 
-You do not have to wait for an agent to finish before writing your next message. Anything you send
-to a thread that is already working joins a queue above the composer and goes out on its own as
-soon as the current turn ends.
+You do not have to wait for an agent to finish before writing your next message. There are two ways
+to send while a turn is running, and they do different things.
 
-## Two ways to queue
+## Send vs Queue
 
-The two send affordances differ only in where your message lands:
+- **Send** (`Enter`, or the send button) delivers your message **into the running turn**. The agent
+  sees it mid-work and can change course. This is the normal behaviour and has not changed.
+- **Queue** (`Ctrl`/`Cmd` + `Shift` + `Enter`, or the **Queue** button beside Stop) stacks your
+  message as **its own turn**, to be sent once the current one finishes. Use it when the next
+  instruction should only begin after the current work is done.
 
-- **Send** (`Enter`, or the send button) adds to the turn already waiting. Send three follow-up
-  thoughts and the agent receives them as one turn, separated by blank lines.
-- **Queue** (`Ctrl`/`Cmd` + `Shift` + `Enter`, or the **Queue** button beside Stop) starts a new
-  turn. Use it when the next instruction should only begin after the previous one is done.
-
-While the composer has text, the turn that `Enter` would fold into is highlighted and labelled
-**↵ adds here**, so you can always see which of the two you are about to do.
+Every press of Queue adds another turn to the stack. Nothing is ever merged — five queued turns send
+as five turns, in the order you stacked them.
 
 ## Managing the queue
 
-Each queued turn is a row above the composer, numbered in send order. Select a row to edit its text
-inline (`Cmd`/`Ctrl` + `Enter` saves, `Escape` cancels), use the arrows to reorder, or the ✕ to drop
-it. **Clear** empties the queue.
+Queued turns appear as numbered rows above the composer. Select a row to edit its text inline
+(`Cmd`/`Ctrl` + `Enter` saves, `Escape` cancels), use the arrows to reorder, or the ✕ to drop it.
+**Clear** empties the queue.
 
-A thread holds at most ten queued turns. Once the queue is full, `Enter` still works — it folds into
-the last turn rather than adding an eleventh.
+A thread holds at most ten queued turns. Past that, Queue is refused rather than silently folding
+your message into an existing turn — drop one first, or send it into the running turn with `Enter`.
 
 ## When the queue waits
 

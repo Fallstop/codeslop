@@ -1,7 +1,5 @@
 import {
   type ApprovalRequestId,
-  type AsideAskInput,
-  type AsideId,
   DEFAULT_MODEL,
   defaultInstanceIdForDriver,
   type EnvironmentId,
@@ -165,6 +163,7 @@ import {
   ChevronDownIcon,
   GitBranchIcon,
   WifiOffIcon,
+  MessageCircleQuestion as MessageCircleQuestionIcon,
 } from "lucide-react";
 import { cn, randomHex } from "~/lib/utils";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
@@ -246,6 +245,7 @@ import {
   useThread,
   useThreadRefs,
   useThreadShell,
+  useThreadShells,
 } from "../state/entities";
 import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
@@ -278,11 +278,14 @@ import {
 } from "./chat/ThreadErrorBanner";
 import { resolveThreadPr } from "./ThreadStatusIndicators";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
-import { ComposerAsidePanel } from "./chat/ComposerAsidePanel";
-import { AsidesPanel } from "./chat/AsidesPanel";
-import { findAside, parseAsideCommand } from "~/asidePanel";
-import { selectThreadAsideState, useAsidePanelStore } from "~/asidePanelStore";
-import { asideEnvironment } from "../state/asides";
+import { SideChatPanel } from "./chat/SideChatPanel";
+import {
+  buildSideChatSeedPrompt,
+  parseSideChatCommand,
+  selectSideChatShells,
+  sideChatTitle,
+} from "~/sideChat";
+import { selectOpenSideChatId, sideChatParentKey, useSideChatStore } from "~/sideChatStore";
 import { ThreadSyncStatusPill } from "./chat/ThreadSyncStatusPill";
 import {
   DRAFT_HERO_TRANSITION_ANIMATION_ID,
@@ -1602,123 +1605,6 @@ function ChatViewContent(props: ChatViewProps) {
   const activeRightPanelSurface = useRightPanelStore((state) =>
     selectActiveRightPanelSurface(state.byThreadKey, activeThreadRef),
   );
-  // --- Asides -------------------------------------------------------------
-  // Side questions about the work in flight. Answering never touches the turn,
-  // so none of this is gated on the thread being idle.
-  const asideThreadKey = activeThreadKey;
-  const asideState = useAsidePanelStore((state) =>
-    selectThreadAsideState(state, asideThreadKey ?? ""),
-  );
-  const openAsidePanel = useAsidePanelStore((state) => state.open);
-  const closeAsidePanel = useAsidePanelStore((state) => state.close);
-  const setAsides = useAsidePanelStore((state) => state.setAsides);
-  const recordAside = useAsidePanelStore((state) => state.recordAside);
-  const dropAside = useAsidePanelStore((state) => state.dropAside);
-  const setAsidePendingQuestion = useAsidePanelStore((state) => state.setPendingQuestion);
-  const setAsideError = useAsidePanelStore((state) => state.setError);
-  const listAsidesCommand = useAtomCommand(asideEnvironment.list, { reportFailure: false });
-  const askAsideCommand = useAtomCommand(asideEnvironment.ask, { reportFailure: false });
-  const removeAsideCommand = useAtomCommand(asideEnvironment.remove, { reportFailure: false });
-  const activeAside = findAside(asideState.asides, asideState.target);
-
-  const askAside = useCallback(
-    async (question: string, asideId?: AsideId) => {
-      if (!activeThreadRef || !asideThreadKey) return;
-      const modelSelection = composerRef.current?.getSendContext()?.selectedModelSelection;
-      if (!modelSelection) {
-        setAsideError(asideThreadKey, "Choose a model before asking an aside.");
-        return;
-      }
-      setAsidePendingQuestion(asideThreadKey, question);
-      // Annotated rather than inferred: the optional `asideId` spread widens
-      // the literal into a union, which defeats the command's success-type
-      // inference at the call site.
-      const input: AsideAskInput = {
-        threadId: activeThreadRef.threadId,
-        question,
-        modelSelection,
-        ...(asideId ? { asideId } : {}),
-      };
-      const result = await askAsideCommand({
-        environmentId: activeThreadRef.environmentId,
-        input,
-      });
-      if (result._tag === "Success") {
-        recordAside(asideThreadKey, result.value.aside);
-        return;
-      }
-      if (isAtomCommandInterrupted(result)) {
-        setAsidePendingQuestion(asideThreadKey, null);
-        return;
-      }
-      const failure = squashAtomCommandFailure(result);
-      setAsideError(
-        asideThreadKey,
-        failure instanceof Error ? failure.message : "Could not answer that question.",
-      );
-    },
-    [
-      activeThreadRef,
-      asideThreadKey,
-      askAsideCommand,
-      recordAside,
-      setAsideError,
-      setAsidePendingQuestion,
-    ],
-  );
-
-  const openAside = useCallback(
-    (question: string) => {
-      if (!asideThreadKey) return;
-      openAsidePanel(asideThreadKey, "new");
-      if (question.length > 0) {
-        void askAside(question);
-      }
-    },
-    [asideThreadKey, askAside, openAsidePanel],
-  );
-
-  const removeAside = useCallback(
-    async (asideId: AsideId) => {
-      if (!activeThreadRef || !asideThreadKey) return;
-      // Dropped locally first: the row is gone from the list either way, and a
-      // failed delete leaves a server row that the next list call restores.
-      dropAside(asideThreadKey, asideId);
-      await removeAsideCommand({
-        environmentId: activeThreadRef.environmentId,
-        input: { threadId: activeThreadRef.threadId, asideId },
-      });
-    },
-    [activeThreadRef, asideThreadKey, dropAside, removeAsideCommand],
-  );
-
-  const asidesPanelOpen = activeRightPanelSurface?.kind === "asides";
-  // Fetch once per thread, when something first wants to see the list.
-  useEffect(() => {
-    if (!activeThreadRef || !asideThreadKey) return;
-    if (asideState.loaded) return;
-    if (!asidesPanelOpen && asideState.target === null) return;
-    let cancelled = false;
-    void listAsidesCommand({
-      environmentId: activeThreadRef.environmentId,
-      input: { threadId: activeThreadRef.threadId },
-    }).then((result) => {
-      if (cancelled || result._tag !== "Success") return;
-      setAsides(asideThreadKey, result.value.asides);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    activeThreadRef,
-    asideThreadKey,
-    asideState.loaded,
-    asideState.target,
-    asidesPanelOpen,
-    listAsidesCommand,
-    setAsides,
-  ]);
-
   const [pullRequestTabStatuses, setPullRequestTabStatuses] = useState<
     Record<string, PullRequestTabStatus>
   >({});
@@ -1824,6 +1710,120 @@ function ChatViewContent(props: ChatViewProps) {
     ? scopeProjectRef(activeThread.environmentId, activeThread.projectId)
     : null;
   const activeProject = useProject(activeProjectRef);
+
+  // --- Side chats ------------------------------------------------------
+  // Full agent sessions opened from this thread. They are ordinary threads
+  // carrying a parentThreadId, so their turns, tools and streaming come from
+  // the same machinery as any other thread — nothing here re-implements them.
+  const allThreadShells = useThreadShells();
+  const sideChats = useMemo(
+    () => selectSideChatShells(allThreadShells, activeThreadId),
+    [allThreadShells, activeThreadId],
+  );
+  const sideChatKey = activeThreadRef ? sideChatParentKey(activeThreadRef) : null;
+  const openSideChatId = useSideChatStore((state) => selectOpenSideChatId(state, sideChatKey));
+  const openSideChat = useSideChatStore((state) => state.open);
+  const showSideChatList = useSideChatStore((state) => state.showList);
+  const forgetSideChat = useSideChatStore((state) => state.forget);
+
+  const startSideChat = useCallback(
+    async (question: string) => {
+      if (!activeThread || !activeProject || !sideChatKey) return;
+      const modelSelection =
+        composerRef.current?.getSendContext()?.selectedModelSelection ??
+        activeThread.modelSelection;
+
+      const threadId = newThreadId();
+      const createdAt = new Date().toISOString();
+      const title = sideChatTitle(question);
+      const createResult = await createThread({
+        environmentId: activeThread.environmentId,
+        input: {
+          threadId,
+          projectId: activeProject.id,
+          title,
+          modelSelection,
+          runtimeMode,
+          interactionMode: "default",
+          branch: activeThread.branch ?? null,
+          worktreePath: activeThread.worktreePath,
+          parentThreadId: activeThread.id,
+          createdAt,
+        },
+      });
+      if (createResult._tag !== "Success") return;
+
+      openSideChat(sideChatKey, threadId);
+      if (activeThreadRef) useRightPanelStore.getState().open(activeThreadRef, "side-chats");
+
+      await startThreadTurn({
+        environmentId: activeThread.environmentId,
+        input: {
+          threadId,
+          message: {
+            messageId: newMessageId(),
+            role: "user",
+            text: buildSideChatSeedPrompt({ parentTitle: activeThread.title, question }),
+            attachments: [],
+          },
+          modelSelection,
+          titleSeed: title,
+          runtimeMode,
+          interactionMode: "default",
+          createdAt,
+        },
+      });
+    },
+    [
+      activeProject,
+      activeThread,
+      activeThreadRef,
+      createThread,
+      openSideChat,
+      runtimeMode,
+      sideChatKey,
+      startThreadTurn,
+    ],
+  );
+
+  const sendToSideChat = useCallback(
+    async (threadId: ThreadId, text: string) => {
+      if (!activeThread) return;
+      const modelSelection =
+        composerRef.current?.getSendContext()?.selectedModelSelection ??
+        activeThread.modelSelection;
+      await startThreadTurn({
+        environmentId: activeThread.environmentId,
+        input: {
+          threadId,
+          message: {
+            messageId: newMessageId(),
+            role: "user",
+            text,
+            attachments: [],
+          },
+          modelSelection,
+          runtimeMode,
+          interactionMode: "default",
+          createdAt: new Date().toISOString(),
+        },
+      });
+    },
+    [activeThread, runtimeMode, startThreadTurn],
+  );
+
+  const deleteSideChat = useCallback(
+    async (threadId: ThreadId) => {
+      if (!activeThread || !sideChatKey) return;
+      forgetSideChat(sideChatKey, threadId);
+      await deleteThread({
+        environmentId: activeThread.environmentId,
+        input: { threadId },
+      });
+    },
+    [activeThread, deleteThread, forgetSideChat, sideChatKey],
+  );
+
   const handleNewThreadInActiveProject = useCallback(() => {
     startNewThreadForProject(activeProjectRef, handleNewThread);
   }, [activeProjectRef, handleNewThread]);
@@ -4650,6 +4650,39 @@ function ChatViewContent(props: ChatViewProps) {
     }
     void handleSwitchCheckoutToThread();
   }, [gitStatusQuery.data?.hasWorkingTreeChanges, handleSwitchCheckoutToThread]);
+  // A side chat opened as a full thread is deliberately absent from the
+  // sidebar, so without this the user lands in a thread with no explanation of
+  // what it belongs to and no obvious way back to it.
+  const sideChatParentBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
+    const parentThreadId = activeThread?.parentThreadId ?? null;
+    if (!activeThread || parentThreadId === null) return null;
+    const parent = allThreadShells.find((shell) => shell.id === parentThreadId) ?? null;
+    return {
+      id: `side-chat-parent:${parentThreadId}`,
+      variant: "info",
+      icon: <MessageCircleQuestionIcon className="size-3.5" aria-hidden="true" />,
+      title: "Side chat",
+      description: parent ? `Opened from “${parent.title}”.` : "Opened from another thread.",
+      actions: (
+        <Button
+          size="xs"
+          variant="outline"
+          onClick={() =>
+            void navigate({
+              to: "/$environmentId/$threadId",
+              params: {
+                environmentId: activeThread.environmentId,
+                threadId: parentThreadId,
+              },
+            })
+          }
+        >
+          Back to thread
+        </Button>
+      ),
+    };
+  }, [activeThread, allThreadShells, navigate]);
+
   const composerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
     const isUrgentSystemItem = (item: ComposerBannerStackItem) =>
       item.urgent === true || item.variant === "error" || item.variant === "warning";
@@ -4659,6 +4692,7 @@ function ChatViewContent(props: ChatViewProps) {
       backgroundLivenessBannerItem === null ? [] : [backgroundLivenessBannerItem];
     const wokeThreadItems = wokeThreadBannerItem === null ? [] : [wokeThreadBannerItem];
     const parkedThreadItems = parkedThreadBannerItem === null ? [] : [parkedThreadBannerItem];
+    const sideChatParentItems = sideChatParentBannerItem === null ? [] : [sideChatParentBannerItem];
     if (!localCheckoutBranchMismatch || !showBranchMismatchBanner || !activeBranchMismatchKey) {
       return [
         ...urgentSystemItems,
@@ -4666,6 +4700,7 @@ function ChatViewContent(props: ChatViewProps) {
         ...calmSystemItems,
         ...wokeThreadItems,
         ...parkedThreadItems,
+        ...sideChatParentItems,
       ];
     }
     return [
@@ -4713,6 +4748,7 @@ function ChatViewContent(props: ChatViewProps) {
         },
       },
       ...parkedThreadItems,
+      ...sideChatParentItems,
     ];
   }, [
     activeBranchMismatchKey,
@@ -5151,16 +5187,17 @@ function ChatViewContent(props: ChatViewProps) {
       });
       return;
     }
-    // `/btw` opens an aside instead of sending a turn. Checked before the other
-    // slash commands and without a feature gate: it is the only way to reach
-    // the panel from the keyboard, and it must never reach the agent as text.
-    // Queued turns are exempt — a queue drains into the thread, not an aside.
-    const asideCommand = queuedTurn ? null : parseAsideCommand(trimmed);
-    if (asideCommand) {
+    // `/btw` opens a side chat instead of sending a turn. Checked before the
+    // other slash commands and without a feature gate: it is the only way to
+    // reach the panel from the keyboard, and it must never reach the agent as
+    // text. Queued turns are exempt — a queue drains into the thread it was
+    // stacked on, not into a side chat.
+    const sideChatCommand = queuedTurn ? null : parseSideChatCommand(trimmed);
+    if (sideChatCommand) {
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
-      openAside(asideCommand.question);
+      void startSideChat(sideChatCommand.question);
       return;
     }
     // Legacy plan mode: /plan and /default only act when the beta flag is on;
@@ -6363,14 +6400,31 @@ function ChatViewContent(props: ChatViewProps) {
         environmentId={activeThreadRef?.environmentId ?? null}
         threadId={activeThreadRef?.threadId ?? null}
       />
-    ) : activeRightPanelSurface?.kind === "asides" && activeThreadRef ? (
-      <AsidesPanel
-        asides={asideState.asides}
-        loaded={asideState.loaded}
-        cwd={activeThread?.worktreePath ?? activeProject?.workspaceRoot}
-        threadRef={activeThreadRef}
-        onContinue={(asideId) => asideThreadKey && openAsidePanel(asideThreadKey, asideId)}
-        onRemove={(asideId) => void removeAside(asideId)}
+    ) : activeRightPanelSurface?.kind === "side-chats" && activeThreadRef && activeThread ? (
+      <SideChatPanel
+        environmentId={activeThread.environmentId}
+        parentTitle={activeThread.title}
+        sideChats={sideChats}
+        openThreadId={openSideChatId}
+        cwd={activeThread.worktreePath ?? activeProject?.workspaceRoot}
+        canStart
+        onOpen={(threadId) => sideChatKey && openSideChat(sideChatKey, threadId)}
+        onShowList={() => sideChatKey && showSideChatList(sideChatKey)}
+        onStartNew={() => void startSideChat("")}
+        onSend={(threadId, text) => void sendToSideChat(threadId, text)}
+        onInterrupt={(threadId) =>
+          void interruptThreadTurn({
+            environmentId: activeThread.environmentId,
+            input: { threadId },
+          })
+        }
+        onDelete={(threadId) => void deleteSideChat(threadId)}
+        onOpenAsThread={(threadId) =>
+          void navigate({
+            to: "/$environmentId/$threadId",
+            params: { environmentId: activeThread.environmentId, threadId },
+          })
+        }
       />
     ) : (activeRightPanelSurface?.kind === "files" || activeRightPanelSurface?.kind === "file") &&
       activeProject &&
@@ -6573,18 +6627,6 @@ function ChatViewContent(props: ChatViewProps) {
                   ) : (
                     <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
                   )}
-                  {asideThreadKey && asideState.target !== null && activeThreadRef ? (
-                    <ComposerAsidePanel
-                      className="relative z-0 mx-auto mb-1.5 w-full max-w-3xl"
-                      aside={activeAside}
-                      pendingQuestion={asideState.pendingQuestion}
-                      errorMessage={asideState.errorMessage}
-                      cwd={activeThread?.worktreePath ?? activeProject?.workspaceRoot}
-                      threadRef={activeThreadRef}
-                      onAsk={(question) => void askAside(question, activeAside?.asideId)}
-                      onClose={() => closeAsidePanel(asideThreadKey)}
-                    />
-                  ) : null}
                   {threadSyncPhase && !activeEnvironmentUnavailable ? (
                     <ThreadSyncStatusPill phase={threadSyncPhase} />
                   ) : null}

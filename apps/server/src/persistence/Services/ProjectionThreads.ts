@@ -43,6 +43,8 @@ export const ProjectionThread = Schema.Struct({
   snoozedAt: Schema.NullOr(IsoDateTime),
   pinnedAt: Schema.NullOr(IsoDateTime),
   pinOrderKey: Schema.optional(Schema.NullOr(Schema.String)),
+  /** Set when this thread is a side chat opened from another thread. */
+  parentThreadId: Schema.NullOr(ThreadId),
   titleRegenerationRequestId: Schema.optional(Schema.NullOr(CommandId)),
   titleRegenerationStartedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   latestUserMessageAt: Schema.NullOr(IsoDateTime),
@@ -67,6 +69,11 @@ export const ListProjectionThreadsByProjectInput = Schema.Struct({
   projectId: ProjectId,
 });
 export type ListProjectionThreadsByProjectInput = typeof ListProjectionThreadsByProjectInput.Type;
+
+export const ListProjectionThreadsByParentInput = Schema.Struct({
+  parentThreadId: ThreadId,
+});
+export type ListProjectionThreadsByParentInput = typeof ListProjectionThreadsByParentInput.Type;
 
 /**
  * ProjectionThreadRepositoryShape - Service API for projected thread records.
@@ -93,6 +100,14 @@ export interface ProjectionThreadRepositoryShape {
    */
   readonly listByProjectId: (
     input: ListProjectionThreadsByProjectInput,
+  ) => Effect.Effect<ReadonlyArray<ProjectionThread>, ProjectionRepositoryError>;
+
+  /**
+   * Live side chats opened from a thread. Deleted rows are excluded so a
+   * cascade does not keep re-deleting what it already removed.
+   */
+  readonly listByParentThreadId: (
+    input: ListProjectionThreadsByParentInput,
   ) => Effect.Effect<ReadonlyArray<ProjectionThread>, ProjectionRepositoryError>;
 
   /**

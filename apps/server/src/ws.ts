@@ -31,7 +31,6 @@ import {
   OrchestrationSearchThreadsError,
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
-  ASIDE_WS_METHODS,
   SEMANTIC_SEARCH_WS_METHODS,
   type ProjectId,
   type ProjectEntriesFailure,
@@ -76,7 +75,6 @@ import { normalizeDispatchCommand } from "./orchestration/Normalizer.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { HybridThreadSearch } from "./semanticSearch/HybridThreadSearch.ts";
-import * as AsideService from "./aside/AsideService.ts";
 import {
   observeRpcEffect as instrumentRpcEffect,
   observeRpcStream as instrumentRpcStream,
@@ -362,7 +360,6 @@ const makeWsRpcLayer = (
       const crypto = yield* Crypto.Crypto;
       const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
       const hybridThreadSearch = yield* HybridThreadSearch;
-      const asides = yield* AsideService.AsideService;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const checkpointDiffQuery = yield* CheckpointDiffQuery.CheckpointDiffQuery;
       const keybindings = yield* Keybindings.Keybindings;
@@ -1612,18 +1609,6 @@ const makeWsRpcLayer = (
         [SEMANTIC_SEARCH_WS_METHODS.getStatus]: (_input) =>
           observeRpcEffect(SEMANTIC_SEARCH_WS_METHODS.getStatus, hybridThreadSearch.getStatus, {
             "rpc.aggregate": "server",
-          }),
-        [ASIDE_WS_METHODS.list]: (input) =>
-          observeRpcEffect(ASIDE_WS_METHODS.list, asides.list(input), {
-            "rpc.aggregate": "orchestration",
-          }),
-        [ASIDE_WS_METHODS.ask]: (input) =>
-          observeRpcEffect(ASIDE_WS_METHODS.ask, asides.ask(input), {
-            "rpc.aggregate": "orchestration",
-          }),
-        [ASIDE_WS_METHODS.remove]: (input) =>
-          observeRpcEffect(ASIDE_WS_METHODS.remove, asides.remove(input), {
-            "rpc.aggregate": "orchestration",
           }),
         [WS_METHODS.cloudGetRelayClientStatus]: (_input) =>
           observeRpcEffect(WS_METHODS.cloudGetRelayClientStatus, relayClient.resolve, {

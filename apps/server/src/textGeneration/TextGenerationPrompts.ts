@@ -316,16 +316,3 @@ export function buildThreadTitlePrompt(input: ThreadTitlePromptInput) {
 
   return { prompt, outputSchema };
 }
-
-// ---------------------------------------------------------------------------
-// Aside answer
-// ---------------------------------------------------------------------------
-
-/**
- * Asides compose their own prompt (see `aside/asidePrompt.ts`) because the
- * wording is what keeps a context-starved backend from inventing tool output.
- * Providers only need the output shape.
- */
-export const asideAnswerOutputSchema = Schema.Struct({
-  answer: Schema.String,
-});

@@ -111,7 +111,6 @@ import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngi
 import { OrchestrationListenerCallbackError } from "./orchestration/Errors.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { HybridThreadSearchLexicalOnly } from "./semanticSearch/HybridThreadSearch.ts";
-import * as AsideService from "./aside/AsideService.ts";
 import { SqlitePersistenceMemory } from "./persistence/Layers/Sqlite.ts";
 import { PersistenceSqlError } from "./persistence/Errors.ts";
 import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
@@ -226,6 +225,7 @@ const makeDefaultOrchestrationReadModel = () => {
         runtimeMode: "full-access" as const,
         branch: null,
         worktreePath: null,
+        parentThreadId: null,
         createdAt: now,
         updatedAt: now,
         archivedAt: null,
@@ -256,6 +256,7 @@ const makeDefaultOrchestrationThreadShell = (
     interactionMode: "default",
     branch: null,
     worktreePath: null,
+    parentThreadId: null,
     latestTurn: null,
     createdAt: now,
     updatedAt: now,
@@ -405,7 +406,6 @@ const buildAppUnderTest = (options?: {
     orchestrationEngine?: Partial<OrchestrationEngine.OrchestrationEngineService["Service"]>;
     projectionSnapshotQuery?: Partial<ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"]>;
     checkpointDiffQuery?: Partial<CheckpointDiffQuery.CheckpointDiffQuery["Service"]>;
-    asideService?: Partial<AsideService.AsideService["Service"]>;
     browserTraceCollector?: Partial<BrowserTraceCollector.BrowserTraceCollector["Service"]>;
     serverLifecycleEvents?: Partial<ServerLifecycleEvents.ServerLifecycleEvents["Service"]>;
     serverRuntimeStartup?: Partial<ServerRuntimeStartup.ServerRuntimeStartup["Service"]>;
@@ -828,10 +828,6 @@ const buildAppUnderTest = (options?: {
                 diff: "",
               }),
             ...options?.layers?.checkpointDiffQuery,
-          }),
-          Layer.mock(AsideService.AsideService)({
-            list: () => Effect.succeed({ asides: [] }),
-            ...options?.layers?.asideService,
           }),
         ),
       ),
@@ -5246,6 +5242,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                 },
                 branch: "feature/demo",
                 worktreePath: null,
+                parentThreadId: null,
                 isOnPullRequestHead: true,
               }),
           },
@@ -5264,6 +5261,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
                     current: true,
                     isDefault: true,
                     worktreePath: null,
+                    parentThreadId: null,
                   },
                 ],
                 isRepo: true,
@@ -5855,6 +5853,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             runtimeMode: "full-access" as const,
             branch: null,
             worktreePath: null,
+            parentThreadId: null,
             createdAt: now,
             updatedAt: now,
             archivedAt: null,
@@ -7914,6 +7913,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         terminalId: "default",
         cwd: "/tmp/project",
         worktreePath: null,
+        parentThreadId: null,
         status: "running" as const,
         pid: 1234,
         history: "",

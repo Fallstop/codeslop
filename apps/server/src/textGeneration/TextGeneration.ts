@@ -73,22 +73,6 @@ export interface ThreadTitleGenerationResult {
   title: string;
 }
 
-export interface AsideAnswerGenerationInput {
-  cwd: string;
-  /**
-   * The fully composed prompt. Unlike the other generators, the caller owns
-   * the wording: the aside module decides what context the answering agent
-   * gets and what it must refuse to invent.
-   */
-  prompt: string;
-  /** What model and provider to use for generation. */
-  modelSelection: ModelSelection;
-}
-
-export interface AsideAnswerGenerationResult {
-  answer: string;
-}
-
 export interface TextGenerationService {
   generateCommitMessage(
     input: CommitMessageGenerationInput,
@@ -96,7 +80,6 @@ export interface TextGenerationService {
   generatePrContent(input: PrContentGenerationInput): Promise<PrContentGenerationResult>;
   generateBranchName(input: BranchNameGenerationInput): Promise<BranchNameGenerationResult>;
   generateThreadTitle(input: ThreadTitleGenerationInput): Promise<ThreadTitleGenerationResult>;
-  generateAsideAnswer(input: AsideAnswerGenerationInput): Promise<AsideAnswerGenerationResult>;
 }
 
 /**
@@ -130,15 +113,6 @@ export class TextGeneration extends Context.Service<
     readonly generateThreadTitle: (
       input: ThreadTitleGenerationInput,
     ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
-
-    /**
-     * Answer a side question about a thread from a caller-composed prompt.
-     * Runs without tools: this is the fallback for providers with no native
-     * side-question channel.
-     */
-    readonly generateAsideAnswer: (
-      input: AsideAnswerGenerationInput,
-    ) => Effect.Effect<AsideAnswerGenerationResult, TextGenerationError>;
   }
 >()("t3/textGeneration/TextGeneration") {}
 
@@ -149,8 +123,7 @@ type TextGenerationOp =
   | "generateCommitMessage"
   | "generatePrContent"
   | "generateBranchName"
-  | "generateThreadTitle"
-  | "generateAsideAnswer";
+  | "generateThreadTitle";
 
 const resolveInstance = (
   registry: ProviderInstanceRegistry.ProviderInstanceRegistry["Service"],
@@ -189,10 +162,6 @@ export const makeTextGenerationFromRegistry = (
     generateThreadTitle: (input) =>
       resolveInstance(registry, "generateThreadTitle", input.modelSelection.instanceId).pipe(
         Effect.flatMap((textGeneration) => textGeneration.generateThreadTitle(input)),
-      ),
-    generateAsideAnswer: (input) =>
-      resolveInstance(registry, "generateAsideAnswer", input.modelSelection.instanceId).pipe(
-        Effect.flatMap((textGeneration) => textGeneration.generateAsideAnswer(input)),
       ),
   });
 

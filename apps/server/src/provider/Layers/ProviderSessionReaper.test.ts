@@ -98,6 +98,7 @@ function makeReadModel(
       runtimeMode: "full-access" as const,
       branch: null,
       worktreePath: null,
+      parentThreadId: null,
       createdAt: now,
       updatedAt: now,
       archivedAt: null,
@@ -169,8 +170,7 @@ describe("ProviderSessionReaper", () => {
       respondToUserInput: () => unsupported(),
       stopSession,
       listSessions: () => Effect.succeed([]),
-      getCapabilities: () =>
-        Effect.succeed({ sessionModelSwitch: "in-session", sideQuestion: "unsupported" }),
+      getCapabilities: () => Effect.succeed({ sessionModelSwitch: "in-session" }),
       getInstanceInfo: (instanceId) => {
         const driverKind = ProviderDriverKind.make(String(instanceId));
         return Effect.succeed({

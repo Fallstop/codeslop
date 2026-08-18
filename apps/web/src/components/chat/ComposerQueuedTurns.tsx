@@ -24,12 +24,6 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 interface ComposerQueuedTurnsProps {
   entries: ReadonlyArray<QueuedTurn>;
   holdReason: ThreadQueueHoldReason | null;
-  /**
-   * The turn an ordinary send would fold into, or null when the composer is
-   * empty. Highlighting it is what makes the two send affordances legible:
-   * without it, Enter and the Queue action look like the same button.
-   */
-  coalesceTargetId: string | null;
   /** Label for the queue shortcut, e.g. "⌘⇧↵". Omitted when unbound. */
   queueShortcutLabel: string | null;
   onEditText: (entryId: string, text: string) => void;
@@ -49,7 +43,6 @@ const QueuedTurnRow = memo(function QueuedTurnRow({
   entry,
   index,
   total,
-  isCoalesceTarget,
   isEditing,
   onBeginEdit,
   onCommitEdit,
@@ -60,7 +53,6 @@ const QueuedTurnRow = memo(function QueuedTurnRow({
   entry: QueuedTurn;
   index: number;
   total: number;
-  isCoalesceTarget: boolean;
   isEditing: boolean;
   onBeginEdit: () => void;
   onCommitEdit: (text: string) => void;
@@ -125,14 +117,7 @@ const QueuedTurnRow = memo(function QueuedTurnRow({
   }
 
   return (
-    <li
-      className={cn(
-        "group/queued-turn relative flex items-center gap-2 rounded-xl border px-2 py-1.5 transition-colors duration-150",
-        isCoalesceTarget
-          ? "border-ring/45 bg-accent/35"
-          : "border-transparent hover:border-border/70 hover:bg-accent/25",
-      )}
-    >
+    <li className="group/queued-turn relative flex items-center gap-2 rounded-xl border border-transparent px-2 py-1.5 transition-colors duration-150 hover:border-border/70 hover:bg-accent/25">
       <span
         aria-hidden="true"
         className="inline-flex size-5 shrink-0 items-center justify-center rounded-md bg-muted font-medium text-[11px] text-muted-foreground tabular-nums"
@@ -176,10 +161,6 @@ const QueuedTurnRow = memo(function QueuedTurnRow({
         </Tooltip>
       ) : null}
 
-      {isCoalesceTarget ? (
-        <Kbd className="shrink-0 bg-transparent text-[10px] text-muted-foreground">↵ adds here</Kbd>
-      ) : null}
-
       {/* Row actions stay mounted for keyboard users and fade in on hover. */}
       <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover/queued-turn:opacity-100">
         <Button
@@ -219,13 +200,11 @@ const QueuedTurnRow = memo(function QueuedTurnRow({
  *
  * Deliberately static: this sits under a running agent for minutes at a time,
  * and a pulsing or spinning queue would repaint continuously for no
- * information. State changes are carried by the status line and the
- * coalesce-target highlight instead.
+ * information. State changes are carried by the status line instead.
  */
 export const ComposerQueuedTurns = memo(function ComposerQueuedTurns({
   entries,
   holdReason,
-  coalesceTargetId,
   queueShortcutLabel,
   onEditText,
   onRemove,
@@ -296,7 +275,6 @@ export const ComposerQueuedTurns = memo(function ComposerQueuedTurns({
             entry={entry}
             index={index}
             total={entries.length}
-            isCoalesceTarget={entry.id === coalesceTargetId}
             isEditing={entry.id === editingEntryId}
             onBeginEdit={() => setEditingEntryId(entry.id)}
             onCommitEdit={(text) => commitEdit(entry.id, text)}
@@ -307,10 +285,11 @@ export const ComposerQueuedTurns = memo(function ComposerQueuedTurns({
         ))}
       </ul>
 
-      {queueShortcutLabel && coalesceTargetId ? (
+      {queueShortcutLabel ? (
         <p className="px-1 pt-1 text-[11px] text-muted-foreground/80">
-          <Kbd className="bg-transparent px-0 text-[11px]">{queueShortcutLabel}</Kbd> queues as a
-          separate turn instead.
+          <Kbd className="bg-transparent px-0 text-[11px]">{queueShortcutLabel}</Kbd> adds another
+          turn. <Kbd className="bg-transparent px-0 text-[11px]">↵</Kbd> still goes to the running
+          turn.
         </p>
       ) : null}
     </section>

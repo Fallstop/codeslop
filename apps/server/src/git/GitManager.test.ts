@@ -293,10 +293,6 @@ function createTextGeneration(
       Effect.succeed({
         title: "Update workflow",
       }),
-    generateAsideAnswer: () =>
-      Effect.succeed({
-        answer: "Stub aside answer",
-      }),
     ...overrides,
   };
 
@@ -340,17 +336,6 @@ function createTextGeneration(
           (cause) =>
             new TextGenerationError({
               operation: "generateThreadTitle",
-              detail: "fake text generation failed",
-              ...(cause !== undefined ? { cause } : {}),
-            }),
-        ),
-      ),
-    generateAsideAnswer: (input) =>
-      implementation.generateAsideAnswer(input).pipe(
-        Effect.mapError(
-          (cause) =>
-            new TextGenerationError({
-              operation: "generateAsideAnswer",
               detail: "fake text generation failed",
               ...(cause !== undefined ? { cause } : {}),
             }),

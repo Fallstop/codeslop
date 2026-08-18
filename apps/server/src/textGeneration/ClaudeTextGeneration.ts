@@ -23,7 +23,6 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
-  asideAnswerOutputSchema,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
 import {
@@ -86,8 +85,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle"
-      | "generateAsideAnswer",
+      | "generateThreadTitle",
     value: unknown,
     detail: string,
   ): Effect.Effect<string, TextGenerationError> =>
@@ -117,8 +115,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle"
-      | "generateAsideAnswer";
+      | "generateThreadTitle";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -362,26 +359,10 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       };
     });
 
-  const generateAsideAnswer: TextGeneration.TextGeneration["Service"]["generateAsideAnswer"] =
-    Effect.fn("ClaudeTextGeneration.generateAsideAnswer")(function* (input) {
-      const generated = yield* runClaudeJson({
-        operation: "generateAsideAnswer",
-        cwd: input.cwd,
-        prompt: input.prompt,
-        outputSchemaJson: asideAnswerOutputSchema,
-        modelSelection: input.modelSelection,
-      });
-
-      return {
-        answer: generated.answer.trim(),
-      } satisfies TextGeneration.AsideAnswerGenerationResult;
-    });
-
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
-    generateAsideAnswer,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

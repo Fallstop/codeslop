@@ -278,8 +278,8 @@ function surfaceTitle(
       return `#${surface.number}`;
     case "agents":
       return "Agents";
-    case "asides":
-      return "Asides";
+    case "side-chats":
+      return "Side chats";
     case "preview": {
       const snapshot = surface.resourceId ? sessions[surface.resourceId] : null;
       if (!snapshot || snapshot.navStatus._tag === "Idle") return "Browser";
@@ -357,7 +357,7 @@ function SurfaceIcon({
     }
     case "agents":
       return <Bot className="size-3 shrink-0" />;
-    case "asides":
+    case "side-chats":
       return <MessageCircleQuestion className="size-3 shrink-0" />;
   }
 }

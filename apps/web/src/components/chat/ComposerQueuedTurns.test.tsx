@@ -27,7 +27,6 @@ function render(props: Partial<React.ComponentProps<typeof ComposerQueuedTurns>>
     <ComposerQueuedTurns
       entries={[entry("a", "first turn"), entry("b", "second turn")]}
       holdReason="running"
-      coalesceTargetId={null}
       queueShortcutLabel="⌘⇧↵"
       onEditText={() => {}}
       onRemove={() => {}}
@@ -51,14 +50,10 @@ describe("ComposerQueuedTurns", () => {
     expect(markup).toContain("2 turns queued, sending automatically.");
   });
 
-  it("marks only the last turn as the coalesce target", () => {
-    const markup = render({ coalesceTargetId: "b" });
-    expect(markup).toContain("↵ adds here");
-    expect(markup.match(/↵ adds here/g)).toHaveLength(1);
-  });
-
-  it("stays silent about the coalesce target when the composer is empty", () => {
-    expect(render({ coalesceTargetId: null })).not.toContain("↵ adds here");
+  it("tells the user Enter still reaches the running turn", () => {
+    const markup = render();
+    expect(markup).toContain("still goes to the running");
+    expect(markup).not.toContain("adds here");
   });
 
   it("offers Send now only for holds the user has to clear", () => {

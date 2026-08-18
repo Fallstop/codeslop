@@ -109,9 +109,8 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   );
 
   /**
-   * The second send affordance. Ordinary send folds into the turn already
-   * waiting; this always starts a new one, which is the only way to keep two
-   * queued thoughts as two turns.
+   * The second send affordance. Enter goes to the turn already running; this
+   * stacks a new turn to send once that one finishes.
    */
   const renderQueueAsNewTurnButton = () => (
     <Tooltip>
@@ -140,9 +139,9 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         }
       />
       <TooltipPopup side="top" className="max-w-64 whitespace-normal leading-tight">
-        Queue this as a separate turn. Pressing{" "}
-        <Kbd className="bg-transparent px-0 text-[11px]">↵</Kbd> instead adds it to the turn already
-        waiting.
+        Stack this as its own turn, to send when the current one finishes. Pressing{" "}
+        <Kbd className="bg-transparent px-0 text-[11px]">↵</Kbd> instead sends it into the running
+        turn.
         {queueShortcutLabel ? (
           <>
             {" "}
@@ -302,9 +301,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
                 ? "Preparing worktree"
                 : isSendBusy
                   ? "Sending"
-                  : queuedTurnCount > 0
-                    ? "Add to the queued turn"
-                    : "Send message"
+                  : "Send message"
       }
     >
       {stageBackdropVariant ? (

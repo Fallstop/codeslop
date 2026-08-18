@@ -35,6 +35,7 @@ function makeShell(input: {
     interactionMode: "default",
     branch: null,
     worktreePath: null,
+    parentThreadId: null,
     latestTurn:
       input.activityAt === null
         ? null

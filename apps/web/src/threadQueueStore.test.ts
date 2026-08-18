@@ -36,10 +36,8 @@ function identity() {
   return { id: `entry-${nextId}`, createdAt: "2026-01-01T00:00:00.000Z" };
 }
 
-function enqueue(intent: "append" | "coalesce", text: string, threadKey = THREAD_KEY) {
-  return useThreadQueueStore
-    .getState()
-    .enqueue(threadKey, intent, makeContent({ text }), identity());
+function enqueue(text: string, threadKey = THREAD_KEY) {
+  return useThreadQueueStore.getState().enqueue(threadKey, makeContent({ text }), identity());
 }
 
 function queueFor(threadKey = THREAD_KEY): QueuedTurn[] {
@@ -53,40 +51,26 @@ beforeEach(() => {
 });
 
 describe("enqueue", () => {
-  it("appends and coalesces per the intent", () => {
-    enqueue("append", "one");
-    enqueue("coalesce", "two");
-    expect(queueFor().map((entry) => entry.text)).toEqual(["one\n\ntwo"]);
-
-    enqueue("append", "three");
-    expect(queueFor().map((entry) => entry.text)).toEqual(["one\n\ntwo", "three"]);
+  it("stacks each queued turn separately, in order", () => {
+    enqueue("one");
+    enqueue("two");
+    enqueue("three");
+    expect(queueFor().map((entry) => entry.text)).toEqual(["one", "two", "three"]);
   });
 
-  it("reports whether the content coalesced", () => {
-    expect(enqueue("append", "one").coalesced).toBe(false);
-    expect(enqueue("coalesce", "two").coalesced).toBe(true);
-    // Coalescing into an empty queue creates the first turn, so nothing merged.
-    useThreadQueueStore.setState({ entriesByThreadKey: {} });
-    expect(enqueue("coalesce", "only").coalesced).toBe(false);
-  });
-
-  it("caps appended turns but still lets the last one be edited by coalescing", () => {
+  it("rejects a turn past the cap instead of merging it into the last one", () => {
     for (let index = 0; index < MAX_QUEUED_TURNS_PER_THREAD; index += 1) {
-      expect(enqueue("append", `turn ${index}`).accepted).toBe(true);
+      expect(enqueue(`turn ${index}`).accepted).toBe(true);
     }
-    const rejected = enqueue("append", "one too many");
+    const rejected = enqueue("one too many");
     expect(rejected.accepted).toBe(false);
     expect(queueFor()).toHaveLength(MAX_QUEUED_TURNS_PER_THREAD);
-
-    const coalesced = enqueue("coalesce", "addendum");
-    expect(coalesced.accepted).toBe(true);
-    expect(queueFor()).toHaveLength(MAX_QUEUED_TURNS_PER_THREAD);
-    expect(queueFor().at(-1)?.text).toContain("addendum");
+    expect(queueFor().at(-1)?.text).toBe(`turn ${MAX_QUEUED_TURNS_PER_THREAD - 1}`);
   });
 
   it("keeps threads independent", () => {
-    enqueue("append", "thread one");
-    enqueue("append", "thread two", "env-1:thread-2");
+    enqueue("thread one");
+    enqueue("thread two", "env-1:thread-2");
     expect(queueFor().map((entry) => entry.text)).toEqual(["thread one"]);
     expect(queueFor("env-1:thread-2").map((entry) => entry.text)).toEqual(["thread two"]);
   });
@@ -94,8 +78,8 @@ describe("enqueue", () => {
 
 describe("drain and edit operations", () => {
   it("restores a dispatched entry to the front after a failed send", () => {
-    enqueue("append", "first");
-    enqueue("append", "second");
+    enqueue("first");
+    enqueue("second");
 
     const dispatched = useThreadQueueStore.getState().removeEntry(THREAD_KEY, queueFor()[0]!.id);
     expect(dispatched?.text).toBe("first");
@@ -106,7 +90,7 @@ describe("drain and edit operations", () => {
   });
 
   it("does not duplicate an entry that is already back in the queue", () => {
-    enqueue("append", "first");
+    enqueue("first");
     const dispatched = useThreadQueueStore.getState().removeEntry(THREAD_KEY, queueFor()[0]!.id)!;
     useThreadQueueStore.getState().restoreEntryToFront(THREAD_KEY, dispatched);
     useThreadQueueStore.getState().restoreEntryToFront(THREAD_KEY, dispatched);
@@ -118,8 +102,8 @@ describe("drain and edit operations", () => {
   });
 
   it("edits, reorders, and removes entries", () => {
-    enqueue("append", "first");
-    enqueue("append", "second");
+    enqueue("first");
+    enqueue("second");
     const [first, second] = queueFor();
 
     useThreadQueueStore.getState().setEntryText(THREAD_KEY, first!.id, "edited");
@@ -137,14 +121,14 @@ describe("drain and edit operations", () => {
   });
 
   it("drops the thread key entirely once its queue empties", () => {
-    enqueue("append", "only");
+    enqueue("only");
     useThreadQueueStore.getState().clearThread(THREAD_KEY);
     expect(useThreadQueueStore.getState().entriesByThreadKey).not.toHaveProperty(THREAD_KEY);
   });
 
   it("clears only the queues belonging to a removed environment", () => {
-    enqueue("append", "keep", "env-2:thread-9");
-    enqueue("append", "drop");
+    enqueue("keep", "env-2:thread-9");
+    enqueue("drop");
     useThreadQueueStore.getState().clearEnvironment(EnvironmentId.make("env-1"));
     expect(Object.keys(useThreadQueueStore.getState().entriesByThreadKey)).toEqual([
       "env-2:thread-9",
@@ -154,7 +138,7 @@ describe("drain and edit operations", () => {
 
 describe("persistence", () => {
   it("round-trips a queued turn through storage", () => {
-    enqueue("append", "survives a reload");
+    enqueue("survives a reload");
     const raw = readThreadQueueStorageForTest();
     expect(raw).toBeTruthy();
 
@@ -184,7 +168,6 @@ describe("partitionQueueAttachments", () => {
     const big = "x".repeat(MAX_QUEUED_TURN_ATTACHMENT_CHARS + 1);
     const result = useThreadQueueStore.getState().enqueue(
       THREAD_KEY,
-      "append",
       makeContent({
         attachments: [
           { id: "1", name: "huge.png", mimeType: "image/png", sizeBytes: 1, dataUrl: big },

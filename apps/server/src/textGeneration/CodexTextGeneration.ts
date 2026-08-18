@@ -25,7 +25,6 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
-  asideAnswerOutputSchema,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
 import {
@@ -102,8 +101,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle"
-      | "generateAsideAnswer",
+      | "generateThreadTitle",
     value: unknown,
   ): Effect.Effect<string, TextGenerationError> =>
     encodeJsonString(value).pipe(
@@ -122,8 +120,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle"
-      | "generateAsideAnswer",
+      | "generateThreadTitle",
     attachments: TextGeneration.BranchNameGenerationInput["attachments"],
   ): Effect.fn.Return<MaterializedImageAttachments, TextGenerationError> {
     if (!attachments || attachments.length === 0) {
@@ -165,8 +162,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle"
-      | "generateAsideAnswer";
+      | "generateThreadTitle";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -409,26 +405,10 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
-  const generateAsideAnswer: TextGeneration.TextGeneration["Service"]["generateAsideAnswer"] =
-    Effect.fn("CodexTextGeneration.generateAsideAnswer")(function* (input) {
-      const generated = yield* runCodexJson({
-        operation: "generateAsideAnswer",
-        cwd: input.cwd,
-        prompt: input.prompt,
-        outputSchemaJson: asideAnswerOutputSchema,
-        modelSelection: input.modelSelection,
-      });
-
-      return {
-        answer: generated.answer.trim(),
-      } satisfies TextGeneration.AsideAnswerGenerationResult;
-    });
-
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
-    generateAsideAnswer,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

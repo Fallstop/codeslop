@@ -1,12 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  applyQueueIntent,
   canDrainThreadQueue,
   formatQueuedTurnPreview,
   formatThreadQueueStatus,
-  mergeQueuedTurnContent,
-  mergeQueuedTurnText,
   queuedTurnHasContent,
   threadQueueHoldReason,
   type QueuedTurn,
@@ -46,81 +43,6 @@ function makeDrainInput(overrides: Partial<ThreadQueueDrainInput> = {}): ThreadQ
     ...overrides,
   };
 }
-
-describe("mergeQueuedTurnText", () => {
-  it("separates coalesced thoughts with a blank line", () => {
-    expect(mergeQueuedTurnText("first", "second")).toBe("first\n\nsecond");
-  });
-
-  it("collapses to the non-empty side so image-only entries add no whitespace", () => {
-    expect(mergeQueuedTurnText("", "second")).toBe("second");
-    expect(mergeQueuedTurnText("first", "   ")).toBe("first");
-    expect(mergeQueuedTurnText("", "")).toBe("");
-  });
-});
-
-describe("applyQueueIntent", () => {
-  it("appends a new turn for the explicit queue action", () => {
-    const queue = [makeEntry("a", { text: "first" })];
-    const next = applyQueueIntent(queue, "append", makeEntry("b", { text: "second" }));
-    expect(next.map((entry) => entry.text)).toEqual(["first", "second"]);
-  });
-
-  it("coalesces an ordinary send into the turn already waiting", () => {
-    const queue = [makeEntry("a", { text: "first" })];
-    const next = applyQueueIntent(queue, "coalesce", makeEntry("b", { text: "second" }));
-    expect(next).toHaveLength(1);
-    expect(next[0]?.text).toBe("first\n\nsecond");
-    // The merged turn keeps the original entry's identity so its card does not
-    // remount and lose edit focus mid-merge.
-    expect(next[0]?.id).toBe("a");
-  });
-
-  it("creates the first turn when coalescing into an empty queue", () => {
-    const next = applyQueueIntent([], "coalesce", makeEntry("a", { text: "only" }));
-    expect(next.map((entry) => entry.id)).toEqual(["a"]);
-  });
-
-  it("coalesces into the back of the queue, not the front", () => {
-    const queue = [makeEntry("a", { text: "first" }), makeEntry("b", { text: "second" })];
-    const next = applyQueueIntent(queue, "coalesce", makeEntry("c", { text: "third" }));
-    expect(next.map((entry) => entry.text)).toEqual(["first", "second\n\nthird"]);
-  });
-});
-
-describe("mergeQueuedTurnContent", () => {
-  it("takes model and mode from the incoming content", () => {
-    const existing = makeEntry("a", {
-      modelSelection: { instanceId: "codex", model: "gpt-5" } as QueuedTurn["modelSelection"],
-      interactionMode: "default" as QueuedTurn["interactionMode"],
-    });
-    const merged = mergeQueuedTurnContent(
-      existing,
-      makeContent({
-        modelSelection: {
-          instanceId: "claudeAgent",
-          model: "claude-opus-5",
-        } as QueuedTurn["modelSelection"],
-        interactionMode: "plan" as QueuedTurn["interactionMode"],
-      }),
-    );
-    expect(merged.modelSelection).toEqual({ instanceId: "claudeAgent", model: "claude-opus-5" });
-    expect(merged.interactionMode).toBe("plan");
-  });
-
-  it("does not duplicate an attachment that is already on the entry", () => {
-    const attachment = {
-      id: "img-1",
-      name: "a.png",
-      mimeType: "image/png",
-      sizeBytes: 1,
-      dataUrl: "data:image/png;base64,AA",
-    };
-    const existing = makeEntry("a", { attachments: [attachment] });
-    const merged = mergeQueuedTurnContent(existing, makeContent({ attachments: [attachment] }));
-    expect(merged.attachments).toHaveLength(1);
-  });
-});
 
 describe("threadQueueHoldReason", () => {
   it("drains once the thread is idle", () => {

@@ -1,10 +1,11 @@
-import type { OrchestrationEvent } from "@t3tools/contracts";
+import { CommandId, type OrchestrationEvent } from "@t3tools/contracts";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 
+import { ProjectionThreadRepository } from "../../persistence/Services/ProjectionThreads.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import * as TerminalManager from "../../terminal/Manager.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
@@ -37,10 +38,33 @@ export const logCleanupCauseUnlessInterrupted = <R, E>({
     }),
   );
 
+/**
+ * The `thread.delete` commands that clear a deleted thread's side chats.
+ *
+ * Command ids are derived from the parent event rather than generated, so a
+ * replayed deletion resolves to the same commands instead of a fresh set.
+ */
+export const buildSideChatDeleteCommands = (input: {
+  readonly eventId: string;
+  readonly children: ReadonlyArray<{
+    readonly threadId: ThreadDeletedEvent["payload"]["threadId"];
+  }>;
+}): ReadonlyArray<{
+  readonly type: "thread.delete";
+  readonly commandId: CommandId;
+  readonly threadId: ThreadDeletedEvent["payload"]["threadId"];
+}> =>
+  input.children.map((child) => ({
+    type: "thread.delete" as const,
+    commandId: CommandId.make(`thread-delete-cascade:${input.eventId}:${child.threadId}`),
+    threadId: child.threadId,
+  }));
+
 const make = Effect.gen(function* () {
   const orchestrationEngine = yield* OrchestrationEngineService;
   const providerService = yield* ProviderService;
   const terminalManager = yield* TerminalManager.TerminalManager;
+  const projectionThreadRepository = yield* ProjectionThreadRepository;
 
   const stopProviderSession = (threadId: ThreadDeletedEvent["payload"]["threadId"]) =>
     logCleanupCauseUnlessInterrupted({
@@ -56,12 +80,51 @@ const make = Effect.gen(function* () {
       threadId,
     });
 
+  /**
+   * Delete the side chats opened from a thread that has just been deleted.
+   *
+   * Dispatched as ordinary `thread.delete` commands rather than handled here:
+   * each child then flows back through this reactor, so its provider session
+   * and terminals are torn down by the same path, and a side chat of a side
+   * chat is covered without this needing to recurse itself.
+   *
+   * Command ids are derived from the parent event so a replayed deletion
+   * resolves to the same commands instead of a fresh set.
+   */
+  const deleteSideChats = Effect.fn("deleteSideChats")(function* (event: ThreadDeletedEvent) {
+    const { threadId } = event.payload;
+    const children = yield* projectionThreadRepository
+      .listByParentThreadId({ parentThreadId: threadId })
+      .pipe(
+        Effect.catchCause((cause) =>
+          Effect.logDebug("thread deletion cleanup could not list side chats", {
+            threadId,
+            cause: Cause.pretty(cause),
+          }).pipe(Effect.as([])),
+        ),
+      );
+
+    yield* Effect.forEach(
+      buildSideChatDeleteCommands({ eventId: event.eventId, children }),
+      (command) =>
+        // A child already gone (raced, or this event replayed) fails the
+        // decider's existence check; that is the desired end state either way.
+        logCleanupCauseUnlessInterrupted({
+          effect: orchestrationEngine.dispatch(command).pipe(Effect.asVoid),
+          message: "thread deletion cleanup skipped side chat delete",
+          threadId: command.threadId,
+        }),
+      { discard: true, concurrency: 1 },
+    );
+  });
+
   const processThreadDeleted = Effect.fn("processThreadDeleted")(function* (
     event: ThreadDeletedEvent,
   ) {
     const { threadId } = event.payload;
     yield* stopProviderSession(threadId);
     yield* closeThreadTerminals(threadId);
+    yield* deleteSideChats(event);
   });
 
   const processThreadDeletedSafely = (event: ThreadDeletedEvent) =>

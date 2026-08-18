@@ -15,7 +15,6 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
-  asideAnswerOutputSchema,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
 import {
@@ -55,8 +54,7 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle"
-      | "generateAsideAnswer";
+      | "generateThreadTitle";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -261,26 +259,10 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
-  const generateAsideAnswer: TextGeneration.TextGeneration["Service"]["generateAsideAnswer"] =
-    Effect.fn("CursorTextGeneration.generateAsideAnswer")(function* (input) {
-      const generated = yield* runCursorJson({
-        operation: "generateAsideAnswer",
-        cwd: input.cwd,
-        prompt: input.prompt,
-        outputSchemaJson: asideAnswerOutputSchema,
-        modelSelection: input.modelSelection,
-      });
-
-      return {
-        answer: generated.answer.trim(),
-      } satisfies TextGeneration.AsideAnswerGenerationResult;
-    });
-
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
-    generateAsideAnswer,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

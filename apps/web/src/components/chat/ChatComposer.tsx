@@ -70,7 +70,6 @@ import { ComposerStashMenu } from "./ComposerStashMenu";
 import { ComposerQueuedTurns } from "./ComposerQueuedTurns";
 import {
   queuedTurnHasContent,
-  type QueueIntent,
   type QueuedTurn,
   type QueuedTurnContent,
   type ThreadQueueHoldReason,
@@ -1081,6 +1080,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           label: "/model",
           description: "Switch response model for this thread",
         },
+        {
+          id: "slash:btw",
+          type: "slash-command",
+          command: "btw",
+          label: "/btw",
+          description: "Open a side chat without interrupting this thread",
+        },
         ...(planModeUiEnabled
           ? ([
               {
@@ -1736,6 +1742,27 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         return;
       }
       if (item.type === "slash-command") {
+        // Leave the command in the box with a trailing space, the way provider
+        // commands behave: the question is the argument, and the send path
+        // routes `/btw …` to the side chat instead of the thread.
+        if (item.command === "btw") {
+          const replacement = "/btw ";
+          const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
+            snapshot.value,
+            trigger.rangeEnd,
+            replacement,
+          );
+          const applied = applyPromptReplacement(
+            trigger.rangeStart,
+            replacementRangeEnd,
+            replacement,
+            { expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd) },
+          );
+          if (applied) {
+            setComposerHighlightedItemId(null);
+          }
+          return;
+        }
         if (item.command === "model") {
           const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
             expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
@@ -1898,21 +1925,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     setComposerTrigger(null);
   }, []);
 
-  /**
-   * True when a plain send should join the queue instead of dispatching.
-   *
-   * A non-empty queue keeps this true even after the turn ends: sending
-   * straight past turns the user already queued would deliver their thoughts
-   * out of order.
-   */
-  const shouldQueueOrdinarySend =
-    queueThreadKey !== null &&
-    !activePendingProgress &&
-    !showPlanFollowUpPrompt &&
-    // "connecting" covers a session that is still starting: a send there would
-    // race the turn about to begin just as surely as one already running.
-    (phase === "running" || phase === "connecting" || queuedTurns.length > 0);
-
   const buildQueuedTurnContent = useCallback(
     (attachments: PersistedComposerImageAttachment[]): QueuedTurnContent | null => {
       const sendState = deriveComposerSendState({
@@ -1965,8 +1977,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
 
   const commitQueuedTurn = useCallback(
-    (threadKey: string, intent: QueueIntent, content: QueuedTurnContent) => {
-      const result = enqueueThreadTurn(threadKey, intent, content, {
+    (threadKey: string, content: QueuedTurnContent) => {
+      const result = enqueueThreadTurn(threadKey, content, {
         id: `queued-${randomUUID()}`,
         createdAt: new Date().toISOString(),
       });
@@ -1997,78 +2009,75 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [enqueueThreadTurn],
   );
 
-  const enqueueComposerContent = useCallback(
-    (intent: QueueIntent) => {
-      const threadKey = queueThreadKey;
-      if (!threadKey) return;
+  const enqueueComposerContent = useCallback(() => {
+    const threadKey = queueThreadKey;
+    if (!threadKey) return;
 
-      const images = composerImagesRef.current;
-      // Clearing before the encode finishes would let a second Enter read an
-      // already-empty composer, so the composer is cleared only once the
-      // content is safely captured — synchronously in the common text-only
-      // case, and at the end of the chain otherwise.
-      if (images.length === 0) {
-        const content = buildQueuedTurnContent([]);
-        if (!content) return;
-        if (!commitQueuedTurn(threadKey, intent, content)) return;
-        promptRef.current = "";
-        clearComposerDraftContent(composerDraftTarget);
-        resetComposerCursorState();
-        return;
-      }
-
-      const snapshot = {
-        prompt: promptRef.current,
-        images: [...images],
-      };
+    const images = composerImagesRef.current;
+    // Clearing before the encode finishes would let a second Enter read an
+    // already-empty composer, so the composer is cleared only once the
+    // content is safely captured — synchronously in the common text-only
+    // case, and at the end of the chain otherwise.
+    if (images.length === 0) {
+      const content = buildQueuedTurnContent([]);
+      if (!content) return;
+      if (!commitQueuedTurn(threadKey, content)) return;
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
       resetComposerCursorState();
+      return;
+    }
 
-      enqueueChainRef.current = enqueueChainRef.current
-        .then(async () => {
-          const attachments = await Promise.all(
-            snapshot.images.map(async (image) => ({
-              id: image.id,
-              name: image.name,
-              mimeType: image.mimeType,
-              sizeBytes: image.sizeBytes,
-              dataUrl: await readFileAsDataUrl(image.file),
-            })),
-          );
-          // The prompt was captured before the composer was cleared, so it is
-          // read back from the snapshot rather than from the live ref.
-          const previousPrompt = promptRef.current;
-          promptRef.current = snapshot.prompt;
-          const content = buildQueuedTurnContent(attachments);
-          promptRef.current = previousPrompt;
-          if (content) {
-            commitQueuedTurn(threadKey, intent, content);
-          }
-        })
-        .catch((error: unknown) => {
-          console.error("[THREAD-QUEUE] Could not queue turn.", error);
-          toastManager.add({
-            type: "error",
-            title: "Could not queue this turn",
-            description: "Its images could not be read. Try sending it again.",
-          });
+    const snapshot = {
+      prompt: promptRef.current,
+      images: [...images],
+    };
+    promptRef.current = "";
+    clearComposerDraftContent(composerDraftTarget);
+    resetComposerCursorState();
+
+    enqueueChainRef.current = enqueueChainRef.current
+      .then(async () => {
+        const attachments = await Promise.all(
+          snapshot.images.map(async (image) => ({
+            id: image.id,
+            name: image.name,
+            mimeType: image.mimeType,
+            sizeBytes: image.sizeBytes,
+            dataUrl: await readFileAsDataUrl(image.file),
+          })),
+        );
+        // The prompt was captured before the composer was cleared, so it is
+        // read back from the snapshot rather than from the live ref.
+        const previousPrompt = promptRef.current;
+        promptRef.current = snapshot.prompt;
+        const content = buildQueuedTurnContent(attachments);
+        promptRef.current = previousPrompt;
+        if (content) {
+          commitQueuedTurn(threadKey, content);
+        }
+      })
+      .catch((error: unknown) => {
+        console.error("[THREAD-QUEUE] Could not queue turn.", error);
+        toastManager.add({
+          type: "error",
+          title: "Could not queue this turn",
+          description: "Its images could not be read. Try sending it again.",
         });
-    },
-    [
-      buildQueuedTurnContent,
-      clearComposerDraftContent,
-      commitQueuedTurn,
-      composerDraftTarget,
-      composerImagesRef,
-      promptRef,
-      queueThreadKey,
-      resetComposerCursorState,
-    ],
-  );
+      });
+  }, [
+    buildQueuedTurnContent,
+    clearComposerDraftContent,
+    commitQueuedTurn,
+    composerDraftTarget,
+    composerImagesRef,
+    promptRef,
+    queueThreadKey,
+    resetComposerCursorState,
+  ]);
 
   const queueAsNewTurn = useCallback(() => {
-    enqueueComposerContent("append");
+    enqueueComposerContent();
   }, [enqueueComposerContent]);
 
   const submitComposer = useCallback(
@@ -2090,16 +2099,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         });
         return;
       }
-      // A send aimed at a busy thread joins the queue rather than racing the
-      // turn already in flight.
-      if (shouldQueueOrdinarySend) {
-        event?.preventDefault();
-        enqueueComposerContent("coalesce");
-        if (shouldBlurMobileComposerOnSubmit()) {
-          blurMobileComposerAfterSend();
-        }
-        return;
-      }
       onSend(event);
       if (shouldBlurMobileComposerOnSubmit()) {
         blurMobileComposerAfterSend();
@@ -2108,10 +2107,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [
       activeThreadId,
       blurMobileComposerAfterSend,
-      enqueueComposerContent,
       isSendDisabled,
       noProviderAvailable,
-      shouldQueueOrdinarySend,
       onSend,
       shouldBlurMobileComposerOnSubmit,
     ],
@@ -2586,7 +2583,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ) {
         return;
       }
-      enqueueComposerContent("append");
+      enqueueComposerContent();
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
@@ -2989,9 +2986,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           className="mb-2"
           entries={queuedTurns}
           holdReason={queueHoldReason}
-          coalesceTargetId={
-            composerSendState.hasSendableContent ? (queuedTurns.at(-1)?.id ?? null) : null
-          }
           queueShortcutLabel={queueShortcutLabel}
           onEditText={(entryId, text) => setQueuedTurnText(queueThreadKey, entryId, text)}
           onRemove={(entryId) => removeQueuedTurn(queueThreadKey, entryId)}

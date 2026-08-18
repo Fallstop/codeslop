@@ -207,7 +207,6 @@ function makeFakeCodexAdapter(provider: ProviderDriverKind = CODEX_DRIVER) {
     provider,
     capabilities: {
       sessionModelSwitch: "in-session",
-      sideQuestion: "unsupported",
     },
     startSession,
     sendTurn,
