@@ -1074,6 +1074,13 @@ export interface DesktopBridge {
    * web callers fall back to a plain file input.
    */
   pickThemeFiles?: () => Promise<readonly PickedThemeFile[] | null>;
+  /**
+   * On-disk path of a file the user dropped or pasted, which the renderer
+   * cannot read for itself. Null when the file is not backed by a real path
+   * (a synthesized `File`, a drag from another web page). Optional: older
+   * desktop builds lack it, and a browser has no path to give at all.
+   */
+  getPathForFile?: (file: File) => string | null;
   setTheme: (theme: DesktopTheme) => Promise<void>;
   showContextMenu: <T extends string>(
     items: readonly ContextMenuItem<T>[],

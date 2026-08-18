@@ -89,6 +89,8 @@ import {
   removeInlineTerminalContextPlaceholder,
 } from "../../lib/terminalContext";
 import { useComposerPathSearch } from "../../lib/composerPathSearchState";
+import { partitionDroppedComposerFiles, readDesktopDroppedFilePath } from "./composerDroppedFiles";
+import { useEnvironment } from "~/state/environments";
 import { type ElementContextDraft } from "../../lib/elementContext";
 import { ComposerPendingElementContexts } from "./ComposerPendingElementContexts";
 import { ComposerPendingReviewComments } from "./ComposerPendingReviewComments";
@@ -1065,6 +1067,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     cwd: isPathTrigger ? gitCwd : null,
     query: isPathTrigger ? pathTriggerQuery : null,
   });
+
+  // A dropped file's path is only worth linking when the desktop shell can
+  // read it and the environment running the turn is this machine's own
+  // backend; every other target sees a different filesystem.
+  const composerEnvironment = useEnvironment(environmentId);
+  const canLinkDroppedFiles = composerEnvironment?.entry.target._tag === "PrimaryConnectionTarget";
+  const environmentOs = composerEnvironment?.serverConfig?.environment.platform.os ?? null;
 
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
     if (!composerTrigger) return [];
@@ -2777,19 +2786,43 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     );
   };
 
+  const notifyComposerInsertRejected = () => {
+    toastManager.add({
+      type: "error",
+      title: "Unable to add to chat",
+      description: "The composer is busy; try again once it is ready.",
+    });
+  };
+
+  /**
+   * An OS file drop: images are attached, and anything else is linked by path
+   * so the agent can open the file where it already lives. Files that cannot
+   * be linked fall through to the attachment validator, which reports them as
+   * unsupported — the only outcome available in a browser, which never hands
+   * the page a path.
+   */
+  const addDroppedComposerFiles = (files: File[]) => {
+    const { imageFiles, fileLinks, unlinkableFiles } = partitionDroppedComposerFiles({
+      files,
+      resolvePath: canLinkDroppedFiles ? readDesktopDroppedFilePath : null,
+      environmentOs,
+    });
+    if (
+      fileLinks.length > 0 &&
+      !insertComposerTextAtEnd(`${fileLinks.join(" ")} `, { ensureLeadingBoundary: true })
+    ) {
+      notifyComposerInsertRejected();
+    }
+    void addComposerImages([...imageFiles, ...unlinkableFiles]);
+  };
+
   // File-tree drags land as mentions. Handled in the capture phase so the
   // editor never sees the drop; the load-bearing rules (native stop, "move"
   // effect, no eager focus) live in makeComposerMentionDragHandlers.
   const composerMentionDragHandlers = makeComposerMentionDragHandlers({
     insertMentionAtEnd: (text) => insertComposerTextAtEnd(text, { ensureLeadingBoundary: true }),
     setDragActive: setIsDragOverComposer,
-    onInsertRejected: () => {
-      toastManager.add({
-        type: "error",
-        title: "Unable to add to chat",
-        description: "The composer is busy; try again once it is ready.",
-      });
-    },
+    onInsertRejected: notifyComposerInsertRejected,
   });
 
   const onComposerMentionDragLeaveCapture = (event: React.DragEvent<HTMLDivElement>) => {
@@ -2876,7 +2909,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         composerEditorRef.current?.focusAt(cursor);
       },
       addDroppedFiles: (files: File[]) => {
-        void addComposerImages(files);
+        addDroppedComposerFiles(files);
         focusComposer();
       },
       insertTextAtEnd: insertComposerTextAtEnd,
@@ -2971,7 +3004,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }),
     [
       activeThread,
-      addComposerImages,
+      addDroppedComposerFiles,
       composerDraftTarget,
       composerCursor,
       composerTerminalContexts,
