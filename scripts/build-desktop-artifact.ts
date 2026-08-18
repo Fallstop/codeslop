@@ -1613,6 +1613,17 @@ const verifyPackagedBundleIsSelfContained = Effect.fn("verifyPackagedBundleIsSel
     // by the WSL preflight probe at runtime, while ffi-rs, @ff-labs/fff-node
     // and the bun adapters are covered by the shared runtime-external closure
     // and emitted-bundle checks.
+    // The probe models plain node, so the ambient environment is scrubbed the
+    // same way the Windows primary probe scrubs it. NODE_OPTIONS is the one
+    // that matters: a --require or --experimental-loader inherited from the
+    // developer's shell can resolve an external the packaged tree is missing,
+    // which is the failure this whole function exists to catch.
+    // ELECTRON_RUN_AS_NODE is inert for a node execPath but is Electron-host
+    // state, and contributors run these tests from inside the desktop app.
+    const probeEnv = { ...process.env };
+    delete probeEnv.NODE_OPTIONS;
+    delete probeEnv.ELECTRON_RUN_AS_NODE;
+
     yield* runCommand(
       ChildProcess.make(
         process.execPath,
@@ -1628,7 +1639,7 @@ const verifyPackagedBundleIsSelfContained = Effect.fn("verifyPackagedBundleIsSel
           // NODE_PATH would let a createRequire call inside the bundle resolve
           // a missing external from outside the packaged tree, which is the
           // whole thing this is trying to rule out.
-          env: { ...process.env, NODE_PATH: "" },
+          env: { ...probeEnv, NODE_PATH: "" },
         },
       ),
       {
