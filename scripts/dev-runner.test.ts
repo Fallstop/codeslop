@@ -35,6 +35,7 @@ const emptyConfigLayer = ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} }
 const netServiceLayer = Layer.succeed(NetService.NetService, {
   canListenOnHost: () => Effect.succeed(true),
   isPortAvailableOnLoopback: () => Effect.succeed(true),
+  hasListenerOnHost: () => Effect.succeed(false),
   reserveLoopbackPort: () => Effect.succeed(49_152),
   findAvailablePort: (port) => Effect.succeed(port),
 });
@@ -1273,11 +1274,11 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
             cwd: root,
             ambientHome: "/home/user/.t3",
           });
-          assert.equal(home, path.join(path.resolve(root), ".t3"));
+          assert.equal(home, path.join(path.resolve(root), ".slop"));
         }).pipe(Effect.scoped),
       );
 
-      it.effect("prefers the worktree .t3 over an ambient T3CODE_HOME", () =>
+      it.effect("prefers the worktree .slop over an ambient T3CODE_HOME", () =>
         Effect.gen(function* () {
           const path = yield* Path.Path;
           const root = yield* makeWorktree;
@@ -1286,7 +1287,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
             cwd: root,
             ambientHome: "/home/user/.t3",
           });
-          assert.equal(home, path.join(path.resolve(root), ".t3"));
+          assert.equal(home, path.join(path.resolve(root), ".slop"));
         }).pipe(Effect.scoped),
       );
 

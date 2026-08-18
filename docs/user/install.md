@@ -47,8 +47,16 @@ brew install --cask t3-code
 
 Arch Linux:
 
+Stable:
+
 ```bash
 yay -S t3code-bin
+```
+
+Nightly:
+
+```bash
+yay -S t3code-nightly-bin
 ```
 
 ## Providers
