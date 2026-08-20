@@ -927,16 +927,34 @@ const makeWsRpcLayer = (
                   remoteName: "origin",
                 }));
               if (startFromOrigin) {
+                const baseBranch = bootstrap.prepareWorktree.baseBranch;
                 yield* gitWorkflow.fetchRemote({
                   cwd: bootstrap.prepareWorktree.projectCwd,
                   remoteName: "origin",
                 });
-                const resolvedRemoteBase = yield* gitWorkflow.resolveRemoteTrackingCommit({
-                  cwd: bootstrap.prepareWorktree.projectCwd,
-                  refName: bootstrap.prepareWorktree.baseBranch,
-                  fallbackRemoteName: "origin",
-                });
-                worktreeBaseRef = resolvedRemoteBase.commitSha;
+                // A base branch that was never pushed (or whose upstream was
+                // pruned) has no remote-tracking ref, and the local ref is the
+                // only base it can have. Failing here would delete the thread
+                // this bootstrap just created and strand the user's prompt.
+                worktreeBaseRef = yield* gitWorkflow
+                  .resolveRemoteTrackingCommit({
+                    cwd: bootstrap.prepareWorktree.projectCwd,
+                    refName: baseBranch,
+                    fallbackRemoteName: "origin",
+                  })
+                  .pipe(
+                    Effect.map((resolvedRemoteBase) => resolvedRemoteBase.commitSha),
+                    Effect.catch((error) =>
+                      Effect.logWarning(
+                        "bootstrap turn start could not resolve base branch on origin",
+                        {
+                          threadId: command.threadId,
+                          baseBranch,
+                          detail: error.message,
+                        },
+                      ).pipe(Effect.as(baseBranch)),
+                    ),
+                  );
               }
               const worktree = yield* gitWorkflow.createWorktree({
                 cwd: bootstrap.prepareWorktree.projectCwd,

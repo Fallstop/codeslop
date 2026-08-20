@@ -977,6 +977,18 @@ describe("composerDraftStore project draft thread mapping", () => {
     expect(draftByKey(draftId)?.prompt).toBe("promote me");
   });
 
+  it("restores a promoted draft when the send that promoted it failed", () => {
+    const store = useComposerDraftStore.getState();
+    store.setProjectDraftThreadId(projectRef, draftId, { threadId });
+    store.setPrompt(draftId, "promote me");
+    markPromotedDraftThread(threadId);
+
+    store.clearDraftThreadPromotion(draftId);
+
+    expect(useComposerDraftStore.getState().getDraftThread(draftId)?.promotedTo).toBeNull();
+    expect(draftByKey(draftId)?.prompt).toBe("promote me");
+  });
+
   it("reads local draft composer state through a scoped thread ref", () => {
     const store = useComposerDraftStore.getState();
     const threadRef = scopeThreadRef(TEST_ENVIRONMENT_ID, threadId);

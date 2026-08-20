@@ -425,6 +425,11 @@ interface ComposerDraftStoreState {
   markDraftThreadPromoting: (threadRef: ComposerThreadTarget, promotedTo?: ScopedThreadRef) => void;
   /** Removes draft-session metadata after promotion is complete. */
   finalizePromotedDraftThread: (threadRef: ComposerThreadTarget) => void;
+  /**
+   * Undoes the promotion mark when the server thread the draft was promoted to
+   * never survived, so the draft returns to the sidebar with its prompt.
+   */
+  clearDraftThreadPromotion: (threadRef: ComposerThreadTarget) => void;
   clearDraftThread: (threadRef: ComposerThreadTarget) => void;
   setStickyModelSelection: (modelSelection: ModelSelection | null | undefined) => void;
   setPrompt: (threadRef: ComposerThreadTarget, prompt: string) => void;
@@ -2578,6 +2583,27 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
               return state;
             }
             return removeDraftThreadReferences(state, threadKey);
+          });
+        },
+        clearDraftThreadPromotion: (threadRef) => {
+          const threadKey = resolveComposerDraftKey(get(), threadRef);
+          if (!threadKey) {
+            return;
+          }
+          set((state) => {
+            const existing = state.draftThreadsByThreadKey[threadKey];
+            if (!existing || existing.promotedTo == null) {
+              return state;
+            }
+            return {
+              draftThreadsByThreadKey: {
+                ...state.draftThreadsByThreadKey,
+                [threadKey]: {
+                  ...existing,
+                  promotedTo: null,
+                },
+              },
+            };
           });
         },
         clearDraftThread: (threadRef) => {

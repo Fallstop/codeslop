@@ -1343,6 +1343,9 @@ function ChatViewContent(props: ChatViewProps) {
     (store) => store.setInteractionMode,
   );
   const clearComposerDraftContent = useComposerDraftStore((store) => store.clearComposerContent);
+  const clearDraftThreadPromotion = useComposerDraftStore(
+    (store) => store.clearDraftThreadPromotion,
+  );
   const setDraftThreadContext = useComposerDraftStore((store) => store.setDraftThreadContext);
   const getDraftSessionByLogicalProjectKey = useComposerDraftStore(
     (store) => store.getDraftSessionByLogicalProjectKey,
@@ -5574,6 +5577,13 @@ function ChatViewContent(props: ChatViewProps) {
     }
 
     if (failure !== null) {
+      // A bootstrap that fails deletes the thread it just created, and the
+      // draft was marked promoted (and hidden from the sidebar) the moment
+      // that thread appeared. Without undoing the mark the restored prompt
+      // below has nowhere to be reached from.
+      if (isLocalDraftThread) {
+        clearDraftThreadPromotion(composerDraftTarget);
+      }
       if (queuedTurn) {
         // The entry goes back to the front of the queue rather than into the
         // composer, which may already hold the user's next message.
