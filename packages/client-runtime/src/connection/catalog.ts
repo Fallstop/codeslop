@@ -41,6 +41,42 @@ export interface ConnectionCatalogEntry {
   readonly profile: Option.Option<ConnectionProfile>;
 }
 
+const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
+
+function isLoopbackUrl(rawUrl: string): boolean {
+  try {
+    return LOOPBACK_HOSTNAMES.has(
+      new URL(rawUrl).hostname.toLowerCase().replace(/^\[(.*)]$/, "$1"),
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True when the entry's backend answers on this machine's loopback interface —
+ * the desktop's own server, or a second local backend such as WSL. Those stay
+ * reachable with every network interface down, so callers must not gate them on
+ * the platform's offline signal, which only describes routes off this machine.
+ * SSH entries are excluded: their forward is loopback, but the host it reaches
+ * is not.
+ */
+export function isLoopbackCatalogEntry(entry: ConnectionCatalogEntry): boolean {
+  switch (entry.target._tag) {
+    case "PrimaryConnectionTarget":
+      return isLoopbackUrl(entry.target.httpBaseUrl);
+    case "BearerConnectionTarget":
+      return (
+        Option.isSome(entry.profile) &&
+        entry.profile.value._tag === "BearerConnectionProfile" &&
+        isLoopbackUrl(entry.profile.value.httpBaseUrl)
+      );
+    case "RelayConnectionTarget":
+    case "SshConnectionTarget":
+      return false;
+  }
+}
+
 export class BearerConnectionCredential extends Schema.TaggedClass<BearerConnectionCredential>()(
   "BearerConnectionCredential",
   {

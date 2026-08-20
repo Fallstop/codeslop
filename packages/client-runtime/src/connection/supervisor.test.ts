@@ -12,10 +12,11 @@ import * as TestClock from "effect/testing/TestClock";
 import * as Tracer from "effect/Tracer";
 
 import type { WsRpcProtocolClient } from "../rpc/protocol.ts";
-import type { ConnectionCatalogEntry } from "./catalog.ts";
+import { BearerConnectionProfile, type ConnectionCatalogEntry } from "./catalog.ts";
 import * as Connectivity from "./connectivity.ts";
 import * as ConnectionDriver from "./driver.ts";
 import {
+  BearerConnectionTarget,
   ConnectionBlockedError,
   ConnectionTransientError,
   PrimaryConnectionTarget,
@@ -50,6 +51,33 @@ const TARGET_ENTRY: ConnectionCatalogEntry = {
 const RELAY_ENTRY: ConnectionCatalogEntry = {
   target: RELAY_TARGET,
   profile: Option.none(),
+};
+
+const LOOPBACK_ENTRY: ConnectionCatalogEntry = {
+  target: new PrimaryConnectionTarget({
+    environmentId: TARGET.environmentId,
+    label: TARGET.label,
+    httpBaseUrl: "http://127.0.0.1:3773",
+    wsBaseUrl: "ws://127.0.0.1:3773",
+  }),
+  profile: Option.none(),
+};
+
+const DESKTOP_LOCAL_ENTRY: ConnectionCatalogEntry = {
+  target: new BearerConnectionTarget({
+    environmentId: TARGET.environmentId,
+    label: "WSL backend",
+    connectionId: "local:wsl",
+  }),
+  profile: Option.some(
+    new BearerConnectionProfile({
+      connectionId: "local:wsl",
+      environmentId: TARGET.environmentId,
+      label: "WSL backend",
+      httpBaseUrl: "http://localhost:3775",
+      wsBaseUrl: "ws://localhost:3775",
+    }),
+  ),
 };
 
 const PREPARED_CONNECTION: PreparedConnection = {
@@ -307,6 +335,57 @@ describe("EnvironmentSupervisor", () => {
         generation: 1,
         lastFailure: null,
       });
+      expect(yield* Ref.get(harness.prepareCount)).toBe(1);
+    }),
+  );
+
+  it.effect("connects a loopback backend while the platform reports offline", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ networkStatus: "offline" });
+      const supervisor = yield* EnvironmentSupervisor.make(LOOPBACK_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      const ready = yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+
+      expect(ready).toMatchObject({ network: "offline", phase: "connected", attempt: 1 });
+      expect(yield* Ref.get(harness.prepareCount)).toBe(1);
+    }),
+  );
+
+  it.effect("keeps reconnecting a loopback backend after the network drops", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const supervisor = yield* EnvironmentSupervisor.make(LOOPBACK_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      yield* awaitState(
+        supervisor.state,
+        (state) => state.phase === "connected" && state.generation === 1,
+      );
+      yield* harness.setNetworkStatus("offline");
+      yield* harness.closeLatestSession();
+
+      // A non-loopback entry parks in "offline" here instead of retrying.
+      yield* awaitState(supervisor.state, (state) => state.phase === "backoff");
+      yield* TestClock.adjust("3 seconds");
+      yield* awaitState(
+        supervisor.state,
+        (state) => state.phase === "connected" && state.generation === 2,
+      );
+      expect(yield* Ref.get(harness.sessionCount)).toBe(2);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("connects a desktop-local bearer backend while the platform reports offline", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ networkStatus: "offline" });
+      const supervisor = yield* EnvironmentSupervisor.make(DESKTOP_LOCAL_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
       expect(yield* Ref.get(harness.prepareCount)).toBe(1);
     }),
   );

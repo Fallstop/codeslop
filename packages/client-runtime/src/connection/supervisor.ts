@@ -14,7 +14,7 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as Tracer from "effect/Tracer";
 
-import type { ConnectionCatalogEntry } from "./catalog.ts";
+import { isLoopbackCatalogEntry, type ConnectionCatalogEntry } from "./catalog.ts";
 import * as Connectivity from "./connectivity.ts";
 import * as ConnectionDriver from "./driver.ts";
 import {
@@ -222,6 +222,12 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   const target = entry.target;
   yield* annotateTarget(target);
 
+  // The platform's offline signal means "no route off this machine", which says
+  // nothing about a loopback backend. Parking one leaves a locally running app
+  // reporting itself offline the moment Wi-Fi goes down.
+  const parkedWhenOffline = !isLoopbackCatalogEntry(entry);
+  const isOffline = (network: NetworkStatus): boolean => parkedWhenOffline && network === "offline";
+
   const connectivity = yield* Connectivity.Connectivity;
   const driver = yield* ConnectionDriver.ConnectionDriver;
   const wakeups = yield* ConnectionWakeups.ConnectionWakeups;
@@ -239,7 +245,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   const state = yield* SubscriptionRef.make<SupervisorConnectionState>(
     !initialIntent.desired
       ? availableState(initialIntent, 0)
-      : initialIntent.network === "offline"
+      : isOffline(initialIntent.network)
         ? offlineState(initialIntent, 0, 0, null)
         : connectingState(initialIntent, 0, 1, null),
   );
@@ -374,7 +380,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         case "RetryRequested":
           return false;
         case "NetworkChanged":
-          if (next.network === "offline") {
+          if (isOffline(next.network)) {
             return false;
           }
           break;
@@ -403,7 +409,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         case "RetryRequested":
           return false;
         case "NetworkChanged":
-          if (next.network === "offline") {
+          if (isOffline(next.network)) {
             return false;
           }
           break;
@@ -457,7 +463,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
                   yield* Fiber.interrupt(probe);
                   return false;
                 case "NetworkChanged":
-                  if (probeEvent.signal.network === "offline") {
+                  if (isOffline(probeEvent.signal.network)) {
                     yield* Fiber.interrupt(probe);
                     return false;
                   }
@@ -561,7 +567,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
 
     const active = establishment.exit.value;
     const currentIntent = yield* Ref.get(intent);
-    if (!currentIntent.desired || currentIntent.network === "offline") {
+    if (!currentIntent.desired || isOffline(currentIntent.network)) {
       return {
         _tag: "Interrupted",
         established: false,
@@ -665,7 +671,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         yield* waitForSignal;
         continue;
       }
-      if (currentIntent.network === "offline") {
+      if (isOffline(currentIntent.network)) {
         yield* clearLease;
         yield* setState(offlineState(currentIntent, generation, failureCount + 1, latestFailure));
         const applicationActivated = yield* waitForSignal;
