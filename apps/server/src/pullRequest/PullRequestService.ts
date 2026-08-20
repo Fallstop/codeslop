@@ -443,6 +443,11 @@ function withRateLimitBackoff(
       : {
           listChangeRequestStats: wrap("listChangeRequestStats", api.listChangeRequestStats),
         }),
+    ...(api.getRepositoryWriteAccess === undefined
+      ? {}
+      : {
+          getRepositoryWriteAccess: wrap("getRepositoryWriteAccess", api.getRepositoryWriteAccess),
+        }),
     getChangeRequest: wrap("getChangeRequest", api.getChangeRequest),
     getChangeRequestActivity: wrap("getChangeRequestActivity", api.getChangeRequestActivity),
     ...(api.getReviewThreadComments === undefined
