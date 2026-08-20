@@ -523,14 +523,16 @@ const resolveWslStartConfig = Effect.fn("desktop.backendConfiguration.resolveWsl
     }
   }
 
-  // Build an explicit copy of process.env minus T3CODE_HOME (dev-runner
-  // exports the Windows-side base dir for the primary; if it leaks into
-  // the WSL backend the Linux side ends up sharing C:\Users\...\.t3 via
-  // /mnt/c, which means both backends read/write the same database and
-  // their env-ids collide).
+  // Build an explicit copy of process.env minus the variables that pin this
+  // process to a particular state location. T3CODE_HOME: dev-runner exports the
+  // Windows-side base dir for the primary; if it leaks into the WSL backend the
+  // Linux side ends up sharing C:\Users\...\.t3 via /mnt/c, which means both
+  // backends read/write the same database and their env-ids collide.
+  // T3CODE_RUNTIME_STATE_PATH: an inherited value would make the WSL backend
+  // publish its endpoint into another server's record.
   const parentEnvWithoutT3Home: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (key === "T3CODE_HOME") continue;
+    if (key === "T3CODE_HOME" || key === "T3CODE_RUNTIME_STATE_PATH") continue;
     parentEnvWithoutT3Home[key] = value;
   }
   const wslEnv = mergeWslEnv(parentEnvWithoutT3Home.WSLENV, forwardedEnvNames);
@@ -545,8 +547,8 @@ const resolveWslStartConfig = Effect.fn("desktop.backendConfiguration.resolveWsl
       ...forwardedEnv,
       ...(wslEnv !== undefined ? { WSLENV: wslEnv } : {}),
     },
-    // env is already a complete process.env minus T3CODE_HOME; pass it
-    // verbatim instead of letting the spawner re-merge process.env on top.
+    // env is already a complete process.env minus the state-location variables;
+    // pass it verbatim instead of letting the spawner re-merge process.env on top.
     extendEnv: false,
     bootstrap,
     bootstrapDelivery: "stdin" as const,

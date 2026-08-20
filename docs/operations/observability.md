@@ -180,16 +180,20 @@ The backend reads observability config at process start. If you change OTLP env 
 The trace file is the fastest way to inspect raw span data.
 
 Resolve the path for the launch mode once. Production and explicitly configured homes store runtime
-state under the base directory's `userdata` folder:
+state under the base directory's `userdata` folder. The default home is `~/.codeslop`, except on a
+machine still holding a pre-rebrand `~/.t3` database, which keeps winning — see
+[state home](../internals/glossary.md#state-home):
 
 ```bash
-TRACE_FILE="${T3CODE_HOME:-$HOME/.t3}/userdata/logs/server.trace.ndjson"
+T3_HOME="${T3CODE_HOME:-$([ -f "$HOME/.t3/userdata/state.sqlite" ] && [ ! -f "$HOME/.codeslop/userdata/state.sqlite" ] && echo "$HOME/.t3" || echo "$HOME/.codeslop")}"
+TRACE_FILE="$T3_HOME/userdata/logs/server.trace.ndjson"
 ```
 
-A dev server started from a linked worktree defaults to that worktree's local home:
+A dev server started from a linked worktree defaults to that worktree's local home (`.slop`, or
+`.t3` when the worktree still carries pre-rebrand state):
 
 ```bash
-TRACE_FILE="$WORKTREE/.t3/userdata/logs/server.trace.ndjson"
+TRACE_FILE="$WORKTREE/.slop/userdata/logs/server.trace.ndjson"
 ```
 
 Only an implicit dev run outside a linked worktree uses the shared dev directory:

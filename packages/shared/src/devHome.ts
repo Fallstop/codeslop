@@ -8,6 +8,7 @@
  * from `<base>/dev` to `<base>/userdata`, the live production database.
  */
 
+import { resolveStateHome, worktreeStateHomeCandidates } from "./stateHome.ts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
@@ -99,12 +100,5 @@ export const resolveWorktreeT3Home = (
       return undefined;
     }
     const path = yield* Path.Path;
-    // A worktree that already carries pre-rebrand `.t3` state keeps using it; only a fresh
-    // worktree gets the `.slop` name.
-    const fileSystem = yield* FileSystem.FileSystem;
-    const legacyHome = path.join(worktreePath, ".t3");
-    if (yield* fileSystem.exists(legacyHome).pipe(Effect.orElseSucceed(() => false))) {
-      return legacyHome;
-    }
-    return path.join(worktreePath, ".slop");
+    return yield* resolveStateHome(worktreeStateHomeCandidates(worktreePath, path.join));
   });

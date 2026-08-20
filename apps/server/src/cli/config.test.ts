@@ -137,6 +137,109 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     }),
   );
 
+  it.effect("relocates only the runtime record, leaving every other path alone", () =>
+    Effect.gen(function* () {
+      const { join } = yield* Path.Path;
+      const baseDir = join(NodeOS.tmpdir(), "t3-cli-config-runtime-state-base");
+      const relocated = join(NodeOS.tmpdir(), "t3-ssh-launch", "server-runtime.json");
+      const shared = yield* resolveServerConfig(
+        {
+          mode: Option.some("web"),
+          port: Option.some(4_100),
+          host: Option.none(),
+          baseDir: Option.some(baseDir),
+          cwd: Option.none(),
+          devUrl: Option.none(),
+          noBrowser: Option.none(),
+          bootstrapFd: Option.none(),
+          autoBootstrapProjectFromCwd: Option.none(),
+          logWebSocketEvents: Option.none(),
+          tailscaleServeEnabled: Option.none(),
+          tailscaleServePort: Option.none(),
+        },
+        Option.none(),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })),
+            NetService.layer,
+          ),
+        ),
+      );
+
+      assert.equal(shared.serverRuntimeStatePath, join(baseDir, "userdata", "server-runtime.json"));
+
+      // An SSH-launched server shares the state directory with whatever server is
+      // already there, so it must publish somewhere else while reading the same
+      // database.
+      const relocatedConfig = yield* resolveServerConfig(
+        {
+          mode: Option.some("web"),
+          port: Option.some(4_100),
+          host: Option.none(),
+          baseDir: Option.some(baseDir),
+          runtimeStatePath: Option.some(relocated),
+          cwd: Option.none(),
+          devUrl: Option.none(),
+          noBrowser: Option.none(),
+          bootstrapFd: Option.none(),
+          autoBootstrapProjectFromCwd: Option.none(),
+          logWebSocketEvents: Option.none(),
+          tailscaleServeEnabled: Option.none(),
+          tailscaleServePort: Option.none(),
+        },
+        Option.none(),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ConfigProvider.layer(ConfigProvider.fromEnv({ env: {} })),
+            NetService.layer,
+          ),
+        ),
+      );
+
+      assert.equal(relocatedConfig.serverRuntimeStatePath, relocated);
+      assert.equal(relocatedConfig.dbPath, shared.dbPath);
+      assert.equal(relocatedConfig.stateDir, shared.stateDir);
+    }),
+  );
+
+  it.effect("accepts the runtime record location from the environment", () =>
+    Effect.gen(function* () {
+      const { join } = yield* Path.Path;
+      const baseDir = join(NodeOS.tmpdir(), "t3-cli-config-runtime-state-env-base");
+      const relocated = join(NodeOS.tmpdir(), "t3-ssh-launch-env", "server-runtime.json");
+      const resolved = yield* resolveServerConfig(
+        {
+          mode: Option.some("web"),
+          port: Option.some(4_101),
+          host: Option.none(),
+          baseDir: Option.some(baseDir),
+          cwd: Option.none(),
+          devUrl: Option.none(),
+          noBrowser: Option.none(),
+          bootstrapFd: Option.none(),
+          autoBootstrapProjectFromCwd: Option.none(),
+          logWebSocketEvents: Option.none(),
+          tailscaleServeEnabled: Option.none(),
+          tailscaleServePort: Option.none(),
+        },
+        Option.none(),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ConfigProvider.layer(
+              ConfigProvider.fromEnv({ env: { T3CODE_RUNTIME_STATE_PATH: relocated } }),
+            ),
+            NetService.layer,
+          ),
+        ),
+      );
+
+      assert.equal(resolved.serverRuntimeStatePath, relocated);
+    }),
+  );
+
   it.effect("uses CLI flags when provided", () =>
     Effect.gen(function* () {
       const { join } = yield* Path.Path;

@@ -36,6 +36,12 @@ export const baseDirFlag = Flag.string("base-dir").pipe(
   ),
   Flag.optional,
 );
+export const runtimeStatePathFlag = Flag.string("runtime-state-path").pipe(
+  Flag.withDescription(
+    "Where to publish this server's runtime record. Defaults to server-runtime.json under the state directory; set it when another server already owns that slot.",
+  ),
+  Flag.optional,
+);
 export const devUrlFlag = Flag.string("dev-url").pipe(
   Flag.withSchema(Schema.URLFromString),
   Flag.withDescription("Dev web URL to proxy/redirect to (equivalent to VITE_DEV_SERVER_URL)."),
@@ -105,6 +111,10 @@ const EnvServerConfig = Config.all({
   port: Config.port("T3CODE_PORT").pipe(Config.option, Config.map(Option.getOrUndefined)),
   host: Config.string("T3CODE_HOST").pipe(Config.option, Config.map(Option.getOrUndefined)),
   t3Home: Config.string("T3CODE_HOME").pipe(Config.option, Config.map(Option.getOrUndefined)),
+  runtimeStatePath: Config.string("T3CODE_RUNTIME_STATE_PATH").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
   devUrl: Config.url("VITE_DEV_SERVER_URL").pipe(Config.option, Config.map(Option.getOrUndefined)),
   devAllowedOrigins: Config.string("T3CODE_DEV_ALLOWED_ORIGINS").pipe(
     Config.withDefault(""),
@@ -146,6 +156,7 @@ export interface CliServerFlags {
   readonly port: Option.Option<number>;
   readonly host: Option.Option<string>;
   readonly baseDir: Option.Option<string>;
+  readonly runtimeStatePath?: Option.Option<string>;
   readonly cwd: Option.Option<string>;
   readonly devUrl: Option.Option<URL>;
   readonly noBrowser: Option.Option<boolean>;
@@ -175,6 +186,7 @@ export const sharedServerCommandFlags = {
   port: portFlag,
   host: hostFlag,
   baseDir: baseDirFlag,
+  runtimeStatePath: runtimeStatePathFlag,
   cwd: Argument.string("cwd").pipe(
     Argument.withDescription(
       "Working directory for provider sessions (defaults to the current directory).",
@@ -225,6 +237,7 @@ export const resolveServerConfig = (
       port: flags.port ?? Option.none(),
       host: flags.host ?? Option.none(),
       baseDir: flags.baseDir ?? Option.none(),
+      runtimeStatePath: flags.runtimeStatePath ?? Option.none(),
       cwd: flags.cwd ?? Option.none(),
       devUrl: flags.devUrl ?? Option.none(),
       noBrowser: flags.noBrowser ?? Option.none(),
@@ -282,8 +295,17 @@ export const resolveServerConfig = (
     const rawCwd = Option.getOrElse(normalizedFlags.cwd, () => process.cwd());
     const cwd = path.resolve(yield* expandHomePath(rawCwd.trim()));
     yield* fs.makeDirectory(cwd, { recursive: true });
+    const runtimeStatePath = Option.getOrUndefined(
+      resolveOptionPrecedence(
+        normalizedFlags.runtimeStatePath,
+        Option.fromUndefinedOr(env.runtimeStatePath),
+      ).pipe(Option.filter((value) => value.trim().length > 0)),
+    );
     const derivedPaths = yield* ServerConfig.deriveServerPaths(baseDir, devUrl, {
       baseDirIsExplicit: Option.isSome(explicitBaseDir),
+      ...(runtimeStatePath === undefined
+        ? {}
+        : { runtimeStatePath: path.resolve(yield* expandHomePath(runtimeStatePath.trim())) }),
     });
     yield* ServerConfig.ensureServerDirectories(derivedPaths);
     const persistedObservabilitySettings = yield* loadPersistedObservabilitySettings(

@@ -8,6 +8,11 @@ import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NetService from "@t3tools/shared/Net";
 import { resolveGitWorktreePath, resolveWorktreeT3Home } from "@t3tools/shared/devHome";
+import {
+  preferInitializedStateHome,
+  stateHomeDatabaseCandidates,
+  userStateHomeCandidates,
+} from "@t3tools/shared/stateHome";
 import { HostProcessEnvironment, HostProcessWorkingDirectory } from "@t3tools/shared/hostProcess";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import * as Config from "effect/Config";
@@ -69,11 +74,20 @@ export function isProxiableBindHost(host: string): boolean {
   );
 }
 
-// Matches the server's default: an existing pre-rebrand `~/.t3` keeps winning so dev state
-// stays where it is; fresh machines get `~/.codeslop`.
+// Matches the server's default. Kept synchronous (callers only carry `Path.Path`),
+// so it applies the shared rule over `existsSync` rather than the Effect resolver.
 export const DEFAULT_T3_HOME = Effect.map(Effect.service(Path.Path), (path) => {
-  const legacyHome = path.join(NodeOS.homedir(), ".t3");
-  return NodeFS.existsSync(legacyHome) ? legacyHome : path.join(NodeOS.homedir(), ".codeslop");
+  const { current, legacy } = userStateHomeCandidates(NodeOS.homedir(), path.join);
+  const isInitialized = (baseDir: string) =>
+    stateHomeDatabaseCandidates(baseDir, path.join).some((candidate) =>
+      NodeFS.existsSync(candidate),
+    );
+  return preferInitializedStateHome({
+    current,
+    legacy,
+    currentIsInitialized: isInitialized(current),
+    legacyIsInitialized: isInitialized(legacy),
+  });
 });
 
 const MODE_ARGS = {
@@ -344,6 +358,12 @@ export function createDevRunnerEnv({
     } else {
       delete output.T3CODE_HOME;
     }
+
+    // A dev server always publishes under its own resolved base dir. Inheriting a
+    // record location pins it to somebody else's slot: an agent running this from
+    // inside a codeslop session on an SSH-launched server would otherwise
+    // overwrite that server's advertisement with the dev server's endpoint.
+    delete output.T3CODE_RUNTIME_STATE_PATH;
 
     // A dev-runner server is never launcher-managed. When the shell that runs
     // this script was itself spawned by the machine's managed t3 service (an

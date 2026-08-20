@@ -31,10 +31,7 @@ import { OrchestrationLayerLive } from "../orchestration/runtimeLayer.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "../persistence/Layers/Sqlite.ts";
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
 import * as ServerRuntimeStartup from "../serverRuntimeStartup.ts";
-import {
-  clearPersistedServerRuntimeState,
-  readPersistedServerRuntimeState,
-} from "../serverRuntimeState.ts";
+import { clearStaleServerRuntimeState, readLiveServerRuntimeState } from "../serverRuntimeState.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { type CliAuthLocationFlags, projectLocationFlags, resolveCliAuthConfig } from "./config.ts";
 
@@ -347,7 +344,13 @@ const tryResolveLiveProjectExecutionMode = Effect.fn("tryResolveLiveProjectExecu
     environmentAuth: EnvironmentAuth.EnvironmentAuth["Service"],
     config: ServerConfig.ServerConfig["Service"],
   ) {
-    const runtimeState = yield* readPersistedServerRuntimeState(config.serverRuntimeStatePath);
+    // Not just the shared slot: a server launched over SSH advertises beside its
+    // own launch state, and missing it means writing to a live server's database
+    // through the offline path below.
+    const runtimeState = yield* readLiveServerRuntimeState({
+      runtimeStatePath: config.serverRuntimeStatePath,
+      baseDir: config.baseDir,
+    });
     if (Option.isNone(runtimeState)) {
       return Option.none<{ readonly origin: string }>();
     }
@@ -369,7 +372,7 @@ const tryResolveLiveProjectExecutionMode = Effect.fn("tryResolveLiveProjectExecu
       origin: runtimeState.value.origin,
       cause: attempted.failure,
     });
-    yield* clearPersistedServerRuntimeState(config.serverRuntimeStatePath);
+    yield* clearStaleServerRuntimeState(config.serverRuntimeStatePath);
     return Option.none<{ readonly origin: string }>();
   },
 );

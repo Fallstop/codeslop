@@ -6,6 +6,7 @@ import {
   readPathFromLaunchctl,
   resolveWindowsEnvironment,
 } from "@t3tools/shared/shell";
+import { resolveUserStateHome } from "@t3tools/shared/stateHome";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -103,17 +104,9 @@ export const expandHomePath = Effect.fn(function* (input: string) {
 });
 
 export const resolveBaseDir = Effect.fn(function* (raw: string | undefined) {
-  const { join, resolve } = yield* Path.Path;
+  const { resolve } = yield* Path.Path;
   if (!raw || raw.trim().length === 0) {
-    // `~/.codeslop` matches the desktop default. An existing pre-rebrand `~/.t3` keeps
-    // winning: it holds live state (a sqlite database and git worktrees registered under
-    // absolute paths), which a directory rename would silently orphan.
-    const legacyBaseDir = join(NodeOS.homedir(), ".t3");
-    const fileSystem = yield* FileSystem.FileSystem;
-    if (yield* fileSystem.exists(legacyBaseDir).pipe(Effect.orElseSucceed(() => false))) {
-      return legacyBaseDir;
-    }
-    return join(NodeOS.homedir(), ".codeslop");
+    return yield* resolveUserStateHome(NodeOS.homedir());
   }
   return resolve(yield* expandHomePath(raw.trim()));
 });

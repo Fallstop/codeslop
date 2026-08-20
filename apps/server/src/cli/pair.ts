@@ -43,6 +43,7 @@ import * as ServerConfig from "../config.ts";
 import { resolveBaseDir } from "../os-jank.ts";
 import {
   type PersistedServerRuntimeState,
+  processIsAlive,
   readPersistedServerRuntimeState,
 } from "../serverRuntimeState.ts";
 import {
@@ -229,17 +230,6 @@ const probeEnvironmentDescriptor = (
     return { _tag: "descriptor", descriptor } as const;
   }).pipe(Effect.catch((outcome) => Effect.succeed(outcome)));
 
-// signal 0 delivers nothing; it only reports whether the pid exists. EPERM
-// means it exists but belongs to another user, which still counts as alive.
-const isProcessAlive = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error instanceof Error && "code" in error && error.code === "EPERM";
-  }
-};
-
 interface DiscoveredPairTarget {
   readonly baseDir: string;
   readonly variant: PairStateVariant;
@@ -282,7 +272,7 @@ const discoverPairTarget = Effect.fn("pair.discoverPairTarget")(function* (
       // The pid check guards against a dead server's state file whose port
       // was since reused by a different server: pairing would then mint a
       // token in the old database while the QR code points at the new server.
-      if (!isProcessAlive(state.value.pid)) {
+      if (!processIsAlive(state.value.pid)) {
         continue;
       }
       const probed = yield* probeEnvironmentDescriptor(state.value.origin);

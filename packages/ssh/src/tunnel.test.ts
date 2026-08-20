@@ -162,6 +162,76 @@ describe("ssh tunnel scripts", () => {
     assert.include(script, 'exec node "$T3_NODE_SCRIPT_PATH" "$@"');
   });
 
+  it("resolves the remote state home the same way in every script", () => {
+    const target = {
+      alias: "devbox",
+      hostname: "devbox.example.com",
+      username: "julius",
+      port: 2222,
+    } as const;
+
+    // These must land on the same directory or they drive different servers:
+    // launch starts one, stop kills another. The log-tail script is built from
+    // the same REMOTE_SERVER_HOME_SCRIPT constant but has no exported builder.
+    const scripts = [
+      buildRemoteLaunchScript(),
+      buildRemotePairingScript(target),
+      buildRemoteStopScript(target),
+    ];
+    for (const script of scripts) {
+      assert.include(script, "t3_state_home_is_initialized() {");
+      assert.include(script, 'DEFAULT_SERVER_HOME="$HOME/.codeslop"');
+      assert.include(
+        script,
+        'if ! t3_state_home_is_initialized "$DEFAULT_SERVER_HOME" && t3_state_home_is_initialized "$HOME/.t3"; then',
+      );
+      // The old rule took ~/.t3 whenever the directory merely existed.
+      assert.notInclude(script, 'if [ -d "$HOME/.t3" ]; then');
+      assert.notInclude(script, "@@T3_SERVER_HOME_SCRIPT@@");
+    }
+
+    assert.include(buildRemoteStopScript(target), 'STATE_DIR="$DEFAULT_SERVER_HOME/ssh-launch/');
+  });
+
+  it("finds a server another launch already started on the same host", () => {
+    const script = buildRemoteLaunchScript();
+
+    // Launched servers publish beside their own state now, so the shared slot no
+    // longer advertises them. Without a sweep of the sibling launches, a second
+    // controller would start a second server against the same database.
+    assert.include(script, "resolve_sibling_runtime_port()");
+    assert.include(
+      script,
+      'for SIBLING_RUNTIME_FILE in "$DEFAULT_SERVER_HOME"/ssh-launch/*/server-runtime.json; do',
+    );
+    // Our own record must not count as somebody else's server.
+    assert.include(script, '"$STATE_DIR"/*) continue ;;');
+    // The shared slot still takes precedence, so a running desktop server wins.
+    assert.isBelow(
+      script.indexOf('DEFAULT_RUNTIME_INFO="$(resolve_default_runtime_port'),
+      script.indexOf('DEFAULT_RUNTIME_INFO="$(resolve_sibling_runtime_port'),
+    );
+  });
+
+  it("keeps a launched server out of the shared runtime record", () => {
+    const script = buildRemoteLaunchScript();
+
+    // An older remote t3 ignores an unknown environment variable but exits on an
+    // unknown flag, so this must not become `--runtime-state-path`.
+    assert.include(
+      script,
+      'T3CODE_RUNTIME_STATE_PATH="$STATE_DIR/server-runtime.json" "$RUNNER_FILE" serve',
+    );
+    assert.notInclude(script, "--runtime-state-path");
+
+    // Discovery still reads the shared slot, which now keeps describing the
+    // server clients are meant to find.
+    assert.include(
+      script,
+      'DEFAULT_RUNTIME_FILE="$DEFAULT_SERVER_HOME/userdata/server-runtime.json"',
+    );
+  });
+
   it("uses the remote t3 runner for launch and pairing scripts", () => {
     const target = {
       alias: "devbox",
@@ -190,7 +260,7 @@ describe("ssh tunnel scripts", () => {
     assert.include(buildRemoteLaunchScript(), '"$RUNNER_FILE" serve --host 127.0.0.1');
     assert.include(buildRemoteLaunchScript(), '--base-dir "$DEFAULT_SERVER_HOME"');
     assert.notInclude(buildRemoteLaunchScript(), "server-home");
-    assert.include(buildRemoteLaunchScript(), "Remote T3 server did not become ready");
+    assert.include(buildRemoteLaunchScript(), "Remote codeslop server did not become ready");
     assert.include(buildRemoteLaunchScript(), 'wait_ready "60000"');
     assert.include(buildRemoteLaunchScript(), 'if [ -s "$LOG_FILE" ]; then');
     assert.include(buildRemoteLaunchScript(), "It wrote nothing to %s");

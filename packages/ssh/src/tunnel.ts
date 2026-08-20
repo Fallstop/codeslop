@@ -452,16 +452,25 @@ printf 'Remote host is missing the t3 CLI and could not install @@T3_PACKAGE_SPE
 exit 1
 `;
 
+/**
+ * Picks the remote's state home the same way every other component does: an
+ * already-initialised `~/.codeslop` wins, a pre-rebrand `~/.t3` is used when it
+ * is the one holding state, and a fresh host gets `~/.codeslop`. Kept in one
+ * place because the launch, pairing, stop, and log-tail scripts must all land on
+ * the same directory or they operate on different servers.
+ */
+export const REMOTE_SERVER_HOME_SCRIPT = `t3_state_home_is_initialized() {
+  [ -f "$1/userdata/state.sqlite" ] || [ -f "$1/dev/state.sqlite" ]
+}
+DEFAULT_SERVER_HOME="$HOME/.codeslop"
+if ! t3_state_home_is_initialized "$DEFAULT_SERVER_HOME" && t3_state_home_is_initialized "$HOME/.t3"; then
+  DEFAULT_SERVER_HOME="$HOME/.t3"
+fi`;
+
 export const REMOTE_LAUNCH_SCRIPT = `set -eu
 @@T3_NODE_ENV_SCRIPT@@
 STATE_KEY="$1"
-# A pre-rebrand ~/.t3 holds live server state (sqlite, registered worktrees), so it keeps
-# winning; only a fresh host gets the ~/.codeslop name.
-if [ -d "$HOME/.t3" ]; then
-  DEFAULT_SERVER_HOME="$HOME/.t3"
-else
-  DEFAULT_SERVER_HOME="$HOME/.codeslop"
-fi
+@@T3_SERVER_HOME_SCRIPT@@
 STATE_DIR="$DEFAULT_SERVER_HOME/ssh-launch/$STATE_KEY"
 DEFAULT_RUNTIME_FILE="$DEFAULT_SERVER_HOME/userdata/server-runtime.json"
 PORT_FILE="$STATE_DIR/port"
@@ -506,8 +515,8 @@ wait_for_pid_exit() {
     sleep 0.1
   done
 }
-resolve_default_runtime_port() {
-  node - "$DEFAULT_RUNTIME_FILE" <<'NODE'
+read_runtime_record() {
+  node - "$1" <<'NODE'
 const fs = require("node:fs");
 const runtimePath = process.argv[2] ?? "";
 try {
@@ -528,10 +537,33 @@ try {
 }
 NODE
 }
+resolve_default_runtime_port() {
+  read_runtime_record "$DEFAULT_RUNTIME_FILE"
+}
+# A server launched over SSH publishes beside its own state rather than into the
+# shared slot, so finding one means looking through the other launches on this
+# host. Without this, a second controller (another laptop, a different state key)
+# would start a second server against the same database.
+resolve_sibling_runtime_port() {
+  for SIBLING_RUNTIME_FILE in "$DEFAULT_SERVER_HOME"/ssh-launch/*/server-runtime.json; do
+    [ -f "$SIBLING_RUNTIME_FILE" ] || continue
+    case "$SIBLING_RUNTIME_FILE" in
+      "$STATE_DIR"/*) continue ;;
+    esac
+    if SIBLING_RUNTIME_INFO="$(read_runtime_record "$SIBLING_RUNTIME_FILE" 2>/dev/null)"; then
+      printf '%s' "$SIBLING_RUNTIME_INFO"
+      return 0
+    fi
+  done
+  return 1
+}
 REMOTE_PID="$(cat "$PID_FILE" 2>/dev/null || true)"
 REMOTE_PORT="$(cat "$PORT_FILE" 2>/dev/null || true)"
 REMOTE_MANAGED="$(cat "$MANAGED_FILE" 2>/dev/null || true)"
 DEFAULT_RUNTIME_INFO="$(resolve_default_runtime_port 2>/dev/null || true)"
+if [ -z "$DEFAULT_RUNTIME_INFO" ]; then
+  DEFAULT_RUNTIME_INFO="$(resolve_sibling_runtime_port 2>/dev/null || true)"
+fi
 DEFAULT_RUNTIME_PID=""
 DEFAULT_REMOTE_PORT=""
 if [ -n "$DEFAULT_RUNTIME_INFO" ]; then
@@ -596,13 +628,19 @@ if [ -z "$REMOTE_PORT" ]; then
     printf 'Failed to find an available port on the remote host. Ensure node is available on PATH.\\n' >&2
     exit 1
   fi
-  nohup env T3CODE_NO_BROWSER=1 "$RUNNER_FILE" serve --host 127.0.0.1 --port "$REMOTE_PORT" --base-dir "$DEFAULT_SERVER_HOME" >>"$LOG_FILE" 2>&1 < /dev/null &
+  # The record goes in this launch's own state dir, not the shared slot under
+  # userdata: an already-running desktop server owns that one, and clobbering it
+  # (or deleting it on shutdown) leaves it undiscoverable, so every later connect
+  # would launch yet another server against the same database. Passed as an
+  # environment variable rather than a flag because an older remote t3 ignores an
+  # unknown variable but exits on an unknown flag.
+  nohup env T3CODE_NO_BROWSER=1 T3CODE_RUNTIME_STATE_PATH="$STATE_DIR/server-runtime.json" "$RUNNER_FILE" serve --host 127.0.0.1 --port "$REMOTE_PORT" --base-dir "$DEFAULT_SERVER_HOME" >>"$LOG_FILE" 2>&1 < /dev/null &
   REMOTE_PID="$!"
   printf '%s\\n' "$REMOTE_PID" >"$PID_FILE"
   printf '%s\\n' "$REMOTE_PORT" >"$PORT_FILE"
   printf 'managed\\n' >"$MANAGED_FILE"
   if ! wait_ready "@@T3_READY_TIMEOUT_MS@@"; then
-    printf 'Remote T3 server did not become ready on 127.0.0.1:%s.\\n' "$REMOTE_PORT" >&2
+    printf 'Remote codeslop server did not become ready on 127.0.0.1:%s.\\n' "$REMOTE_PORT" >&2
     if [ -s "$LOG_FILE" ]; then
       tail -n 80 "$LOG_FILE" >&2 2>/dev/null || true
     else
@@ -618,11 +656,7 @@ printf '{"remotePort":%s,"serverKind":"%s"}\\n' "$REMOTE_PORT" "\${REMOTE_MANAGE
 `;
 
 export const REMOTE_PAIRING_SCRIPT = `set -eu
-if [ -d "$HOME/.t3" ]; then
-  DEFAULT_SERVER_HOME="$HOME/.t3"
-else
-  DEFAULT_SERVER_HOME="$HOME/.codeslop"
-fi
+@@T3_SERVER_HOME_SCRIPT@@
 STATE_DIR="$DEFAULT_SERVER_HOME/ssh-launch/@@T3_STATE_KEY@@"
 RUNNER_FILE="$STATE_DIR/run-t3.sh"
 mkdir -p "$STATE_DIR"
@@ -635,11 +669,8 @@ PAIRING_BASE_DIR="$DEFAULT_SERVER_HOME"
 `;
 
 export const REMOTE_STOP_SCRIPT = `set -eu
-if [ -d "$HOME/.t3" ]; then
-  STATE_DIR="$HOME/.t3/ssh-launch/@@T3_STATE_KEY@@"
-else
-  STATE_DIR="$HOME/.codeslop/ssh-launch/@@T3_STATE_KEY@@"
-fi
+@@T3_SERVER_HOME_SCRIPT@@
+STATE_DIR="$DEFAULT_SERVER_HOME/ssh-launch/@@T3_STATE_KEY@@"
 PID_FILE="$STATE_DIR/pid"
 PORT_FILE="$STATE_DIR/port"
 MANAGED_FILE="$STATE_DIR/managed"
@@ -658,11 +689,8 @@ printf '{"stopped":true}\\n'
 `;
 
 const REMOTE_LOG_TAIL_SCRIPT = `set -eu
-if [ -d "$HOME/.t3" ]; then
-  STATE_DIR="$HOME/.t3/ssh-launch/@@T3_STATE_KEY@@"
-else
-  STATE_DIR="$HOME/.codeslop/ssh-launch/@@T3_STATE_KEY@@"
-fi
+@@T3_SERVER_HOME_SCRIPT@@
+STATE_DIR="$DEFAULT_SERVER_HOME/ssh-launch/@@T3_STATE_KEY@@"
 LOG_FILE="$STATE_DIR/server.log"
 if [ -f "$LOG_FILE" ]; then
   tail -n 80 "$LOG_FILE" 2>/dev/null || true
@@ -693,6 +721,7 @@ export function buildRemoteNodeEnvScript(input?: RemoteT3RunnerOptions): string 
 export function buildRemoteLaunchScript(input?: RemoteT3RunnerOptions): string {
   return applyScriptPlaceholders(REMOTE_LAUNCH_SCRIPT, {
     T3_NODE_ENV_SCRIPT: buildRemoteNodeEnvScript(input),
+    T3_SERVER_HOME_SCRIPT: REMOTE_SERVER_HOME_SCRIPT,
     T3_RUNNER_SCRIPT: stripTrailingNewlines(buildRemoteT3RunnerScript(input)),
     T3_PICK_PORT_SCRIPT: stripTrailingNewlines(REMOTE_PICK_PORT_SCRIPT),
     T3_WAIT_READY_SCRIPT: stripTrailingNewlines(REMOTE_WAIT_READY_SCRIPT),
@@ -710,6 +739,7 @@ export function buildRemotePairingScript(
 ): string {
   return applyScriptPlaceholders(REMOTE_PAIRING_SCRIPT, {
     T3_STATE_KEY: remoteStateKey(target),
+    T3_SERVER_HOME_SCRIPT: REMOTE_SERVER_HOME_SCRIPT,
     T3_RUNNER_SCRIPT: stripTrailingNewlines(buildRemoteT3RunnerScript(input)),
   });
 }
@@ -717,12 +747,14 @@ export function buildRemotePairingScript(
 export function buildRemoteStopScript(target: DesktopSshEnvironmentTarget): string {
   return applyScriptPlaceholders(REMOTE_STOP_SCRIPT, {
     T3_STATE_KEY: remoteStateKey(target),
+    T3_SERVER_HOME_SCRIPT: REMOTE_SERVER_HOME_SCRIPT,
   });
 }
 
 function buildRemoteLogTailScript(target: DesktopSshEnvironmentTarget): string {
   return applyScriptPlaceholders(REMOTE_LOG_TAIL_SCRIPT, {
     T3_STATE_KEY: remoteStateKey(target),
+    T3_SERVER_HOME_SCRIPT: REMOTE_SERVER_HOME_SCRIPT,
   });
 }
 

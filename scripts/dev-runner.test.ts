@@ -252,6 +252,30 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
       }),
     );
 
+    it.effect("strips an inherited runtime record location", () =>
+      Effect.gen(function* () {
+        // An agent working inside codeslop on an SSH-launched server inherits that
+        // server's record location; a dev server must never publish into it.
+        const env = yield* createDevRunnerEnv({
+          mode: "dev",
+          baseEnv: {
+            T3CODE_RUNTIME_STATE_PATH: "/home/user/.codeslop/ssh-launch/abc/server-runtime.json",
+          },
+          serverOffset: 0,
+          webOffset: 0,
+          t3Home: undefined,
+          browser: undefined,
+          autoBootstrapProjectFromCwd: undefined,
+          logWebSocketEvents: undefined,
+          host: undefined,
+          port: undefined,
+          devUrl: undefined,
+        });
+
+        assert.equal(env.T3CODE_RUNTIME_STATE_PATH, undefined);
+      }),
+    );
+
     it.effect("does not force websocket logging on in dev mode when unset", () =>
       Effect.gen(function* () {
         const env = yield* createDevRunnerEnv({

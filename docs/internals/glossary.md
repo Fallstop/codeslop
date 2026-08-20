@@ -11,6 +11,7 @@ This is a living glossary for codeslop. It explains what common terms mean in th
 - [Orchestration](#orchestration)
 - [Provider runtime](#provider-runtime)
 - [Checkpointing](#checkpointing)
+- [State home](#state-home)
 
 ## Concepts
 
@@ -140,6 +141,18 @@ The patch difference between two checkpoints. Query logic lives in [CheckpointDi
 
 The file patch and changed-file summary for one turn. It is usually computed in [CheckpointDiffQuery.ts][20], represented in [the contracts][1], and recorded into thread state by [projector.ts][4].
 
+### State home
+
+#### State home
+
+The base directory one environment keeps its data in: the database, worktrees, caches, and secrets. Every component resolves it through the same rule in [stateHome.ts][25] — whichever candidate already holds a `state.sqlite` wins, and the current name breaks the tie. Installed apps choose between `~/.codeslop` and a pre-rebrand `~/.t3`; a linked git worktree chooses between `.slop` and `.t3` inside the worktree. `T3CODE_HOME` overrides the choice entirely.
+
+The rule is duplicated deliberately in four places because they cannot share a runtime: [DesktopStatePaths.ts][26] resolves it synchronously before Electron is ready, [os-jank.ts][27] resolves it inside Effect, `scripts/dev-runner.ts` resolves it for dev commands, and `REMOTE_SERVER_HOME_SCRIPT` in [tunnel.ts][28] resolves it in POSIX `sh` on a remote host. They must stay in agreement: when they disagree, one machine serves two databases with two environment ids.
+
+#### Server runtime record
+
+`<stateDir>/server-runtime.json`, written by a server once it is listening, telling local callers (`t3 pair`, the SSH reuse probe) which pid and port to talk to. There is one slot per state directory, so it names the server that clients should find. A server only clears the record while it still describes itself; a second server sharing the directory — one launched over SSH beside a running desktop app — publishes to its own path via `T3CODE_RUNTIME_STATE_PATH` instead. See [serverRuntimeState.ts][29].
+
 ## Practical Shortcuts
 
 - If you see `requested`, think "intent recorded".
@@ -147,6 +160,7 @@ The file patch and changed-file summary for one turn. It is usually computed in 
 - If you see `receipt`, think "async milestone signal, for tests".
 - If you see `checkpoint`, think "workspace snapshot for diff/restore".
 - If you see `quiesced`, think "all relevant follow-up work has gone idle".
+- If you see `state home`, think "where this environment's database lives".
 
 ## Related Docs
 
@@ -179,3 +193,8 @@ The file patch and changed-file summary for one turn. It is usually computed in 
 [22]: ../../apps/server/src/checkpointing/Utils.ts
 [23]: ../../apps/server/src/checkpointing/Diffs.ts
 [24]: ./overview.md
+[25]: ../../packages/shared/src/stateHome.ts
+[26]: ../../apps/desktop/src/app/DesktopStatePaths.ts
+[27]: ../../apps/server/src/os-jank.ts
+[28]: ../../packages/ssh/src/tunnel.ts
+[29]: ../../apps/server/src/serverRuntimeState.ts

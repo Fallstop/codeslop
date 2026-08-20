@@ -29,6 +29,7 @@ import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NodeOS from "node:os";
 import { resolveWorktreeT3Home } from "@t3tools/shared/devHome";
+import { resolveUserStateHome } from "@t3tools/shared/stateHome";
 import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -361,7 +362,11 @@ export const runMigrateDevDb = Effect.fn("runMigrateDevDb")(function* (
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
 
-  const sharedHome = path.resolve(options.sharedHome ?? path.join(NodeOS.homedir(), ".t3"));
+  // The guard has to name the home actually in use: a hardcoded `~/.t3` protects
+  // nothing on a machine that has moved to `~/.codeslop`.
+  const sharedHome = path.resolve(
+    options.sharedHome ?? (yield* resolveUserStateHome(NodeOS.homedir())),
+  );
   const sourcePath = path.resolve(
     input.source ?? path.join(sharedHome, "userdata", "state.sqlite"),
   );

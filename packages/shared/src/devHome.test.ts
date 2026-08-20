@@ -104,11 +104,45 @@ describe("resolveWorktreeT3Home", () => {
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
-  it.effect("keeps an existing pre-rebrand .t3 home", () =>
+  it.effect("keeps a pre-rebrand .t3 home that holds the database", () =>
     Effect.gen(function* () {
       const { root, nested } = yield* makeRepo("worktree");
       const legacyHome = NodePath.join(NodePath.resolve(root), ".t3");
-      NodeFS.mkdirSync(legacyHome);
+      NodeFS.mkdirSync(NodePath.join(legacyHome, "userdata"), { recursive: true });
+      NodeFS.writeFileSync(NodePath.join(legacyHome, "userdata", "state.sqlite"), "");
+      const home = yield* resolveWorktreeT3Home(nested);
+      assert.equal(home, legacyHome);
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("ignores an empty .t3 directory that never held state", () =>
+    Effect.gen(function* () {
+      const { root, nested } = yield* makeRepo("worktree");
+      NodeFS.mkdirSync(NodePath.join(NodePath.resolve(root), ".t3"));
+      const home = yield* resolveWorktreeT3Home(nested);
+      assert.equal(home, NodePath.join(NodePath.resolve(root), ".slop"));
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("prefers an initialised .slop over a populated .t3", () =>
+    Effect.gen(function* () {
+      const { root, nested } = yield* makeRepo("worktree");
+      for (const name of [".t3", ".slop"]) {
+        const stateDir = NodePath.join(NodePath.resolve(root), name, "userdata");
+        NodeFS.mkdirSync(stateDir, { recursive: true });
+        NodeFS.writeFileSync(NodePath.join(stateDir, "state.sqlite"), "");
+      }
+      const home = yield* resolveWorktreeT3Home(nested);
+      assert.equal(home, NodePath.join(NodePath.resolve(root), ".slop"));
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("finds a legacy home whose database sits under dev/", () =>
+    Effect.gen(function* () {
+      const { root, nested } = yield* makeRepo("worktree");
+      const legacyHome = NodePath.join(NodePath.resolve(root), ".t3");
+      NodeFS.mkdirSync(NodePath.join(legacyHome, "dev"), { recursive: true });
+      NodeFS.writeFileSync(NodePath.join(legacyHome, "dev", "state.sqlite"), "");
       const home = yield* resolveWorktreeT3Home(nested);
       assert.equal(home, legacyHome);
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),

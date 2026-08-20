@@ -2,6 +2,7 @@ import { EnvironmentHttpApi } from "@t3tools/contracts";
 import * as Duration from "effect/Duration";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import { FetchHttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
@@ -114,9 +115,10 @@ import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as UsageService from "./usage/UsageService.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
 import {
-  clearPersistedServerRuntimeState,
+  clearOwnedServerRuntimeState,
   makePersistedServerRuntimeState,
   persistServerRuntimeState,
+  reassertServerRuntimeState,
 } from "./serverRuntimeState.ts";
 import { orchestrationHttpApiLayer } from "./orchestration/http.ts";
 import * as NetService from "@t3tools/shared/Net";
@@ -129,6 +131,10 @@ import { forkParked, ServerActivation } from "./serverActivation.ts";
 // already closes the websocket gracefully. Do not add an artificial drain before
 // those finalizers get a chance to run.
 const HTTP_PREEMPTIVE_SHUTDOWN_GRACE_MS = 0;
+
+// One stat per interval, so this is cheap enough to leave running; long
+// enough that a server restarting normally is never raced.
+const RUNTIME_STATE_REASSERT_INTERVAL = "30 seconds";
 const ResourceAttributionLayerLive = ResourceAttribution.layer;
 const ApplicationObservabilityLive = ObservabilityLive.pipe(
   Layer.provideMerge(ResourceAttributionLayerLive),
@@ -517,7 +523,7 @@ export const makeServerLayer = Layer.unwrap(
           const server = yield* HttpServer.HttpServer;
           const address = server.address;
           if (typeof address === "string" || !("port" in address)) {
-            return;
+            return undefined;
           }
 
           const state = yield* makePersistedServerRuntimeState({
@@ -532,9 +538,38 @@ export const makeServerLayer = Layer.unwrap(
               Effect.logWarning("Failed to persist server runtime state", { cause }),
             ),
           );
+          // Keep the record alive against servers old enough to still clear a
+          // slot they do not own; without it this server is undiscoverable for
+          // the rest of its life and callers keep starting replacements.
+          return yield* reassertServerRuntimeState({
+            path: config.serverRuntimeStatePath,
+            state,
+          }).pipe(
+            Effect.flatMap((restored) =>
+              restored
+                ? Effect.logInfo("Restored the server runtime record after it went missing.").pipe(
+                    Effect.annotateLogs({ statePath: config.serverRuntimeStatePath }),
+                  )
+                : Effect.void,
+            ),
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Failed to reassert server runtime state", { cause }),
+            ),
+            Effect.repeat(Schedule.spaced(RUNTIME_STATE_REASSERT_INTERVAL)),
+            Effect.forkScoped,
+          );
         }),
-        () =>
-          clearPersistedServerRuntimeState(config.serverRuntimeStatePath).pipe(
+        // Stop reasserting before clearing, or a tick landing after the clear
+        // would put the record back for a process that is exiting. Explicit
+        // rather than relying on the order the scope runs its finalizers in.
+        (reassert) =>
+          (reassert === undefined ? Effect.void : Fiber.interrupt(reassert)).pipe(
+            Effect.andThen(
+              clearOwnedServerRuntimeState({
+                path: config.serverRuntimeStatePath,
+                ownerPid: process.pid,
+              }),
+            ),
             Effect.catchCause((cause) =>
               Effect.logWarning("Failed to clear server runtime state", { cause }),
             ),

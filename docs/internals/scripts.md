@@ -40,14 +40,15 @@ authenticated.
 
 ### Dev state directories
 
-- Dev commands run from a linked **git worktree** default to that worktree's gitignored `.t3`, even
-  when `T3CODE_HOME` is set, storing state in `<worktree>/.t3/userdata`. Pass `--home-dir <path>` to
-  choose another isolated directory explicitly. Submodules are not worktrees and keep the normal
-  precedence.
-- From the **main checkout**, dev commands implicitly use `~/.t3/dev`, keeping development state
-  separate from `~/.t3/userdata`. An explicit `--home-dir <path>` stores state under
-  `<path>/userdata`; the base directory remains available for caches, worktrees, and other shared
-  data.
+- Dev commands run from a linked **git worktree** default to that worktree's gitignored `.slop`, even
+  when `T3CODE_HOME` is set, storing state in `<worktree>/.slop/userdata`. A worktree that already
+  holds a pre-rebrand `.t3` database keeps using it. Pass `--home-dir <path>` to choose another
+  isolated directory explicitly. Submodules are not worktrees and keep the normal precedence.
+- From the **main checkout**, dev commands implicitly use `~/.codeslop/dev`, keeping development
+  state separate from `~/.codeslop/userdata`. A machine whose database still lives in `~/.t3` keeps
+  using that instead — see [state home](./glossary.md#state-home). An explicit `--home-dir <path>`
+  stores state under `<path>/userdata`; the base directory remains available for caches, worktrees,
+  and other shared data.
 
 ## Build, check, test
 
@@ -77,7 +78,7 @@ authenticated.
 ### Desktop `.dmg` packaging notes
 
 - Default build is unsigned/not notarized for local sharing.
-- The DMG build uses `assets/prod/black-macos-1024.png` as the production app icon source.
+- The DMG build uses `assets/prod/codeslop-macos-1024.png` as the production app icon source.
 - The DMG chrome follows the release channel: neutral for Latest and the Nightly sky artwork for
   Nightly. Blueprint artwork remains exclusive to Dev builds. Packaging rasterizes the selected
   SVG into standard and Retina PNGs inside the disposable staging directory.

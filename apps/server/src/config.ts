@@ -47,6 +47,13 @@ export interface ServerDerivedPaths {
 
 export interface DeriveServerPathsOptions {
   readonly baseDirIsExplicit?: boolean;
+  /**
+   * Where this server publishes its runtime record. A server that shares a state
+   * directory with another one (an SSH-launched server alongside the desktop's)
+   * points this at its own directory so the shared slot keeps describing the
+   * server clients are meant to find.
+   */
+  readonly runtimeStatePath?: string;
 }
 
 /**
@@ -127,7 +134,7 @@ export const deriveServerPaths = Effect.fn(function* (
     terminalLogsDir: join(logsDir, "terminals"),
     anonymousIdPath: join(stateDir, "anonymous-id"),
     environmentIdPath: join(stateDir, "environment-id"),
-    serverRuntimeStatePath: join(stateDir, "server-runtime.json"),
+    serverRuntimeStatePath: options.runtimeStatePath ?? join(stateDir, "server-runtime.json"),
     secretsDir: join(stateDir, "secrets"),
   };
 });
