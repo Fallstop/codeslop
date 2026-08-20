@@ -2493,7 +2493,7 @@ layer("GitHubPullRequestCli.layer", (it) => {
 
       assert.strictEqual(mockedExecute.mock.calls.length, 1);
       expect(callAt(0).args).toContain(
-        "mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,viewerPermission",
+        "mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,viewerPermission,viewerDefaultMergeMethod",
       );
       assert.isTrue(access.canWrite);
       expect(access.mergeCapabilities).toEqual({ merge: false, squash: true, rebase: true });

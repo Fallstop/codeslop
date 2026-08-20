@@ -11,6 +11,7 @@ import type {
   PullRequestCommit,
   PullRequestLabel,
   PullRequestMergeCapabilities,
+  PullRequestMergeMethod,
   PullRequestOmittedFileStat,
   PullRequestMergeability,
   PullRequestReaction,
@@ -550,6 +551,13 @@ const RawRepositoryAccessSchema = Schema.Struct({
    * is answered by granting rather than by failing the whole detail read.
    */
   viewerPermission: Schema.optional(Schema.NullOr(Schema.String)),
+  /**
+   * MERGE, SQUASH or REBASE: what github.com's own merge button would lead with, which is the
+   * viewer's last-used method falling back to the repository default. Optional like
+   * `viewerPermission`: an install that does not answer leaves the default unknown rather than
+   * failing the read.
+   */
+  viewerDefaultMergeMethod: Schema.optional(Schema.NullOr(Schema.String)),
 });
 
 const RawPullRequestFileSchema = Schema.Struct({
@@ -987,7 +995,7 @@ export function buildReviewSubmissionJson(input: {
  * standing on the repository costs no request of its own.
  */
 export const REPOSITORY_ACCESS_JSON_FIELDS =
-  "mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,viewerPermission";
+  "mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,viewerPermission,viewerDefaultMergeMethod";
 
 export interface GitHubPullRequestListItem {
   /** The author's node id, kept so a batch can resolve the avatar the listing does not carry. */
@@ -1867,6 +1875,8 @@ export function decodeReviewThreadCommentsJson(raw: string): Result.Result<
 export interface GitHubRepositoryAccess {
   readonly mergeCapabilities: PullRequestMergeCapabilities;
   readonly canWrite: boolean;
+  /** Absent where GitHub named no default, or named one this app has no strategy for. */
+  readonly defaultMergeMethod?: PullRequestMergeMethod;
 }
 
 /**
@@ -1890,20 +1900,39 @@ function toCanWrite(viewerPermission: string | null | undefined): boolean {
   }
 }
 
+/** A strategy this app has no name for — a future GitHub addition — is no default at all. */
+function toDefaultMergeMethod(
+  viewerDefaultMergeMethod: string | null | undefined,
+): PullRequestMergeMethod | undefined {
+  switch (viewerDefaultMergeMethod?.trim().toUpperCase()) {
+    case "MERGE":
+      return "merge";
+    case "SQUASH":
+      return "squash";
+    case "REBASE":
+      return "rebase";
+    default:
+      return undefined;
+  }
+}
+
 export function decodeRepositoryAccessJson(
   raw: string,
 ): Result.Result<GitHubRepositoryAccess, DecodeFailure> {
   const decoded = decodeRepositoryAccess(raw);
-  return Result.isSuccess(decoded)
-    ? Result.succeed({
-        mergeCapabilities: {
-          merge: decoded.success.mergeCommitAllowed,
-          squash: decoded.success.squashMergeAllowed,
-          rebase: decoded.success.rebaseMergeAllowed,
-        },
-        canWrite: toCanWrite(decoded.success.viewerPermission),
-      })
-    : Result.fail(decoded.failure);
+  if (!Result.isSuccess(decoded)) {
+    return Result.fail(decoded.failure);
+  }
+  const defaultMergeMethod = toDefaultMergeMethod(decoded.success.viewerDefaultMergeMethod);
+  return Result.succeed({
+    mergeCapabilities: {
+      merge: decoded.success.mergeCommitAllowed,
+      squash: decoded.success.squashMergeAllowed,
+      rebase: decoded.success.rebaseMergeAllowed,
+    },
+    canWrite: toCanWrite(decoded.success.viewerPermission),
+    ...(defaultMergeMethod === undefined ? {} : { defaultMergeMethod }),
+  });
 }
 
 /**

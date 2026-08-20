@@ -159,6 +159,8 @@ export interface ProviderChangeRequestDetail extends ProviderChangeRequest {
   readonly reviewers: ReadonlyArray<PullRequestActor>;
   readonly checks: ReadonlyArray<PullRequestCheck>;
   readonly mergeCapabilities: PullRequestMergeCapabilities;
+  /** The strategy the host's own merge control leads with. Absent from a host naming none. */
+  readonly defaultMergeMethod?: PullRequestMergeMethod;
   readonly viewerPermissions: PullRequestViewerPermissions;
   /** Absent from a host that cannot compare the branch with its base, which is most of them. */
   readonly baseComparison?: PullRequestBaseComparison;

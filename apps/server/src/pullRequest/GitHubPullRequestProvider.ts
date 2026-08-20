@@ -277,6 +277,9 @@ export const make = Effect.gen(function* () {
               avatarUrl: null,
             })),
             mergeCapabilities: repository.mergeCapabilities,
+            ...(repository.defaultMergeMethod === undefined
+              ? {}
+              : { defaultMergeMethod: repository.defaultMergeMethod }),
             viewerPermissions: gitHubViewerPermissions({
               ...viewerAccess,
               canUpdateBranch: detail.comparison?.viewerCanUpdate === true,

@@ -670,6 +670,12 @@ export const PullRequestDetail = Schema.Struct({
   checks: Schema.Array(PullRequestCheck),
   mergeCapabilities: PullRequestMergeCapabilities,
   /**
+   * The strategy the host's own merge button would lead with — on GitHub the viewer's last-used
+   * method, falling back to the repository's default. Absent where the host names none, which
+   * leaves the page to its own first allowed method.
+   */
+  defaultMergeMethod: Schema.optional(PullRequestMergeMethod),
+  /**
    * Who the host says the reader is, which is the one thing a conversation cannot be read without
    * to tell the reader's own remarks from everybody else's — and rewriting a remark is offered
    * only where the two names agree. Absent where the host could not say, which offers nothing

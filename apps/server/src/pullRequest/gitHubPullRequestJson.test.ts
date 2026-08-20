@@ -741,6 +741,31 @@ describe("repository access decoding", () => {
     }
   });
 
+  it("reads the viewer's default merge method, and drops one it has no strategy for", () => {
+    const withDefault = (viewerDefaultMergeMethod?: string | null) =>
+      JSON.stringify({
+        mergeCommitAllowed: true,
+        squashMergeAllowed: true,
+        rebaseMergeAllowed: true,
+        ...(viewerDefaultMergeMethod === undefined ? {} : { viewerDefaultMergeMethod }),
+      });
+    expect(
+      expectSuccess(decodeRepositoryAccessJson(withDefault("SQUASH"))).defaultMergeMethod,
+    ).toBe("squash");
+    expect(expectSuccess(decodeRepositoryAccessJson(withDefault("MERGE"))).defaultMergeMethod).toBe(
+      "merge",
+    );
+    expect(
+      expectSuccess(decodeRepositoryAccessJson(withDefault("FAST_FORWARD"))).defaultMergeMethod,
+    ).toBeUndefined();
+    expect(
+      expectSuccess(decodeRepositoryAccessJson(withDefault())).defaultMergeMethod,
+    ).toBeUndefined();
+    expect(
+      expectSuccess(decodeRepositoryAccessJson(withDefault(null))).defaultMergeMethod,
+    ).toBeUndefined();
+  });
+
   it("withholds write where gh names no permission, which is not a standing it gave", () => {
     // The one place an unknown answer is not granted: a Merge button a reader cannot use wastes
     // the press, where a missing one still leaves the pull request open on its host.
