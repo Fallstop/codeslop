@@ -146,6 +146,11 @@ describe("project grouping toggle", () => {
     expect(projectGroupingModeFromToggle(false)).toBe("separate");
   });
 
+  it("restores path grouping when the toggle is cycled", () => {
+    expect(isProjectGroupingEnabled("path")).toBe(true);
+    expect(projectGroupingModeFromToggle(true, "path")).toBe("path");
+  });
+
   it("restores repository path grouping when the toggle is cycled", () => {
     expect(projectGroupingModeFromToggle(false, "repository_path")).toBe("separate");
     expect(projectGroupingModeFromToggle(true, "repository_path")).toBe("repository_path");

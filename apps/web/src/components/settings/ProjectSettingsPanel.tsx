@@ -113,6 +113,7 @@ import { ProjectFaviconPickerDialog } from "./ProjectFaviconPickerDialog";
 export const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> = {
   repository: "Group by repository",
   repository_path: "Group by repository path",
+  path: "Group by folder path",
   separate: "Keep separate",
 };
 
@@ -961,6 +962,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                     value === "inherit" ||
                     value === "repository" ||
                     value === "repository_path" ||
+                    value === "path" ||
                     value === "separate"
                   ) {
                     updateGroupingPreference(selectedCheckout, value);
@@ -983,6 +985,9 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                   </SelectItem>
                   <SelectItem hideIndicator value="repository_path">
                     {PROJECT_GROUPING_MODE_LABELS.repository_path}
+                  </SelectItem>
+                  <SelectItem hideIndicator value="path">
+                    {PROJECT_GROUPING_MODE_LABELS.path}
                   </SelectItem>
                   <SelectItem hideIndicator value="separate">
                     {PROJECT_GROUPING_MODE_LABELS.separate}

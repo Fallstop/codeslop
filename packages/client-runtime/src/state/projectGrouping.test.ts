@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { EnvironmentProject } from "./models.ts";
 import {
   buildProjectGroups,
+  derivePathScopedProjectKey,
   derivePhysicalProjectKey,
   type ProjectGroupingSettings,
 } from "./projectGrouping.ts";
@@ -212,5 +213,109 @@ describe("buildProjectGroups", () => {
     });
     expect(groups).toHaveLength(1);
     expect(groups[0]?.members.map((member) => member.project.id)).toEqual(["winner", "sibling"]);
+  });
+});
+
+describe("path grouping", () => {
+  const otherEnvironmentId = EnvironmentId.make("other-environment");
+
+  it("groups the same home-relative folder across environments without a repository", () => {
+    const local = makeProject("local", "/Users/fallstop/Documents/projects", {
+      repositoryIdentity: null,
+      title: "projects",
+    });
+    const remote = makeProject("remote", "/home/fallstop/Documents/projects", {
+      environmentId: otherEnvironmentId,
+      repositoryIdentity: null,
+      title: "projects",
+    });
+
+    const groups = buildProjectGroups({ projects: [local, remote], settings: settings("path") });
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.members.map((member) => member.project.id)).toEqual(["local", "remote"]);
+    expect(groups[0]?.label).toBe("projects");
+  });
+
+  it("keeps those folders apart in every other mode", () => {
+    const local = makeProject("local", "/Users/fallstop/Documents/projects", {
+      repositoryIdentity: null,
+    });
+    const remote = makeProject("remote", "/home/fallstop/Documents/projects", {
+      environmentId: otherEnvironmentId,
+      repositoryIdentity: null,
+    });
+
+    for (const mode of ["repository", "repository_path", "separate"] as const) {
+      expect(
+        buildProjectGroups({ projects: [local, remote], settings: settings(mode) }),
+      ).toHaveLength(2);
+    }
+  });
+
+  it("matches windows homes across environments", () => {
+    const first = makeProject("first", "C:\\Users\\Fallstop\\Documents\\projects", {
+      repositoryIdentity: null,
+    });
+    const second = makeProject("second", "D:\\Users\\fallstop\\Documents\\projects", {
+      environmentId: otherEnvironmentId,
+      repositoryIdentity: null,
+    });
+
+    expect(
+      buildProjectGroups({ projects: [first, second], settings: settings("path") }),
+    ).toHaveLength(1);
+  });
+
+  it("ignores the repository when both checkouts sit at the same home-relative path", () => {
+    const local = makeProject("local", "/Users/fallstop/code/app");
+    const remote = makeProject("remote", "/home/fallstop/code/app", {
+      environmentId: otherEnvironmentId,
+      repositoryIdentity: { ...repositoryIdentity, canonicalKey: "github.com/t3tools/other" },
+    });
+
+    expect(
+      buildProjectGroups({ projects: [local, remote], settings: settings("path") }),
+    ).toHaveLength(1);
+  });
+
+  it("keeps paths outside a recognizable home absolute", () => {
+    const srv = makeProject("srv", "/srv/work/app", { repositoryIdentity: null });
+    const home = makeProject("home", "/home/fallstop/work/app", {
+      environmentId: otherEnvironmentId,
+      repositoryIdentity: null,
+    });
+
+    expect(buildProjectGroups({ projects: [srv, home], settings: settings("path") })).toHaveLength(
+      2,
+    );
+    expect(derivePathScopedProjectKey(srv)).toBe("path:/srv/work/app");
+    expect(derivePathScopedProjectKey(home)).toBe("path:~/work/app");
+  });
+
+  it("groups per checkout, not per machine, when paths differ", () => {
+    const first = makeProject("first", "/Users/fallstop/code/app", { repositoryIdentity: null });
+    const second = makeProject("second", "/Users/fallstop/code/app-2", {
+      repositoryIdentity: null,
+    });
+
+    expect(
+      buildProjectGroups({ projects: [first, second], settings: settings("path") }),
+    ).toHaveLength(2);
+  });
+
+  it("still honors a per-project override that opts one checkout out", () => {
+    const local = makeProject("local", "/Users/fallstop/Documents/projects", {
+      repositoryIdentity: null,
+    });
+    const remote = makeProject("remote", "/home/fallstop/Documents/projects", {
+      environmentId: otherEnvironmentId,
+      repositoryIdentity: null,
+    });
+
+    const groups = buildProjectGroups({
+      projects: [local, remote],
+      settings: settings("path", { [derivePhysicalProjectKey(remote)]: "separate" }),
+    });
+    expect(groups).toHaveLength(2);
   });
 });

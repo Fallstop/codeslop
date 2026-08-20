@@ -223,6 +223,7 @@ const EMPTY_THREAD_JUMP_LABELS = new Map<string, string>();
 const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> = {
   repository: "Group by repository",
   repository_path: "Group by repository path",
+  path: "Group by folder path",
   separate: "Keep separate",
 };
 const SIDEBAR_ICON_ACTION_BUTTON_CLASS =
@@ -267,6 +268,8 @@ function projectGroupingModeDescription(mode: SidebarProjectGroupingMode): strin
       return "Projects from the same repository share one sidebar row.";
     case "repository_path":
       return "Projects group only when both the repository and repo-relative path match.";
+    case "path":
+      return "Projects group when their folder path matches, even on another machine.";
     case "separate":
       return "Every project path gets its own sidebar row.";
   }
@@ -2464,6 +2467,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                     value === "inherit" ||
                     value === "repository" ||
                     value === "repository_path" ||
+                    value === "path" ||
                     value === "separate"
                   ) {
                     setProjectGroupingSelection(value);
@@ -2486,6 +2490,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
                   </SelectItem>
                   <SelectItem hideIndicator value="repository_path">
                     {PROJECT_GROUPING_MODE_LABELS.repository_path}
+                  </SelectItem>
+                  <SelectItem hideIndicator value="path">
+                    {PROJECT_GROUPING_MODE_LABELS.path}
                   </SelectItem>
                   <SelectItem hideIndicator value="separate">
                     {PROJECT_GROUPING_MODE_LABELS.separate}

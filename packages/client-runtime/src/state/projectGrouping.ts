@@ -64,6 +64,32 @@ function deriveRepositoryRelativeProjectPath(
   return normalizedProjectPath.slice(rootPrefix.length).replaceAll("\\", "/");
 }
 
+// Home directories differ per machine — /Users/me on macOS, /home/me on
+// Linux, c:\users\me on Windows, /mnt/c/users/me from WSL — so path grouping
+// compares home-relative paths. Anything outside a recognizable home stays
+// absolute and only matches an identical path on the other machine. Case
+// follows the platform, so a Windows checkout only ever groups with another
+// Windows checkout.
+const HOME_PREFIX_PATTERN =
+  /^(?:\/(?:[Uu]sers|home)\/[^/]+|\/root|\/mnt\/[a-z]\/[Uu]sers\/[^/]+|[a-z]:\\users\\[^\\]+)(?=[/\\]|$)/;
+
+function deriveHomeRelativeProjectPath(workspaceRoot: string): string {
+  const normalized = normalizeProjectPathForComparison(workspaceRoot);
+  const homePrefix = HOME_PREFIX_PATTERN.exec(normalized)?.[0];
+  const remainder = homePrefix === undefined ? normalized : normalized.slice(homePrefix.length);
+  return `${homePrefix === undefined ? "" : "~"}${remainder.replaceAll("\\", "/")}`;
+}
+
+/**
+ * Cross-environment key for path grouping. Deliberately carries no environment
+ * id: matching the same folder on every machine is the whole point of the mode.
+ */
+export function derivePathScopedProjectKey(
+  project: Pick<EnvironmentProject, "workspaceRoot">,
+): string {
+  return `path:${deriveHomeRelativeProjectPath(project.workspaceRoot)}`;
+}
+
 export function derivePhysicalProjectKeyFromPath(environmentId: string, cwd: string): string {
   return `${environmentId}:${normalizeProjectPathForComparison(cwd)}`;
 }
@@ -131,6 +157,9 @@ export function deriveLogicalProjectKey(
   const groupingMode = options?.groupingMode ?? "repository";
   if (groupingMode === "separate") {
     return derivePhysicalProjectKey(project);
+  }
+  if (groupingMode === "path") {
+    return derivePathScopedProjectKey(project);
   }
 
   return (

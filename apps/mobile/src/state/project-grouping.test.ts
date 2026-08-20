@@ -29,5 +29,9 @@ describe("mobile project grouping preferences", () => {
       projectGroupingMode: "repository_path",
       projectGroupingEnabled: true,
     });
+    expect(mobileProjectGroupingModePatch("path")).toEqual({
+      projectGroupingMode: "path",
+      projectGroupingEnabled: true,
+    });
   });
 });

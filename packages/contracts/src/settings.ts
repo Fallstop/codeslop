@@ -41,6 +41,9 @@ export const DEFAULT_SIDEBAR_THREAD_SORT_ORDER: SidebarThreadSortOrder = "update
 export const SidebarProjectGroupingMode = Schema.Literals([
   "repository",
   "repository_path",
+  // Groups on the workspace path alone, so the same folder on two machines is
+  // one project even without a shared git remote.
+  "path",
   "separate",
 ]);
 export type SidebarProjectGroupingMode = typeof SidebarProjectGroupingMode.Type;

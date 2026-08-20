@@ -33,6 +33,11 @@ const GROUPING_OPTIONS: ReadonlyArray<{
     description: "Keep monorepo paths separate.",
   },
   {
+    mode: "path",
+    label: "Group by folder path",
+    description: "Match the same folder on every machine, with or without a repository.",
+  },
+  {
     mode: "separate",
     label: "Keep separate",
     description: "Show every workspace as its own project.",

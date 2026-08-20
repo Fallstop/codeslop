@@ -157,6 +157,7 @@ function sanitizePreferences(parsed: Preferences): Preferences {
   if (
     parsed.projectGroupingMode === "repository" ||
     parsed.projectGroupingMode === "repository_path" ||
+    parsed.projectGroupingMode === "path" ||
     parsed.projectGroupingMode === "separate"
   ) {
     preferences.projectGroupingMode = parsed.projectGroupingMode;
