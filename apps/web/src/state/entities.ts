@@ -234,6 +234,31 @@ export function readEnvironmentSupportsSettlement(environmentId: EnvironmentId):
 
 /** Whether the environment's server understands thread.snooze/unsnooze.
     Same version-skew contract as settlement. */
+export function readEnvironmentSupportsHandoff(environmentId: EnvironmentId): boolean {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .threadHandoffSource === true
+  );
+}
+
+/**
+ * Environments this thread could be handed to: every other connected
+ * environment whose server can adopt one. Filtering here keeps the menu from
+ * offering a destination that would refuse.
+ */
+export function readHandoffTargetEnvironments(
+  originEnvironmentId: EnvironmentId,
+): ReadonlyArray<{ readonly id: string; readonly label: string }> {
+  const configs = appAtomRegistry.get(environmentServerConfigsAtom);
+  const targets: Array<{ id: string; label: string }> = [];
+  for (const [environmentId, config] of configs) {
+    if (environmentId === originEnvironmentId) continue;
+    if (config?.environment.capabilities.threadHandoffTarget !== true) continue;
+    targets.push({ id: environmentId, label: config.environment.label });
+  }
+  return targets;
+}
+
 export function readEnvironmentSupportsSnooze(environmentId: EnvironmentId): boolean {
   return (
     appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities

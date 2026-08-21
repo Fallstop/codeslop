@@ -3055,6 +3055,24 @@ export default function Sidebar() {
         const supportsTitleRegeneration =
           serverConfigs.get(thread.environmentId)?.environment.capabilities
             .threadTitleRegeneration === true;
+        const supportsHandoff =
+          serverConfigs.get(thread.environmentId)?.environment.capabilities.threadHandoffSource ===
+          true;
+        // Only claude and codex keep a session that can move; everything else
+        // gets the action disabled and named rather than silently absent.
+        const handoffProviderName = thread.session?.providerName ?? null;
+        const handoffUnsupportedProvider =
+          handoffProviderName !== null &&
+          handoffProviderName !== "claudeAgent" &&
+          handoffProviderName !== "codex"
+            ? handoffProviderName
+            : null;
+        const handoffTargets: Array<{ id: string; label: string }> = [];
+        for (const [environmentId, config] of serverConfigs) {
+          if (environmentId === thread.environmentId) continue;
+          if (config?.environment.capabilities.threadHandoffTarget !== true) continue;
+          handoffTargets.push({ id: environmentId, label: config.environment.label });
+        }
         const isRegeneratingTitle = thread.titleRegeneration != null;
         const isSettled = settledThreadKeysRef.current.has(threadKey);
         const isSnoozed = snoozedThreadKeysRef.current.has(threadKey);
@@ -3077,8 +3095,12 @@ export default function Sidebar() {
                 snooze: supportsSnooze,
                 pinning: supportsPinning,
                 titleRegeneration: supportsTitleRegeneration,
+                handoff: supportsHandoff,
               },
               snoozePresets,
+              handedOffToLabel: thread.handedOffTo?.environmentLabel ?? null,
+              handoffUnsupportedProvider,
+              handoffTargets,
             }),
             position,
           ),

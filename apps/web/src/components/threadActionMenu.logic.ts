@@ -15,6 +15,9 @@ export type ThreadActionMenuId =
   | "snooze"
   | `snooze:${string}`
   | "unsnooze"
+  | "handoff"
+  | `handoff:${string}`
+  | "handoff-take-back"
   | "rename"
   | "regenerate-title"
   | "mark-unread"
@@ -39,8 +42,19 @@ export interface ThreadActionMenuState {
     readonly snooze: boolean;
     readonly pinning: boolean;
     readonly titleRegeneration: boolean;
+    readonly handoff: boolean;
   };
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
+  /** Set once the work has moved; the only action left is taking it back. */
+  readonly handedOffToLabel: string | null;
+  /**
+   * Provider name when this thread is on one whose session cannot move. The
+   * item stays visible and names the provider rather than disappearing, so the
+   * absence is legible instead of looking like a missing feature.
+   */
+  readonly handoffUnsupportedProvider: string | null;
+  /** Environments this thread could move to, already filtered by the caller. */
+  readonly handoffTargets: ReadonlyArray<{ readonly id: string; readonly label: string }>;
 }
 
 /**
@@ -92,6 +106,36 @@ export function buildThreadActionMenuItems(
                   label: `${preset.label} (${preset.whenLabel})`,
                 })),
               },
+        ]
+      : []),
+    ...(state.supports.handoff
+      ? [
+          state.handedOffToLabel !== null
+            ? {
+                id: "handoff-take-back" as const,
+                label: `Take back from ${state.handedOffToLabel}`,
+                icon: "laptop-minimal",
+              }
+            : state.handoffUnsupportedProvider !== null
+              ? {
+                  // Named, not hidden: a silently absent action reads as a bug.
+                  id: "handoff" as const,
+                  label: `Hand off (not supported on ${state.handoffUnsupportedProvider})`,
+                  icon: "laptop-minimal",
+                  disabled: true,
+                }
+              : {
+                  id: "handoff" as const,
+                  label: "Hand off to",
+                  icon: "laptop-minimal",
+                  // Deliberately NOT disabled while running: handing off
+                  // mid-work is the entire point of the feature.
+                  disabled: state.handoffTargets.length === 0,
+                  children: state.handoffTargets.map((target) => ({
+                    id: `handoff:${target.id}` as const,
+                    label: target.label,
+                  })),
+                },
         ]
       : []),
     { id: "rename", label: "Rename thread", icon: "pencil", separatorBefore: true },

@@ -56,6 +56,14 @@ export interface HandoffCourierPorts<E> {
    * abandon a transfer that is otherwise fine.
    */
   readonly reportStage: (stage: ThreadHandoffStage) => Effect.Effect<unknown, E>;
+  /**
+   * Stamp the origin with where the work went. Runs only after the target has
+   * verified and installed, so the origin is never marked handed off to a
+   * machine that refused the bundle.
+   */
+  readonly completeHandoff: (input: {
+    readonly adoptedSessionId: string;
+  }) => Effect.Effect<unknown, E>;
 }
 
 export interface CourierHandoffInput<E> {
@@ -120,6 +128,11 @@ export const courierHandoffBundle = Effect.fn("handoff.courierHandoffBundle")(fu
     handoffId: input.handoffId,
     cwd: input.targetCwd,
   });
+
+  // Target first, origin second: a crash between the two leaves the work moved
+  // and the origin un-annotated, which the user can repair. The reverse would
+  // mark a thread handed off to a machine that never received it.
+  yield* ports.completeHandoff({ adoptedSessionId: adopted.sessionId });
 
   return { adopted, manifest, transferredBytes: offset };
 });

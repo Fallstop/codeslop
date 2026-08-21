@@ -32,6 +32,7 @@ const manifestFor = (bytes: Uint8Array): OrchestrationHandoffBundleManifest => (
 function makePorts(source: Uint8Array, options?: { readonly failWriteAtOffset?: number }) {
   const written: Array<{ offset: number; bytes: Uint8Array }> = [];
   const stages: Array<string> = [];
+  const completions: Array<string> = [];
   let readCalls = 0;
   const manifest = manifestFor(source);
 
@@ -60,6 +61,10 @@ function makePorts(source: Uint8Array, options?: { readonly failWriteAtOffset?: 
       Effect.sync(() => {
         stages.push(stage);
       }),
+    completeHandoff: () =>
+      Effect.sync(() => {
+        completions.push("completed");
+      }),
   };
 
   const assembled = () => {
@@ -71,7 +76,7 @@ function makePorts(source: Uint8Array, options?: { readonly failWriteAtOffset?: 
     return out;
   };
 
-  return { ports, written, stages, assembled, readCalls: () => readCalls };
+  return { ports, written, stages, completions, assembled, readCalls: () => readCalls };
 }
 
 describe("courierHandoffBundle", () => {
@@ -139,6 +144,7 @@ describe("courierHandoffBundle", () => {
       writeBundle: () => Effect.succeed({ receivedBytes: 0 }),
       adoptBundle: () => Effect.succeed({ sessionId: "session-1", provider: "claudeAgent" }),
       reportStage: () => Effect.void,
+      completeHandoff: () => Effect.void,
     };
 
     const result = await Effect.runPromise(
@@ -161,6 +167,8 @@ describe("courierHandoffBundle", () => {
     );
 
     expect(exit._tag).toBe("Failure");
+    // The origin must not be marked handed off when the bytes never landed.
+    expect(harness.completions).toEqual([]);
     // The first two chunks landed; the target's checksum is what stops a
     // partial bundle being adopted if this is retried carelessly.
     expect(harness.written.length).toBe(2);

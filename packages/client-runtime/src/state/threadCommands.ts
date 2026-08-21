@@ -22,6 +22,9 @@ import {
   type UnpinThreadInput,
   type UnsettleThreadInput,
   type UnsnoozeThreadInput,
+  type StartThreadHandoffInput,
+  type CancelThreadHandoffInput,
+  type ClearThreadHandoffInput,
   type UpdateThreadMetadataInput,
   archiveThread,
   createThread,
@@ -42,12 +45,18 @@ import {
   unpinThread,
   unsettleThread,
   unsnoozeThread,
+  startThreadHandoff,
+  cancelThreadHandoff,
+  clearThreadHandoff,
   updateThreadMetadata,
 } from "../operations/commands.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 
 export type {
   ArchiveThreadInput,
+  CancelThreadHandoffInput,
+  ClearThreadHandoffInput,
+  StartThreadHandoffInput,
   CreateThreadInput,
   DeleteThreadInput,
   InterruptThreadTurnInput,
@@ -124,6 +133,25 @@ export function createThreadEnvironmentAtoms<R, E>(
     unsnooze: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:unsnooze",
       execute: (input: UnsnoozeThreadInput) => unsnoozeThread(input),
+      scheduler,
+      concurrency,
+    }),
+    startHandoff: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:handoff-start",
+      execute: (input: StartThreadHandoffInput) => startThreadHandoff(input),
+      scheduler,
+      concurrency,
+    }),
+    cancelHandoff: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:handoff-cancel",
+      execute: (input: CancelThreadHandoffInput) => cancelThreadHandoff(input),
+      scheduler,
+      concurrency,
+    }),
+    /** Take a departed thread back; the reverse state for every handoff. */
+    clearHandoff: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:handoff-clear",
+      execute: (input: ClearThreadHandoffInput) => clearThreadHandoff(input),
       scheduler,
       concurrency,
     }),

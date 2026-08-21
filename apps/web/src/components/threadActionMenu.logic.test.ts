@@ -10,10 +10,19 @@ const baseState: ThreadActionMenuState = {
   canSnoozeNow: true,
   isRegeneratingTitle: false,
   isRunning: false,
-  supports: { settlement: true, snooze: true, pinning: true, titleRegeneration: true },
+  supports: {
+    settlement: true,
+    snooze: true,
+    pinning: true,
+    titleRegeneration: true,
+    handoff: true,
+  },
   snoozePresets: [
     { id: "hour", label: "In 1 hour", whenLabel: "3:00 PM", snoozedUntil: "2026-08-07T15:00:00Z" },
   ],
+  handedOffToLabel: null,
+  handoffUnsupportedProvider: null,
+  handoffTargets: [{ id: "env-desktop", label: "Studio PC" }],
 };
 
 function ids(state: ThreadActionMenuState): string[] {
@@ -31,7 +40,13 @@ describe("buildThreadActionMenuItems", () => {
     expect(
       ids({
         ...baseState,
-        supports: { settlement: false, snooze: false, pinning: false, titleRegeneration: false },
+        supports: {
+          settlement: false,
+          snooze: false,
+          pinning: false,
+          titleRegeneration: false,
+          handoff: false,
+        },
       }),
     ).toEqual(["rename", "mark-unread", "copy", "archive", "delete"]);
   });
@@ -84,7 +99,13 @@ describe("buildThreadActionMenuItems", () => {
     expect(
       ids({
         ...baseState,
-        supports: { settlement: false, snooze: false, pinning: false, titleRegeneration: false },
+        supports: {
+          settlement: false,
+          snooze: false,
+          pinning: false,
+          titleRegeneration: false,
+          handoff: false,
+        },
       }),
     ).toContain("archive");
   });
@@ -95,4 +116,59 @@ describe("buildThreadActionMenuItems", () => {
     );
     expect(archiveItem?.disabled).toBe(true);
   });
+});
+
+it("offers a handoff destination per eligible environment", () => {
+  const items = allIds({
+    ...baseState,
+    handoffTargets: [
+      { id: "env-desktop", label: "Studio PC" },
+      { id: "env-server", label: "Rack" },
+    ],
+  });
+  expect(items).toContain("handoff");
+  expect(items).toContain("handoff:env-desktop");
+  expect(items).toContain("handoff:env-server");
+});
+
+it("stays enabled while a turn is running", () => {
+  // Handing off mid-work is the whole point; disabling it the way Archive is
+  // disabled would defeat the feature.
+  const items = buildThreadActionMenuItems({ ...baseState, isRunning: true });
+  const handoff = items.find((item) => item.id === "handoff");
+  expect(handoff?.disabled).not.toBe(true);
+});
+
+it("disables the action with no eligible destination", () => {
+  const items = buildThreadActionMenuItems({ ...baseState, handoffTargets: [] });
+  expect(items.find((item) => item.id === "handoff")?.disabled).toBe(true);
+});
+
+it("names the provider instead of hiding the action when it cannot move", () => {
+  // A silently absent action reads as a missing feature; a named one reads as
+  // a decision.
+  const items = buildThreadActionMenuItems({
+    ...baseState,
+    handoffUnsupportedProvider: "opencode",
+  });
+  const handoff = items.find((item) => item.id === "handoff");
+  expect(handoff?.label).toContain("opencode");
+  expect(handoff?.disabled).toBe(true);
+});
+
+it("offers take-back once the work has moved", () => {
+  const items = buildThreadActionMenuItems({ ...baseState, handedOffToLabel: "Studio PC" });
+  expect(items.find((item) => item.id === "handoff-take-back")?.label).toBe(
+    "Take back from Studio PC",
+  );
+  // The way in is gone while the work is away; only the way out remains.
+  expect(items.some((item) => item.id === "handoff")).toBe(false);
+});
+
+it("omits handoff entirely on a server that cannot do it", () => {
+  const items = allIds({
+    ...baseState,
+    supports: { ...baseState.supports, handoff: false },
+  });
+  expect(items.some((id) => id.startsWith("handoff"))).toBe(false);
 });

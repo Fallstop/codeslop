@@ -11,7 +11,7 @@ import {
   effectiveSnoozed,
   type ChangeRequestSettleSource,
 } from "@t3tools/client-runtime/state/thread-settled";
-import type { ScopedThreadRef, ThreadId } from "@t3tools/contracts";
+import { HandoffId, ThreadId, type EnvironmentId, type ScopedThreadRef } from "@t3tools/contracts";
 import { useCallback } from "react";
 
 import { resolveSnoozePresets, snoozeWakeDescription } from "../components/Sidebar.snooze";
@@ -25,11 +25,14 @@ import { useAtomCommand } from "../state/use-atom-command";
 import {
   readEnvironmentSupportsPinning,
   readEnvironmentSupportsSettlement,
+  readEnvironmentSupportsHandoff,
   readEnvironmentSupportsSnooze,
+  readHandoffTargetEnvironments,
   readEnvironmentSupportsTitleRegeneration,
   readThreadShell,
 } from "../state/entities";
 import { readLocalApi } from "../localApi";
+import { randomHex } from "~/lib/utils";
 import { useUiStateStore } from "../uiStateStore";
 import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
@@ -75,6 +78,12 @@ export function useThreadActionMenu(input: {
     archiveThread,
     deleteThread,
   } = useThreadActions();
+  const startHandoffMutation = useAtomCommand(threadEnvironment.startHandoff, {
+    label: "thread-action-menu:handoff-start",
+  });
+  const clearHandoffMutation = useAtomCommand(threadEnvironment.clearHandoff, {
+    label: "thread-action-menu:handoff-clear",
+  });
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
@@ -121,7 +130,16 @@ export function useThreadActionMenu(input: {
           snooze: readEnvironmentSupportsSnooze(threadRef.environmentId),
           pinning: readEnvironmentSupportsPinning(threadRef.environmentId),
           titleRegeneration: readEnvironmentSupportsTitleRegeneration(threadRef.environmentId),
+          handoff: readEnvironmentSupportsHandoff(threadRef.environmentId),
         };
+        // Only these two providers keep a session that can move; anything else
+        // shows the action disabled and named rather than hiding it.
+        const handoffTargets = readHandoffTargetEnvironments(threadRef.environmentId);
+        const providerName = thread.session?.providerName ?? null;
+        const handoffUnsupportedProvider =
+          providerName !== null && providerName !== "claudeAgent" && providerName !== "codex"
+            ? providerName
+            : null;
         const isRegeneratingTitle = thread.titleRegeneration != null;
         const snoozePresets = resolveSnoozePresets(now, timestampFormat);
         const items = buildThreadActionMenuItems({
@@ -144,10 +162,48 @@ export function useThreadActionMenu(input: {
           isRunning: thread.session?.status === "running" && thread.session.activeTurnId != null,
           supports,
           snoozePresets,
+          handedOffToLabel: thread.handedOffTo?.environmentLabel ?? null,
+          handoffUnsupportedProvider,
+          handoffTargets,
         });
         const clicked = await settlePromise(() => api.contextMenu.show(items, position));
         if (clicked._tag === "Failure" || clicked.value === null) return;
         const action: ThreadActionMenuId = clicked.value;
+        if (action === "handoff-take-back") {
+          const result = await clearHandoffMutation({
+            environmentId: threadRef.environmentId,
+            input: { threadId: threadRef.threadId, reason: "user" },
+          });
+          if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+            failureToast("Failed to take the thread back", squashAtomCommandFailure(result));
+          }
+          return;
+        }
+        if (action.startsWith("handoff:")) {
+          const environmentId = action.slice("handoff:".length);
+          const target = handoffTargets.find((candidate) => candidate.id === environmentId);
+          if (!target) return;
+          // The target thread id is minted here so both ends share it for the
+          // whole transfer: thread.create takes a client-supplied id.
+          const handoffId = HandoffId.make(randomHex(16));
+          const result = await startHandoffMutation({
+            environmentId: threadRef.environmentId,
+            input: {
+              threadId: threadRef.threadId,
+              handoffId,
+              target: {
+                environmentId: environmentId as EnvironmentId,
+                threadId: ThreadId.make(randomHex(16)),
+                at: new Date().toISOString(),
+                environmentLabel: target.label,
+              },
+            },
+          });
+          if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+            failureToast("Failed to start the handoff", squashAtomCommandFailure(result));
+          }
+          return;
+        }
         if (action.startsWith("snooze:")) {
           const preset = snoozePresets.find((candidate) => `snooze:${candidate.id}` === action);
           if (!preset) return;
