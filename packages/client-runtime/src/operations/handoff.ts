@@ -49,7 +49,7 @@ export interface HandoffCourierPorts<E> {
   readonly adoptBundle: (input: {
     readonly handoffId: HandoffId;
     readonly repositoryPath: string;
-    readonly worktreePath: string;
+    readonly worktreePath: string | null;
     readonly branch: string;
   }) => Effect.Effect<OrchestrationAdoptHandoffBundleResult, E>;
   /**
@@ -72,8 +72,11 @@ export interface CourierHandoffInput<E> {
   readonly handoffId: HandoffId;
   /** An existing checkout of the same repository on the target. */
   readonly repositoryPath: string;
-  /** Where the adopted thread's worktree should be laid out. */
-  readonly worktreePath: string;
+  /**
+   * Where the adopted thread's worktree should be laid out. Null lets the
+   * target derive it: only that machine knows its worktrees directory.
+   */
+  readonly worktreePath: string | null;
   /** Branch to create for the adopted work. */
   readonly branch: string;
   readonly ports: HandoffCourierPorts<E>;

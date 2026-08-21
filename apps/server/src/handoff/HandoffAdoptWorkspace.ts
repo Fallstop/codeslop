@@ -12,14 +12,20 @@
  * @module handoff/HandoffAdoptWorkspace
  */
 import * as Effect from "effect/Effect";
+import * as Path from "effect/Path";
 
+import { ServerConfig } from "../config.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 
 export interface PrepareHandoffWorktreeInput {
   /** An existing checkout of the same repository on this machine. */
   readonly repositoryPath: string;
-  /** Where the adopted thread should live. */
-  readonly worktreePath: string;
+  /**
+   * Where the adopted thread should live. Null derives it the way every other
+   * worktree in the product is derived; the client cannot know this machine's
+   * worktrees directory.
+   */
+  readonly worktreePath: string | null;
   /** Branch to create for the adopted work. */
   readonly branch: string;
   readonly remoteName: string;
@@ -38,6 +44,17 @@ const OPERATION = "HandoffAdoptWorkspace.prepareHandoffWorktree";
 export const prepareHandoffWorktree = Effect.fn("HandoffAdoptWorkspace.prepareHandoffWorktree")(
   function* (input: PrepareHandoffWorktreeInput) {
     const driver = yield* GitVcsDriver.GitVcsDriver;
+    const path = yield* Path.Path;
+    const { worktreesDir } = yield* ServerConfig;
+    // Same shape as GitVcsDriverCore.createWorktree, so a handed-off worktree
+    // sits beside every other one instead of somewhere of its own.
+    const worktreePath =
+      input.worktreePath ??
+      path.join(
+        worktreesDir,
+        path.basename(input.repositoryPath),
+        input.branch.replace(/\//g, "-"),
+      );
     const run = (cwd: string, args: ReadonlyArray<string>) =>
       driver.execute({ operation: OPERATION, cwd, args });
 
@@ -55,15 +72,15 @@ export const prepareHandoffWorktree = Effect.fn("HandoffAdoptWorkspace.prepareHa
       "add",
       "-b",
       input.branch,
-      input.worktreePath,
+      worktreePath,
       localRef,
     ]);
 
     // Move the branch back to the base commit while keeping the files: the
     // published tree becomes uncommitted work again, exactly as the agent had
     // it. --mixed also resets the index, so nothing arrives pre-staged.
-    yield* run(input.worktreePath, ["reset", "--mixed", input.baseCommit]);
+    yield* run(worktreePath, ["reset", "--mixed", input.baseCommit]);
 
-    return input.worktreePath;
+    return worktreePath;
   },
 );

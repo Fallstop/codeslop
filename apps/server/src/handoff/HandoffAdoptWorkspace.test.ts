@@ -14,7 +14,7 @@ import { prepareHandoffWorktree } from "./HandoffAdoptWorkspace.ts";
 import { HandoffId } from "@t3tools/contracts";
 
 const GitLayer = Layer.mergeAll(GitVcsDriver.vcsLayer, GitVcsDriver.layer).pipe(
-  Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-handoff-adopt-" })),
+  Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "t3-handoff-adopt-" })),
   Layer.provideMerge(VcsProcess.layer),
   Layer.provideMerge(NodeServices.layer),
 );
@@ -133,9 +133,11 @@ it.layer(GitLayer)("handoff worktree adoption", (it) => {
       ]);
 
       yield* git(root, ["clone", remote, desktop]);
+      // Null path: the server derives it beside every other worktree, which is
+      // what a real adopt does since the client cannot know this directory.
       const worktreePath = yield* prepareHandoffWorktree({
         repositoryPath: desktop,
-        worktreePath: path.join(root, "desktop-worktree"),
+        worktreePath: null,
         branch: "slop/adopted-2",
         remoteName: "origin",
         handoffRef: handoffRefFor(HANDOFF_ID),

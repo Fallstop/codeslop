@@ -32,6 +32,7 @@ import * as Path from "effect/Path";
 import { ProviderSessionRuntimeRepository } from "../persistence/ProviderSessionRuntime.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import { prepareHandoffWorktree } from "./HandoffAdoptWorkspace.ts";
+import { ServerConfig } from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { makeHandoffResumeCursor } from "./HandoffSessionCursor.ts";
 import { resolveHandoffProviderHome } from "./HandoffProviderHome.ts";
@@ -66,6 +67,7 @@ const make = Effect.gen(function* () {
   const settingsService = yield* ServerSettingsService;
   const providerSessionRuntime = yield* ProviderSessionRuntimeRepository;
   const gitDriver = yield* GitVcsDriver.GitVcsDriver;
+  const serverConfig = yield* ServerConfig;
   // Captured once so the service surface stays requirement-free: callers get a
   // plain Effect rather than one that drags FileSystem through the RPC layer.
   const fileSystem = yield* FileSystem.FileSystem;
@@ -180,6 +182,8 @@ const make = Effect.gen(function* () {
         baseCommit: manifest.baseCommit,
       }).pipe(
         Effect.provideService(GitVcsDriver.GitVcsDriver, gitDriver),
+        Effect.provideService(ServerConfig, serverConfig),
+        Effect.provideService(Path.Path, path),
         Effect.mapError((cause) => bundleError("Failed to check out the handed-off work.", cause)),
       );
       yield* withPlatform(

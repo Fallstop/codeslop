@@ -26,6 +26,7 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
+import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import { exportHandoffSession, type TransferableProvider } from "./HandoffSessionTransfer.ts";
 import { HandoffStagingStore, sha256 } from "./HandoffStagingStore.ts";
 
@@ -46,6 +47,8 @@ export interface ExportHandoffInput {
   readonly originStoppedAt: string;
   readonly originBranch?: string | undefined;
   readonly repositoryRemoteUrl?: string | undefined;
+  /** Remote both machines can reach. Defaults to origin. */
+  readonly remoteName?: string | undefined;
 }
 
 export interface ExportHandoffResult {
@@ -69,6 +72,7 @@ export class HandoffExportService extends Context.Service<
 const make = Effect.gen(function* () {
   const staging = yield* HandoffStagingStore;
   const checkpoints = yield* CheckpointStore.CheckpointStore;
+  const gitDriver = yield* GitVcsDriver.GitVcsDriver;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const withPlatform = <A, E>(effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path>) =>
@@ -101,6 +105,26 @@ const make = Effect.gen(function* () {
       const published = yield* checkpoints
         .publishHandoffCommit({ cwd: input.cwd, ref: handoffRefFor(input.handoffId) })
         .pipe(Effect.mapError((cause) => exportError("Failed to publish the worktree.", cause)));
+
+      // Publishing only moves the ref locally. The receiving machine fetches it
+      // from a shared remote, so without this push a handoff between two real
+      // machines fails at the fetch every time.
+      const remoteName = input.remoteName ?? "origin";
+      const ref = handoffRefFor(input.handoffId);
+      yield* gitDriver
+        .execute({
+          operation: "HandoffExportService.pushHandoffRef",
+          cwd: input.cwd,
+          args: ["push", "--force", remoteName, `${ref}:${ref}`],
+        })
+        .pipe(
+          Effect.mapError((cause) =>
+            exportError(
+              `Failed to push the handed-off work to '${remoteName}'. Both machines need a remote they can reach.`,
+              cause,
+            ),
+          ),
+        );
 
       yield* staging.writeSession({ handoffId: input.handoffId, bytes: session.bytes });
       yield* staging.writeManifest({

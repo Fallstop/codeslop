@@ -52,7 +52,7 @@ export interface RunHandoffTransferInput<E> {
   /** The id minted when the handoff started; both ends already share it. */
   readonly targetThreadId: ThreadId;
   readonly repositoryPath: string;
-  readonly worktreePath: string;
+  readonly worktreePath: string | null;
   readonly branch: string;
   /** Sent as the continuation turn, if the user typed one. */
   readonly ports: HandoffTransferPorts<E>;

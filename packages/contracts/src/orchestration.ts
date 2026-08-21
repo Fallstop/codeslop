@@ -1984,8 +1984,12 @@ export const OrchestrationAdoptHandoffBundleInput = Schema.Struct({
   repositoryPath: TrimmedNonEmptyString,
   /** Branch to create for the adopted work. */
   branch: TrimmedNonEmptyString,
-  /** Where to lay out the adopted worktree. */
-  worktreePath: TrimmedNonEmptyString,
+  /**
+   * Where to lay out the adopted worktree. Null lets the server pick, using the
+   * same convention every other worktree in the product follows — the client
+   * has no way to know the target machine's worktrees directory.
+   */
+  worktreePath: Schema.NullOr(TrimmedNonEmptyString),
   remoteName: Schema.optional(TrimmedNonEmptyString),
 });
 export type OrchestrationAdoptHandoffBundleInput = typeof OrchestrationAdoptHandoffBundleInput.Type;

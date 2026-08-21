@@ -247,7 +247,7 @@ it.layer(TestLayer)("handoff bundle transport", (it) => {
         .adoptBundle({
           handoffId,
           repositoryPath: "/nonexistent",
-          worktreePath: "/nonexistent-wt",
+          worktreePath: null,
           branch: "slop/adopted",
         })
         .pipe(Effect.flip);
@@ -275,7 +275,7 @@ it.layer(TestLayer)("handoff bundle transport", (it) => {
         .adoptBundle({
           handoffId,
           repositoryPath: "/nonexistent",
-          worktreePath: "/nonexistent-wt",
+          worktreePath: null,
           branch: "slop/adopted",
         })
         .pipe(Effect.flip);
@@ -290,7 +290,7 @@ it.layer(TestLayer)("handoff bundle transport", (it) => {
         .adoptBundle({
           handoffId: HandoffId.make("never-arrived"),
           repositoryPath: "/nonexistent",
-          worktreePath: "/nonexistent-wt",
+          worktreePath: null,
           branch: "slop/adopted",
         })
         .pipe(Effect.flip);

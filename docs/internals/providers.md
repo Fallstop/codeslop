@@ -23,6 +23,24 @@ adapter in a child scope. Adapter implementations live beside them in
 [`ProviderAdapter.ts`][adapter]. Read the driver plus its adapter to see how a specific agent's
 transport, config, and event shapes are mapped.
 
+### Session transfer
+
+Adapters declare `capabilities.sessionTransfer`, which decides whether a thread on that provider can
+be handed off to another environment.
+
+| Driver kind   | `sessionTransfer` | Why                                                                |
+| ------------- | ----------------- | ------------------------------------------------------------------ |
+| `claudeAgent` | `"file"`          | One transcript per session, addressed by `<slug(cwd)>/<id>.jsonl`  |
+| `codex`       | `"file"`          | One rollout per conversation, found by the id in its filename      |
+| `cursor`      | `"unsupported"`   | No single-file session on disk to carry                            |
+| `grok`        | `"unsupported"`   | No single-file session on disk to carry                            |
+| `opencode`    | `"unsupported"`   | Sessions live in one shared SQLite database, not per-session files |
+
+The per-provider move logic lives beside each driver in `Drivers/ClaudeSessionTransfer.ts` and
+`Drivers/CodexSessionTransfer.ts`; `handoff/HandoffSessionTransfer.ts` dispatches between them so
+nothing above the adapter boundary knows how a provider stores a session. Adding a sixth driver means
+answering this question for it, even if the answer is `"unsupported"`.
+
 ## Registry and routing
 
 Two registries separate configuration from live processes:
