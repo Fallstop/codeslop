@@ -25,11 +25,23 @@ import type * as Stream from "effect/Stream";
 
 export type ProviderSessionModelSwitchMode = "in-session" | "unsupported";
 
+/**
+ * Whether a provider's own session state can be carried to another machine.
+ * "file" means the session lives in one file the provider will find again once
+ * it is placed correctly on the target, which is what a thread handoff moves.
+ */
+export type ProviderSessionTransferMode = "file" | "unsupported";
+
 export interface ProviderAdapterCapabilities {
   /**
    * Declares whether changing the model on an existing session is supported.
    */
   readonly sessionModelSwitch: ProviderSessionModelSwitchMode;
+  /**
+   * Declares whether a thread on this provider can be handed off to another
+   * environment. Absent means unsupported.
+   */
+  readonly sessionTransfer?: ProviderSessionTransferMode;
 }
 
 export interface ProviderThreadTurnSnapshot {

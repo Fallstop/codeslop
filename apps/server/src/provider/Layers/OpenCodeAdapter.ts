@@ -1719,6 +1719,9 @@ export function makeOpenCodeAdapter(
       provider: PROVIDER,
       capabilities: {
         sessionModelSwitch: "in-session",
+        // OpenCode keeps sessions in one shared SQLite database rather than a
+        // per-session file, so there is nothing to carry across.
+        sessionTransfer: "unsupported",
       },
       startSession,
       sendTurn,

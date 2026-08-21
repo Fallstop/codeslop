@@ -1170,7 +1170,12 @@ export function makeCursorAdapter(
 
     return {
       provider: PROVIDER,
-      capabilities: { sessionModelSwitch: "in-session" },
+      capabilities: {
+        sessionModelSwitch: "in-session",
+        // No single-file session on disk to carry, so a thread here cannot be
+        // handed to another machine.
+        sessionTransfer: "unsupported",
+      },
       startSession,
       sendTurn,
       interruptTurn,
