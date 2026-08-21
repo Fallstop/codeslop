@@ -15,6 +15,7 @@ import {
   requireActiveProjectWorkspaceRootAbsent,
   requireProject,
   requireProjectAbsent,
+  requireHandoffInFlight,
   requireThread,
   requireThreadArchived,
   requireThreadAbsent,
@@ -803,6 +804,137 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           threadId: command.threadId,
           orderKey: command.orderKey,
           updatedAt: keyUnchanged ? thread.updatedAt : occurredAt,
+        },
+      };
+    }
+
+    case "thread.handoff.start": {
+      const thread = yield* requireThreadNotArchived({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      // A second start for the same handoff is a retry: re-emit the recorded
+      // record so the projection is a no-op. A start for a DIFFERENT handoff
+      // while one is in flight is a conflict — the first must be cancelled.
+      if (thread.handoff != null && thread.handoff.handoffId !== command.handoffId) {
+        return yield* Effect.fail(
+          new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail: `thread ${command.threadId} already has handoff ${thread.handoff.handoffId} in flight`,
+          }),
+        );
+      }
+      if (thread.handedOffTo != null) {
+        return yield* Effect.fail(
+          new OrchestrationCommandInvariantError({
+            commandType: command.type,
+            detail: `thread ${command.threadId} has already been handed off; clear it before handing off again`,
+          }),
+        );
+      }
+      const occurredAt = yield* nowIso;
+      const existing = thread.handoff;
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.handoff-started",
+        payload: {
+          threadId: command.threadId,
+          handoff: existing ?? {
+            handoffId: command.handoffId,
+            target: command.target,
+            // Freezing is where every handoff begins: the session is stopped
+            // before anything is read, so neither side can be mid-turn.
+            stage: "freezing",
+            startedAt: occurredAt,
+          },
+          updatedAt: existing !== null && existing !== undefined ? thread.updatedAt : occurredAt,
+        },
+      };
+    }
+
+    case "thread.handoff.stage": {
+      const thread = yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      yield* requireHandoffInFlight({ thread, command, handoffId: command.handoffId });
+      const occurredAt = yield* nowIso;
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.handoff-staged",
+        payload: {
+          threadId: command.threadId,
+          handoffId: command.handoffId,
+          stage: command.stage,
+          updatedAt: occurredAt,
+        },
+      };
+    }
+
+    case "thread.handoff.fail": {
+      const thread = yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      yield* requireHandoffInFlight({ thread, command, handoffId: command.handoffId });
+      const occurredAt = yield* nowIso;
+      // A failure parks the handoff rather than clearing it: the work is still
+      // frozen here, and the user chooses retry, cancel, or resume here.
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.handoff-failed",
+        payload: {
+          threadId: command.threadId,
+          handoffId: command.handoffId,
+          stage: command.stage,
+          error: command.error,
+          updatedAt: occurredAt,
+        },
+      };
+    }
+
+    case "thread.handoff.cancel": {
+      const thread = yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      // Idempotent by re-emission: cancelling an already-cancelled handoff
+      // lands on the same null state without churning updatedAt. Deliberately
+      // not guarded on the handoff being in flight — cancel is an escape
+      // hatch and must never be the thing that refuses.
+      const alreadyClear = thread.handoff == null;
+      const occurredAt = yield* nowIso;
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.handoff-cancelled",
+        payload: {
+          threadId: command.threadId,
+          handoffId: command.handoffId,
+          updatedAt: alreadyClear ? thread.updatedAt : occurredAt,
         },
       };
     }

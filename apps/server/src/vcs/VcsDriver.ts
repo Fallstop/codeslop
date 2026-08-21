@@ -38,8 +38,35 @@ export interface VcsDeleteCheckpointRefsInput {
   readonly checkpointRefs: ReadonlyArray<CheckpointRef>;
 }
 
+export interface VcsPublishHandoffCommitInput {
+  readonly cwd: string;
+  /** Full ref to point at the published commit, e.g. `refs/heads/slop/handoff/<id>`. */
+  readonly ref: string;
+}
+
+export interface VcsPublishHandoffCommitResult {
+  readonly commit: string;
+  /**
+   * The commit the worktree was sitting on. The target resets to this after
+   * checking the published tree out, which is what restores the uncommitted
+   * work as uncommitted rather than as a commit.
+   */
+  readonly baseCommit: string;
+}
+
 export interface VcsCheckpointOps {
   readonly captureCheckpoint: (input: VcsCaptureCheckpointInput) => Effect.Effect<void, VcsError>;
+  /**
+   * Snapshot the whole worktree as a real, fetchable commit for a handoff.
+   *
+   * Unlike a checkpoint this has a parent, because checkpoint refs are
+   * parentless and live under a namespace no remote fetches by default. The
+   * tree is identical in spirit: everything `git add -A` sees, so tracked,
+   * untracked and uncommitted work all travel. Ignored files do not.
+   */
+  readonly publishHandoffCommit: (
+    input: VcsPublishHandoffCommitInput,
+  ) => Effect.Effect<VcsPublishHandoffCommitResult, VcsError>;
   readonly hasCheckpointRef: (
     input: Omit<VcsRestoreCheckpointInput, "fallbackToHead">,
   ) => Effect.Effect<boolean, VcsError>;

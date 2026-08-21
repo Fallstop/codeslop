@@ -1,9 +1,11 @@
 import type {
+  HandoffId,
   OrchestrationCommand,
   OrchestrationProject,
   OrchestrationReadModel,
   OrchestrationThread,
   ProjectId,
+  ThreadHandoffPending,
   ThreadId,
 } from "@t3tools/contracts";
 import { normalizeProjectPathForComparison } from "@t3tools/shared/path";
@@ -109,6 +111,28 @@ export function requireThread(input: {
     invariantError(
       input.command.type,
       `Thread '${input.threadId}' does not exist for command '${input.command.type}'.`,
+    ),
+  );
+}
+
+/**
+ * Guard the stage-advancing handoff commands. A stage or failure that names a
+ * handoff this thread is not running is stale — from a retried client or a
+ * transfer that was already cancelled — and must not resurrect the record.
+ */
+export function requireHandoffInFlight(input: {
+  readonly thread: OrchestrationThread;
+  readonly command: OrchestrationCommand;
+  readonly handoffId: HandoffId;
+}): Effect.Effect<ThreadHandoffPending, OrchestrationCommandInvariantError> {
+  const handoff = input.thread.handoff;
+  if (handoff != null && handoff.handoffId === input.handoffId) {
+    return Effect.succeed(handoff);
+  }
+  return Effect.fail(
+    invariantError(
+      input.command.type,
+      `Handoff '${input.handoffId}' is not in flight on thread '${input.thread.id}' for command '${input.command.type}'.`,
     ),
   );
 }

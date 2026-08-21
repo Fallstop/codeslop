@@ -205,6 +205,56 @@ export function applyThreadDetailEvent(
         },
       };
 
+    case "thread.handoff-started":
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          handoff: event.payload.handoff,
+          updatedAt: event.payload.updatedAt,
+        },
+      };
+
+    case "thread.handoff-staged":
+      if (thread.handoff == null || thread.handoff.handoffId !== event.payload.handoffId) {
+        return { kind: "unchanged" };
+      }
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          handoff: { ...thread.handoff, stage: event.payload.stage },
+          updatedAt: event.payload.updatedAt,
+        },
+      };
+
+    case "thread.handoff-failed":
+      if (thread.handoff == null || thread.handoff.handoffId !== event.payload.handoffId) {
+        return { kind: "unchanged" };
+      }
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          handoff: {
+            ...thread.handoff,
+            stage: event.payload.stage,
+            error: event.payload.error,
+          },
+          updatedAt: event.payload.updatedAt,
+        },
+      };
+
+    case "thread.handoff-cancelled":
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          handoff: null,
+          updatedAt: event.payload.updatedAt,
+        },
+      };
+
     case "thread.handed-off":
       return {
         kind: "updated",

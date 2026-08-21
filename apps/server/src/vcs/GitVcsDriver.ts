@@ -795,6 +795,99 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
       }).pipe(Effect.ensuring(cleanupTempIndex));
     }),
 
+    publishHandoffCommit: Effect.fn("GitVcsDriver.checkpoints.publishHandoffCommit")(
+      function* (input) {
+        const operation = "GitVcsDriver.checkpoints.publishHandoffCommit";
+        const gitCommonDir = yield* resolveGitCommonDir(input.cwd);
+        const tempIndexPath = path.join(
+          gitCommonDir,
+          `slop-handoff-index-${NodeCrypto.randomUUID()}`,
+        );
+        const commitEnv: NodeJS.ProcessEnv = {
+          ...process.env,
+          GIT_INDEX_FILE: tempIndexPath,
+          GIT_AUTHOR_NAME: "codeslop",
+          GIT_AUTHOR_EMAIL: "codeslop@users.noreply.github.com",
+          GIT_COMMITTER_NAME: "codeslop",
+          GIT_COMMITTER_EMAIL: "codeslop@users.noreply.github.com",
+        };
+
+        const cleanupTempIndex = fileSystem
+          .remove(tempIndexPath, { force: true })
+          .pipe(Effect.ignore);
+
+        return yield* Effect.gen(function* () {
+          // A handoff needs a parent so an ordinary fetch can reach it, which
+          // is the one thing checkpoint refs deliberately do not have.
+          const baseCommit = yield* resolveHeadCommit(input.cwd);
+          if (baseCommit === null) {
+            return yield* new VcsProcessExitError({
+              operation,
+              command: "git rev-parse HEAD",
+              cwd: input.cwd,
+              exitCode: 0,
+              detail: "Cannot publish a handoff from a repository with no commits.",
+            });
+          }
+
+          yield* execute({
+            operation,
+            cwd: input.cwd,
+            args: ["read-tree", "HEAD"],
+            env: commitEnv,
+          });
+          yield* execute({
+            operation,
+            cwd: input.cwd,
+            args: ["add", "-A", "--", "."],
+            env: commitEnv,
+          });
+
+          const writeTreeResult = yield* execute({
+            operation,
+            cwd: input.cwd,
+            args: ["write-tree"],
+            env: commitEnv,
+          });
+          const treeOid = writeTreeResult.stdout.trim();
+          if (treeOid.length === 0) {
+            return yield* new VcsProcessExitError({
+              operation,
+              command: "git write-tree",
+              cwd: input.cwd,
+              exitCode: 0,
+              detail: "git write-tree returned an empty tree oid.",
+            });
+          }
+
+          const commitTreeResult = yield* execute({
+            operation,
+            cwd: input.cwd,
+            args: ["commit-tree", treeOid, "-p", baseCommit, "-m", `slop handoff ref=${input.ref}`],
+            env: commitEnv,
+          });
+          const commitOid = commitTreeResult.stdout.trim();
+          if (commitOid.length === 0) {
+            return yield* new VcsProcessExitError({
+              operation,
+              command: "git commit-tree",
+              cwd: input.cwd,
+              exitCode: 0,
+              detail: "git commit-tree returned an empty commit oid.",
+            });
+          }
+
+          yield* execute({
+            operation,
+            cwd: input.cwd,
+            args: ["update-ref", input.ref, commitOid],
+          });
+
+          return { commit: commitOid, baseCommit };
+        }).pipe(Effect.ensuring(cleanupTempIndex));
+      },
+    ),
+
     hasCheckpointRef: (input) =>
       resolveCheckpointCommit(input.cwd, input.checkpointRef).pipe(
         Effect.map((commit) => commit !== null),

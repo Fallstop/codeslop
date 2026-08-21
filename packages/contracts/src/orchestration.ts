@@ -9,12 +9,14 @@ import {
   ThreadEnvMode,
   ThreadHandoffLink,
   ThreadHandoffPending,
+  ThreadHandoffStage,
 } from "./environment.ts";
 import {
   ApprovalRequestId,
   CheckpointRef,
   CommandId,
   EventId,
+  HandoffId,
   IsoDateTime,
   MessageId,
   NonNegativeInt,
@@ -806,6 +808,43 @@ const ThreadPinReorderCommand = Schema.Struct({
   orderKey: TrimmedNonEmptyString,
 });
 
+const ThreadHandoffStartCommand = Schema.Struct({
+  type: Schema.Literal("thread.handoff.start"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  handoffId: HandoffId,
+  // The destination, known in full before anything moves: thread.create takes
+  // a client-supplied id, so the initiating client mints the target thread's
+  // id up front and both ends share it for the whole transfer.
+  target: ThreadHandoffLink,
+});
+
+const ThreadHandoffStageCommand = Schema.Struct({
+  type: Schema.Literal("thread.handoff.stage"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  handoffId: HandoffId,
+  // Client-dispatchable because the later stages are driven from the client
+  // that couriers the bundle; no reactor on the origin can observe them.
+  stage: ThreadHandoffStage,
+});
+
+const ThreadHandoffFailCommand = Schema.Struct({
+  type: Schema.Literal("thread.handoff.fail"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  handoffId: HandoffId,
+  stage: ThreadHandoffStage,
+  error: TrimmedNonEmptyString,
+});
+
+const ThreadHandoffCancelCommand = Schema.Struct({
+  type: Schema.Literal("thread.handoff.cancel"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  handoffId: HandoffId,
+});
+
 const ThreadHandoffCompleteCommand = Schema.Struct({
   type: Schema.Literal("thread.handoff.complete"),
   commandId: CommandId,
@@ -988,6 +1027,10 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadPinCommand,
   ThreadUnpinCommand,
   ThreadPinReorderCommand,
+  ThreadHandoffStartCommand,
+  ThreadHandoffStageCommand,
+  ThreadHandoffFailCommand,
+  ThreadHandoffCancelCommand,
   ThreadHandoffCompleteCommand,
   ThreadHandoffClearCommand,
   ThreadMetaUpdateCommand,
@@ -1018,6 +1061,10 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadPinCommand,
   ThreadUnpinCommand,
   ThreadPinReorderCommand,
+  ThreadHandoffStartCommand,
+  ThreadHandoffStageCommand,
+  ThreadHandoffFailCommand,
+  ThreadHandoffCancelCommand,
   ThreadHandoffCompleteCommand,
   ThreadHandoffClearCommand,
   ThreadMetaUpdateCommand,
@@ -1138,6 +1185,10 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.pinned",
   "thread.unpinned",
   "thread.pin-reordered",
+  "thread.handoff-started",
+  "thread.handoff-staged",
+  "thread.handoff-failed",
+  "thread.handoff-cancelled",
   "thread.handed-off",
   "thread.handoff-cleared",
   "thread.meta-updated",
@@ -1280,6 +1331,35 @@ export const ThreadUnpinnedPayload = Schema.Struct({
 export const ThreadPinReorderedPayload = Schema.Struct({
   threadId: ThreadId,
   orderKey: TrimmedNonEmptyString,
+  updatedAt: IsoDateTime,
+});
+
+export const ThreadHandoffStartedPayload = Schema.Struct({
+  threadId: ThreadId,
+  handoff: ThreadHandoffPending,
+  updatedAt: IsoDateTime,
+});
+
+export const ThreadHandoffStagedPayload = Schema.Struct({
+  threadId: ThreadId,
+  handoffId: HandoffId,
+  stage: ThreadHandoffStage,
+  updatedAt: IsoDateTime,
+});
+
+export const ThreadHandoffFailedPayload = Schema.Struct({
+  threadId: ThreadId,
+  handoffId: HandoffId,
+  // Which stage failed, so the banner can say what to retry rather than just
+  // that something went wrong.
+  stage: ThreadHandoffStage,
+  error: TrimmedNonEmptyString,
+  updatedAt: IsoDateTime,
+});
+
+export const ThreadHandoffCancelledPayload = Schema.Struct({
+  threadId: ThreadId,
+  handoffId: HandoffId,
   updatedAt: IsoDateTime,
 });
 
@@ -1509,6 +1589,26 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.pin-reordered"),
     payload: ThreadPinReorderedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.handoff-started"),
+    payload: ThreadHandoffStartedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.handoff-staged"),
+    payload: ThreadHandoffStagedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.handoff-failed"),
+    payload: ThreadHandoffFailedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.handoff-cancelled"),
+    payload: ThreadHandoffCancelledPayload,
   }),
   Schema.Struct({
     ...EventBaseFields,

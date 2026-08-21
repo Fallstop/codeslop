@@ -135,6 +135,115 @@ it.layer(NodeServices.layer)("thread handoff decider", (it) => {
     }),
   );
 
+  it.effect("starting a handoff freezes the thread before anything moves", () =>
+    Effect.gen(function* () {
+      const event = yield* decideOrchestrationCommand({
+        command: {
+          type: "thread.handoff.start",
+          commandId: CommandId.make("cmd-start"),
+          threadId: ThreadId.make("thread-1"),
+          handoffId: HandoffId.make("handoff-1"),
+          target: TARGET,
+        },
+        readModel: makeReadModel({}),
+      });
+      const events = Array.isArray(event) ? event : [event];
+      expect(events[0]?.type).toBe("thread.handoff-started");
+      if (events[0]?.type === "thread.handoff-started") {
+        expect(events[0].payload.handoff.stage).toBe("freezing");
+        expect(events[0].payload.handoff.handoffId).toBe("handoff-1");
+      }
+    }),
+  );
+
+  it.effect("refuses a second handoff while one is in flight", () =>
+    Effect.gen(function* () {
+      const error = yield* decideOrchestrationCommand({
+        command: {
+          type: "thread.handoff.start",
+          commandId: CommandId.make("cmd-start-conflict"),
+          threadId: ThreadId.make("thread-1"),
+          handoffId: HandoffId.make("handoff-2"),
+          target: TARGET,
+        },
+        readModel: makeReadModel({
+          handoff: {
+            handoffId: HandoffId.make("handoff-1"),
+            target: TARGET,
+            stage: "transferring",
+            startedAt: NOW,
+          },
+        }),
+      }).pipe(Effect.flip);
+      expect(error._tag).toBe("OrchestrationCommandInvariantError");
+    }),
+  );
+
+  it.effect("refuses a stage that names a handoff which is not in flight", () =>
+    Effect.gen(function* () {
+      // A stale client must not resurrect a cancelled transfer.
+      const error = yield* decideOrchestrationCommand({
+        command: {
+          type: "thread.handoff.stage",
+          commandId: CommandId.make("cmd-stage-stale"),
+          threadId: ThreadId.make("thread-1"),
+          handoffId: HandoffId.make("handoff-gone"),
+          stage: "transferring",
+        },
+        readModel: makeReadModel({}),
+      }).pipe(Effect.flip);
+      expect(error._tag).toBe("OrchestrationCommandInvariantError");
+    }),
+  );
+
+  it.effect("a failure parks the handoff rather than clearing it", () =>
+    Effect.gen(function* () {
+      const event = yield* decideOrchestrationCommand({
+        command: {
+          type: "thread.handoff.fail",
+          commandId: CommandId.make("cmd-fail"),
+          threadId: ThreadId.make("thread-1"),
+          handoffId: HandoffId.make("handoff-1"),
+          stage: "transferring",
+          error: "target refused the bundle",
+        },
+        readModel: makeReadModel({
+          handoff: {
+            handoffId: HandoffId.make("handoff-1"),
+            target: TARGET,
+            stage: "transferring",
+            startedAt: NOW,
+          },
+        }),
+      });
+      const events = Array.isArray(event) ? event : [event];
+      expect(events[0]?.type).toBe("thread.handoff-failed");
+      if (events[0]?.type === "thread.handoff-failed") {
+        expect(events[0].payload.error).toBe("target refused the bundle");
+      }
+    }),
+  );
+
+  it.effect("cancelling never refuses, even with nothing in flight", () =>
+    Effect.gen(function* () {
+      // Cancel is an escape hatch; if it could refuse it would be a one-way door.
+      const event = yield* decideOrchestrationCommand({
+        command: {
+          type: "thread.handoff.cancel",
+          commandId: CommandId.make("cmd-cancel-noop"),
+          threadId: ThreadId.make("thread-1"),
+          handoffId: HandoffId.make("handoff-gone"),
+        },
+        readModel: makeReadModel({}),
+      });
+      const events = Array.isArray(event) ? event : [event];
+      expect(events[0]?.type).toBe("thread.handoff-cancelled");
+      if (events[0]?.type === "thread.handoff-cancelled") {
+        expect(events[0].payload.updatedAt).toBe(NOW);
+      }
+    }),
+  );
+
   it.effect("rejects a turn on a thread that was handed off", () =>
     Effect.gen(function* () {
       const error = yield* decideOrchestrationCommand({

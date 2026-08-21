@@ -42,6 +42,10 @@ export type UnsnoozeThreadInput = CommandInput<"thread.unsnooze">;
 export type PinThreadInput = CommandInput<"thread.pin">;
 export type UnpinThreadInput = CommandInput<"thread.unpin">;
 export type ReorderPinnedThreadInput = CommandInput<"thread.pin.reorder">;
+export type StartThreadHandoffInput = CommandInput<"thread.handoff.start">;
+export type StageThreadHandoffInput = CommandInput<"thread.handoff.stage">;
+export type FailThreadHandoffInput = CommandInput<"thread.handoff.fail">;
+export type CancelThreadHandoffInput = CommandInput<"thread.handoff.cancel">;
 export type CompleteThreadHandoffInput = CommandInput<"thread.handoff.complete">;
 export type ClearThreadHandoffInput = CommandInput<"thread.handoff.clear">;
 export type UpdateThreadMetadataInput = CommandInput<"thread.meta.update">;
@@ -188,6 +192,47 @@ export const snoozeThread: (input: SnoozeThreadInput) => CommandEffect = Effect.
   return yield* dispatch({
     ...input,
     type: "thread.snooze",
+    commandId: yield* commandId(input),
+  });
+});
+
+export const startThreadHandoff: (input: StartThreadHandoffInput) => CommandEffect = Effect.fn(
+  "EnvironmentCommands.startThreadHandoff",
+)(function* (input) {
+  return yield* dispatch({
+    ...input,
+    type: "thread.handoff.start",
+    commandId: yield* commandId(input),
+  });
+});
+
+/** Advance the visible stage; driven by the client couriering the bundle. */
+export const stageThreadHandoff: (input: StageThreadHandoffInput) => CommandEffect = Effect.fn(
+  "EnvironmentCommands.stageThreadHandoff",
+)(function* (input) {
+  return yield* dispatch({
+    ...input,
+    type: "thread.handoff.stage",
+    commandId: yield* commandId(input),
+  });
+});
+
+export const failThreadHandoff: (input: FailThreadHandoffInput) => CommandEffect = Effect.fn(
+  "EnvironmentCommands.failThreadHandoff",
+)(function* (input) {
+  return yield* dispatch({
+    ...input,
+    type: "thread.handoff.fail",
+    commandId: yield* commandId(input),
+  });
+});
+
+export const cancelThreadHandoff: (input: CancelThreadHandoffInput) => CommandEffect = Effect.fn(
+  "EnvironmentCommands.cancelThreadHandoff",
+)(function* (input) {
+  return yield* dispatch({
+    ...input,
+    type: "thread.handoff.cancel",
     commandId: yield* commandId(input),
   });
 });

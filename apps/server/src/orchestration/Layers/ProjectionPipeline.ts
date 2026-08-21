@@ -780,6 +780,83 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           return;
         }
 
+        case "thread.handoff-started": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            handoffPending: event.payload.handoff,
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.handoff-staged": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          const pending = existingRow.value.handoffPending;
+          // A stage for a handoff that is no longer in flight is stale; the
+          // decider rejects it, but a replay can still reach here.
+          if (pending === null || pending.handoffId !== event.payload.handoffId) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            // Advancing clears any parked error: the stage is moving again.
+            handoffPending: { ...pending, stage: event.payload.stage },
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.handoff-failed": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          const pending = existingRow.value.handoffPending;
+          if (pending === null || pending.handoffId !== event.payload.handoffId) {
+            return;
+          }
+          // Parked, not cleared: the work is still frozen here and the thread
+          // stays guarded until the user retries, cancels, or takes it back.
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            handoffPending: {
+              ...pending,
+              stage: event.payload.stage,
+              error: event.payload.error,
+            },
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.handoff-cancelled": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            handoffPending: null,
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
         case "thread.handed-off": {
           const existingRow = yield* projectionThreadRepository.getById({
             threadId: event.payload.threadId,
