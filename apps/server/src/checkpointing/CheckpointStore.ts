@@ -19,12 +19,18 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import type { CheckpointStoreError } from "./Errors.ts";
-import type { VcsCheckpointOps } from "../vcs/VcsDriver.ts";
+import type { VcsCheckpointOps, VcsPublishHandoffCommitResult } from "../vcs/VcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 
 export interface CaptureCheckpointInput {
   readonly cwd: string;
   readonly checkpointRef: CheckpointRef;
+}
+
+export interface PublishHandoffCommitInput {
+  readonly cwd: string;
+  /** Full ref, e.g. `refs/heads/slop/handoff/<handoffId>`. */
+  readonly ref: string;
 }
 
 export interface RestoreCheckpointInput {
@@ -61,6 +67,15 @@ export class CheckpointStore extends Context.Service<
     readonly captureCheckpoint: (
       input: CaptureCheckpointInput,
     ) => Effect.Effect<void, CheckpointStoreError>;
+
+    /**
+     * Snapshot the worktree as a fetchable commit for a handoff. Unlike a
+     * checkpoint this has a parent and lives under refs/heads, so the machine
+     * receiving the thread can fetch it normally.
+     */
+    readonly publishHandoffCommit: (
+      input: PublishHandoffCommitInput,
+    ) => Effect.Effect<VcsPublishHandoffCommitResult, CheckpointStoreError>;
 
     /** Check whether a checkpoint ref exists. */
     readonly hasCheckpointRef: (
@@ -126,6 +141,16 @@ export const make = Effect.gen(function* () {
     return yield* checkpoints.captureCheckpoint(input);
   });
 
+  const publishHandoffCommit: CheckpointStore["Service"]["publishHandoffCommit"] = Effect.fn(
+    "publishHandoffCommit",
+  )(function* (input) {
+    const checkpoints = yield* resolveCheckpoints(
+      "CheckpointStore.publishHandoffCommit",
+      input.cwd,
+    );
+    return yield* checkpoints.publishHandoffCommit(input);
+  });
+
   const hasCheckpointRef: CheckpointStore["Service"]["hasCheckpointRef"] = Effect.fn(
     "hasCheckpointRef",
   )(function* (input) {
@@ -160,6 +185,7 @@ export const make = Effect.gen(function* () {
   return CheckpointStore.of({
     isGitRepository,
     captureCheckpoint,
+    publishHandoffCommit,
     hasCheckpointRef,
     restoreCheckpoint,
     diffCheckpoints,

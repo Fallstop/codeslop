@@ -43,6 +43,7 @@ import { ProviderSessionReaperLive } from "./provider/Layers/ProviderSessionReap
 import * as OpenCodeRuntime from "./provider/opencodeRuntime.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as HandoffBundleService from "./handoff/HandoffBundleService.ts";
+import * as HandoffExportService from "./handoff/HandoffExportService.ts";
 import * as HandoffStagingStore from "./handoff/HandoffStagingStore.ts";
 import * as CheckpointStore from "./checkpointing/CheckpointStore.ts";
 import * as AzureDevOpsCli from "./sourceControl/AzureDevOpsCli.ts";
@@ -337,7 +338,12 @@ const CheckpointingLayerLive = Layer.empty.pipe(
 // bundle, the target assembles one.
 const HandoffLayerLive = Layer.empty.pipe(
   Layer.provideMerge(HandoffBundleService.layer),
+  Layer.provideMerge(HandoffExportService.layer),
   Layer.provideMerge(HandoffStagingStore.layer),
+  // Export publishes the worktree, so it needs the checkpoint store; merging
+  // rather than listing both separately keeps the composition under the
+  // 20-argument pipe limit.
+  Layer.provideMerge(CheckpointingLayerLive),
 );
 
 const PortScannerLayerLive = PortScanner.layer.pipe(Layer.provide(ProcessRunner.layer));
@@ -391,7 +397,7 @@ const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
 const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   // Core Services
   Layer.provideMerge(ServerSettingsLayerLive),
-  Layer.provideMerge(Layer.mergeAll(CheckpointingLayerLive, HandoffLayerLive)),
+  Layer.provideMerge(HandoffLayerLive),
   Layer.provideMerge(SourceControlProviderRegistryLayerLive),
   Layer.provideMerge(GitLayerLive),
   Layer.provideMerge(VcsLayerLive),
