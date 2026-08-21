@@ -45,10 +45,12 @@ export interface HandoffCourierPorts<E> {
     readonly offset: number;
     readonly chunk: string;
   }) => Effect.Effect<{ readonly receivedBytes: number }, E>;
-  /** Verify and install on the target. */
+  /** Check out the published work, verify, and install on the target. */
   readonly adoptBundle: (input: {
     readonly handoffId: HandoffId;
-    readonly cwd: string;
+    readonly repositoryPath: string;
+    readonly worktreePath: string;
+    readonly branch: string;
   }) => Effect.Effect<OrchestrationAdoptHandoffBundleResult, E>;
   /**
    * Report progress to the origin so every device watching the thread sees the
@@ -68,8 +70,12 @@ export interface HandoffCourierPorts<E> {
 
 export interface CourierHandoffInput<E> {
   readonly handoffId: HandoffId;
-  /** Where the adopted thread will run on the target. */
-  readonly targetCwd: string;
+  /** An existing checkout of the same repository on the target. */
+  readonly repositoryPath: string;
+  /** Where the adopted thread's worktree should be laid out. */
+  readonly worktreePath: string;
+  /** Branch to create for the adopted work. */
+  readonly branch: string;
   readonly ports: HandoffCourierPorts<E>;
   readonly chunkBytes?: number;
 }
@@ -126,7 +132,9 @@ export const courierHandoffBundle = Effect.fn("handoff.courierHandoffBundle")(fu
 
   const adopted = yield* ports.adoptBundle({
     handoffId: input.handoffId,
-    cwd: input.targetCwd,
+    repositoryPath: input.repositoryPath,
+    worktreePath: input.worktreePath,
+    branch: input.branch,
   });
 
   // Target first, origin second: a crash between the two leaves the work moved

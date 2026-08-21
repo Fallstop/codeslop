@@ -1980,8 +1980,13 @@ export type OrchestrationWriteHandoffBundleResult =
 
 export const OrchestrationAdoptHandoffBundleInput = Schema.Struct({
   handoffId: HandoffId,
-  /** Where the adopted thread will run; Claude keys its session on this. */
-  cwd: TrimmedNonEmptyString,
+  /** An existing checkout of the same repository on the adopting machine. */
+  repositoryPath: TrimmedNonEmptyString,
+  /** Branch to create for the adopted work. */
+  branch: TrimmedNonEmptyString,
+  /** Where to lay out the adopted worktree. */
+  worktreePath: TrimmedNonEmptyString,
+  remoteName: Schema.optional(TrimmedNonEmptyString),
 });
 export type OrchestrationAdoptHandoffBundleInput = typeof OrchestrationAdoptHandoffBundleInput.Type;
 
@@ -1989,6 +1994,8 @@ export const OrchestrationAdoptHandoffBundleResult = Schema.Struct({
   /** The cursor the adopted thread resumes with. */
   sessionId: TrimmedNonEmptyString,
   provider: TrimmedNonEmptyString,
+  /** Where the work landed; the adopted thread runs here. */
+  worktreePath: TrimmedNonEmptyString,
 });
 export type OrchestrationAdoptHandoffBundleResult =
   typeof OrchestrationAdoptHandoffBundleResult.Type;

@@ -56,7 +56,12 @@ function makePorts(source: Uint8Array, options?: { readonly failWriteAtOffset?: 
         written.push({ offset, bytes });
         return Effect.succeed({ receivedBytes: offset + bytes.length });
       }),
-    adoptBundle: () => Effect.succeed({ sessionId: "session-1", provider: "claudeAgent" }),
+    adoptBundle: () =>
+      Effect.succeed({
+        sessionId: "session-1",
+        provider: "claudeAgent",
+        worktreePath: "/repo/worktree",
+      }),
     reportStage: (stage) =>
       Effect.sync(() => {
         stages.push(stage);
@@ -90,7 +95,9 @@ describe("courierHandoffBundle", () => {
     const result = await Effect.runPromise(
       courierHandoffBundle({
         handoffId: HANDOFF_ID,
-        targetCwd: "/repo",
+        repositoryPath: "/repo",
+        worktreePath: "/repo/worktree",
+        branch: "slop/adopted",
         ports: harness.ports,
         chunkBytes: 256,
       }),
@@ -106,7 +113,9 @@ describe("courierHandoffBundle", () => {
     await Effect.runPromise(
       courierHandoffBundle({
         handoffId: HANDOFF_ID,
-        targetCwd: "/repo",
+        repositoryPath: "/repo",
+        worktreePath: "/repo/worktree",
+        branch: "slop/adopted",
         ports: harness.ports,
         chunkBytes: 256,
       }),
@@ -121,7 +130,9 @@ describe("courierHandoffBundle", () => {
     const result = await Effect.runPromise(
       courierHandoffBundle({
         handoffId: HANDOFF_ID,
-        targetCwd: "/repo",
+        repositoryPath: "/repo",
+        worktreePath: "/repo/worktree",
+        branch: "slop/adopted",
         ports: harness.ports,
         chunkBytes: 4096,
       }),
@@ -142,13 +153,24 @@ describe("courierHandoffBundle", () => {
           totalBytes: 64,
         }),
       writeBundle: () => Effect.succeed({ receivedBytes: 0 }),
-      adoptBundle: () => Effect.succeed({ sessionId: "session-1", provider: "claudeAgent" }),
+      adoptBundle: () =>
+        Effect.succeed({
+          sessionId: "session-1",
+          provider: "claudeAgent",
+          worktreePath: "/repo/worktree",
+        }),
       reportStage: () => Effect.void,
       completeHandoff: () => Effect.void,
     };
 
     const result = await Effect.runPromise(
-      courierHandoffBundle({ handoffId: HANDOFF_ID, targetCwd: "/repo", ports }),
+      courierHandoffBundle({
+        handoffId: HANDOFF_ID,
+        repositoryPath: "/repo",
+        worktreePath: "/repo/worktree",
+        branch: "slop/adopted",
+        ports,
+      }),
     );
     expect(result.transferredBytes).toBe(0);
   });
@@ -160,7 +182,9 @@ describe("courierHandoffBundle", () => {
     const exit = await Effect.runPromiseExit(
       courierHandoffBundle({
         handoffId: HANDOFF_ID,
-        targetCwd: "/repo",
+        repositoryPath: "/repo",
+        worktreePath: "/repo/worktree",
+        branch: "slop/adopted",
         ports: harness.ports,
         chunkBytes: 256,
       }),

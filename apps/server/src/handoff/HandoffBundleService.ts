@@ -30,6 +30,8 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 
 import { ProviderSessionRuntimeRepository } from "../persistence/ProviderSessionRuntime.ts";
+import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import { prepareHandoffWorktree } from "./HandoffAdoptWorkspace.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { makeHandoffResumeCursor } from "./HandoffSessionCursor.ts";
 import { resolveHandoffProviderHome } from "./HandoffProviderHome.ts";
@@ -63,6 +65,7 @@ const make = Effect.gen(function* () {
   const staging = yield* HandoffStagingStore;
   const settingsService = yield* ServerSettingsService;
   const providerSessionRuntime = yield* ProviderSessionRuntimeRepository;
+  const gitDriver = yield* GitVcsDriver.GitVcsDriver;
   // Captured once so the service surface stays requirement-free: callers get a
   // plain Effect rather than one that drags FileSystem through the RPC layer.
   const fileSystem = yield* FileSystem.FileSystem;
@@ -162,12 +165,29 @@ const make = Effect.gen(function* () {
       }
 
       const home = yield* withPlatform(resolveTargetHome(manifest.provider));
+
+      // Lay the worktree out before installing: Claude keys its session on the
+      // directory, so the real directory has to exist first.
+      if (manifest.handoffRef === undefined || manifest.baseCommit === undefined) {
+        return yield* bundleError("Handoff bundle does not record published work to check out.");
+      }
+      const worktreePath = yield* prepareHandoffWorktree({
+        repositoryPath: input.repositoryPath,
+        worktreePath: input.worktreePath,
+        branch: input.branch,
+        remoteName: input.remoteName ?? "origin",
+        handoffRef: manifest.handoffRef,
+        baseCommit: manifest.baseCommit,
+      }).pipe(
+        Effect.provideService(GitVcsDriver.GitVcsDriver, gitDriver),
+        Effect.mapError((cause) => bundleError("Failed to check out the handed-off work.", cause)),
+      );
       yield* withPlatform(
         installHandoffSession({
           provider: home.provider,
           providerHome: home.providerHome,
           sessionId: manifest.sessionId,
-          cwd: input.cwd,
+          cwd: worktreePath,
           bytes: session,
           fileName: manifest.sessionFileName,
         }),
@@ -195,7 +215,7 @@ const make = Effect.gen(function* () {
         })
         .pipe(Effect.mapError((cause) => bundleError("Failed to seed the resume cursor.", cause)));
 
-      return { sessionId: manifest.sessionId, provider: manifest.provider };
+      return { sessionId: manifest.sessionId, provider: manifest.provider, worktreePath };
     }),
   });
 });
