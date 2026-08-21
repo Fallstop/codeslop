@@ -2820,6 +2820,16 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         ),
       );
 
+  // Registry read, no SQL: the tasks behind a thread's liveness verdict, read
+  // together so the two can never disagree.
+  const getThreadBackgroundTasks: ProjectionSnapshotQueryShape["getThreadBackgroundTasks"] = (
+    threadId,
+  ) =>
+    Effect.sync(() => ({
+      liveness: threadBackgroundLiveness.getThreadBackgroundLiveness(threadId),
+      tasks: threadBackgroundLiveness.getThreadBackgroundTasks(threadId),
+    }));
+
   return {
     getCommandReadModel,
     getSnapshot,
@@ -2836,6 +2846,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
     getThreadShellById,
     getThreadDetailById,
     getThreadDetailSnapshot,
+    getThreadBackgroundTasks,
   } satisfies ProjectionSnapshotQueryShape;
 });
 

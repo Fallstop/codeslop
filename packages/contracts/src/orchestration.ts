@@ -32,6 +32,7 @@ export const ORCHESTRATION_WS_METHODS = {
   getArchivedShellSnapshot: "orchestration.getArchivedShellSnapshot",
   subscribeShell: "orchestration.subscribeShell",
   subscribeThread: "orchestration.subscribeThread",
+  getThreadBackgroundTasks: "orchestration.getThreadBackgroundTasks",
 } as const;
 
 export const ProviderApprovalPolicy = Schema.Literals([
@@ -1693,6 +1694,49 @@ export class OrchestrationGetWorkflowScriptError extends Schema.TaggedErrorClass
   }
 }
 
+/**
+ * One live background task behind a thread's `backgroundLiveness` verdict.
+ * Fetched on demand (never on the shell broadcast) so the banner can answer
+ * "background work — what work?" without costing every sidebar snapshot.
+ */
+export const OrchestrationBackgroundTask = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  /** Which bucket this task lands in: agents win over monitors for liveness. */
+  kind: Schema.Literals(["agent", "monitor"]),
+  /** SDK task_type; absent on synthesized rows (workflow members, Codex children). */
+  taskType: Schema.optional(TrimmedNonEmptyString),
+  /** Set when the task was launched from inside a subagent. */
+  agentId: Schema.optional(TrimmedNonEmptyString),
+  description: Schema.optional(TrimmedNonEmptyString),
+  status: Schema.optional(TrimmedNonEmptyString),
+  /** First lifecycle event seen for the task; the age that exposes a stuck row. */
+  startedAt: Schema.optional(IsoDateTime),
+  updatedAt: Schema.optional(IsoDateTime),
+});
+export type OrchestrationBackgroundTask = typeof OrchestrationBackgroundTask.Type;
+
+export const OrchestrationGetThreadBackgroundTasksInput = Schema.Struct({
+  threadId: ThreadId,
+});
+export type OrchestrationGetThreadBackgroundTasksInput =
+  typeof OrchestrationGetThreadBackgroundTasksInput.Type;
+
+export const OrchestrationGetThreadBackgroundTasksResult = Schema.Struct({
+  /** Re-read with the tasks so the view can never disagree with itself. */
+  liveness: Schema.NullOr(Schema.Literals(["working", "monitoring"])),
+  tasks: Schema.Array(OrchestrationBackgroundTask),
+});
+export type OrchestrationGetThreadBackgroundTasksResult =
+  typeof OrchestrationGetThreadBackgroundTasksResult.Type;
+
+export class OrchestrationGetThreadBackgroundTasksError extends Schema.TaggedErrorClass<OrchestrationGetThreadBackgroundTasksError>()(
+  "OrchestrationGetThreadBackgroundTasksError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
+
 export const OrchestrationRpcSchemas = {
   dispatchCommand: {
     input: ClientOrchestrationCommand,
@@ -1725,6 +1769,10 @@ export const OrchestrationRpcSchemas = {
   subscribeShell: {
     input: OrchestrationSubscribeShellInput,
     output: OrchestrationShellStreamItem,
+  },
+  getThreadBackgroundTasks: {
+    input: OrchestrationGetThreadBackgroundTasksInput,
+    output: OrchestrationGetThreadBackgroundTasksResult,
   },
 } as const;
 

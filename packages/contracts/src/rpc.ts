@@ -65,6 +65,7 @@ import {
   OrchestrationGetTurnDiffInput,
   OrchestrationRpcSchemas,
   OrchestrationGetWorkflowScriptError,
+  OrchestrationGetThreadBackgroundTasksError,
 } from "./orchestration.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
@@ -897,6 +898,18 @@ export const WsOrchestrationGetWorkflowScriptRpc = Rpc.make(
   },
 );
 
+export const WsOrchestrationGetThreadBackgroundTasksRpc = Rpc.make(
+  ORCHESTRATION_WS_METHODS.getThreadBackgroundTasks,
+  {
+    payload: OrchestrationRpcSchemas.getThreadBackgroundTasks.input,
+    success: OrchestrationRpcSchemas.getThreadBackgroundTasks.output,
+    error: Schema.Union([
+      OrchestrationGetThreadBackgroundTasksError,
+      EnvironmentAuthorizationError,
+    ]),
+  },
+);
+
 export const WsOrchestrationGetTurnDiffRpc = Rpc.make(ORCHESTRATION_WS_METHODS.getTurnDiff, {
   payload: OrchestrationGetTurnDiffInput,
   success: OrchestrationRpcSchemas.getTurnDiff.output,
@@ -1094,4 +1107,5 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationGetArchivedShellSnapshotRpc,
   WsOrchestrationSubscribeShellRpc,
   WsOrchestrationSubscribeThreadRpc,
+  WsOrchestrationGetThreadBackgroundTasksRpc,
 );

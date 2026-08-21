@@ -294,6 +294,7 @@ import {
   resolveDisplayedThreadPr,
   threadChangeRequestSnapshotsAtom,
 } from "./ThreadStatusIndicators";
+import { BackgroundWorkDetails } from "./chat/BackgroundWorkDetails";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
 import { SideChatPanel } from "./chat/SideChatPanel";
 import {
@@ -4694,20 +4695,24 @@ function ChatViewContent(props: ChatViewProps) {
           : "Background work"
         : "Monitoring",
       actions: (
-        <Button
-          size="xs"
-          variant="ghost"
-          disabled={isStoppingBackgroundWork}
-          onClick={() => void handleStopBackgroundWork()}
-        >
-          {isStoppingBackgroundWork ? "Stopping..." : "Stop"}
-        </Button>
+        <>
+          <BackgroundWorkDetails environmentId={environmentId} threadId={activeThread.id} />
+          <Button
+            size="xs"
+            variant="ghost"
+            disabled={isStoppingBackgroundWork}
+            onClick={() => void handleStopBackgroundWork()}
+          >
+            {isStoppingBackgroundWork ? "Stopping..." : "Stop"}
+          </Button>
+        </>
       ),
     };
   }, [
     activeBackgroundLiveness,
     activeThread,
     agentPanelModel.liveCount,
+    environmentId,
     handleStopBackgroundWork,
     isStoppingBackgroundWork,
   ]);

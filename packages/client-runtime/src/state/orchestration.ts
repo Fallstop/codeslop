@@ -29,6 +29,14 @@ export function createOrchestrationEnvironmentAtoms<R, E>(
       staleTimeMs: 30_000,
       idleTtlMs: 60_000,
     }),
+    // On-demand only: this detail deliberately stays off the shell broadcast,
+    // and the registry mutates without a projection bump, so never cache it.
+    threadBackgroundTasks: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:orchestration:thread-background-tasks",
+      tag: ORCHESTRATION_WS_METHODS.getThreadBackgroundTasks,
+      staleTimeMs: 0,
+      idleTtlMs: 15_000,
+    }),
     archivedShellSnapshot: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:orchestration:archived-shell-snapshot",
       tag: ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot,

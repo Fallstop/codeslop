@@ -13,6 +13,10 @@
  * shells) when they are the ONLY live work; any agent work presents as
  * "working".
  *
+ * The registry also keeps the identity of each live task so a client can ask
+ * WHAT is holding a thread open (getThreadBackgroundTasks). That detail never
+ * rides the shell broadcast — it is fetched on demand, per thread.
+ *
  * @module ThreadBackgroundLivenessService
  */
 import { INERT_TASK_TYPES, MONITOR_TASK_TYPES } from "@t3tools/contracts";
@@ -22,9 +26,16 @@ import * as Layer from "effect/Layer";
 
 export type ThreadBackgroundLiveness = "working" | "monitoring" | null;
 
-interface ThreadLivenessState {
-  readonly agents: Set<string>;
-  readonly monitors: Set<string>;
+/** One live background task, as the registry knows it. */
+export interface ThreadBackgroundTask {
+  readonly taskId: string;
+  readonly kind: "agent" | "monitor";
+  readonly taskType: string | undefined;
+  readonly agentId: string | undefined;
+  readonly description: string | undefined;
+  readonly status: string | undefined;
+  readonly startedAt: string | undefined;
+  readonly updatedAt: string | undefined;
 }
 
 // Classification sets are the shared contracts copies (MONITOR_TASK_TYPES:
@@ -59,6 +70,10 @@ export class ThreadBackgroundLivenessService extends Context.Service<
       readonly status: string | undefined;
       readonly kind: "started" | "progress" | "updated" | "completed";
       readonly agentId?: string | undefined;
+      /** Human label for the debug view; last non-empty value wins. */
+      readonly description?: string | undefined;
+      /** Event timestamp, used for "live for how long" in the debug view. */
+      readonly at?: string | undefined;
     }) => void;
 
     /** Session death orphans all of a thread's background work. */
@@ -69,21 +84,18 @@ export class ThreadBackgroundLivenessService extends Context.Service<
      * "monitoring" only when watch loops are the ONLY live work.
      */
     readonly getThreadBackgroundLiveness: (threadId: string) => ThreadBackgroundLiveness;
+
+    /**
+     * The tasks behind that verdict, oldest first. Answers "the banner says
+     * background work — what work?", including the case where the client's
+     * own agent roster shows nothing.
+     */
+    readonly getThreadBackgroundTasks: (threadId: string) => ReadonlyArray<ThreadBackgroundTask>;
   }
 >()("t3/orchestration/ThreadBackgroundLiveness/ThreadBackgroundLivenessService") {}
 
 export function make(): ThreadBackgroundLivenessService["Service"] {
-  const stateByThreadId = new Map<string, ThreadLivenessState>();
-
-  const stateFor = (threadId: string): ThreadLivenessState => {
-    const existing = stateByThreadId.get(threadId);
-    if (existing) {
-      return existing;
-    }
-    const created: ThreadLivenessState = { agents: new Set(), monitors: new Set() };
-    stateByThreadId.set(threadId, created);
-    return created;
-  };
+  const stateByThreadId = new Map<string, Map<string, ThreadBackgroundTask>>();
 
   // Classification is per-transition, not sticky: a task first seen without
   // a taskType may later reveal itself as a shell, become inert, or turn out
@@ -94,9 +106,8 @@ export function make(): ThreadBackgroundLivenessService["Service"] {
     if (!state) {
       return;
     }
-    state.agents.delete(taskId);
-    state.monitors.delete(taskId);
-    if (state.agents.size === 0 && state.monitors.size === 0) {
+    state.delete(taskId);
+    if (state.size === 0) {
       stateByThreadId.delete(threadId);
     }
   };
@@ -130,24 +141,30 @@ export function make(): ThreadBackgroundLivenessService["Service"] {
         return;
       }
 
+      const previous = stateByThreadId.get(input.threadId)?.get(input.taskId);
+
       // Status-free progress is a description tick, not a restart. A delayed
       // progress event after idle must not put the task back in the live set
       // (#7128).
-      if (input.kind === "progress" && input.status === undefined) {
-        const existing = stateByThreadId.get(input.threadId);
-        const stillLive =
-          existing !== undefined &&
-          (existing.agents.has(input.taskId) || existing.monitors.has(input.taskId));
-        if (!stillLive) {
-          return;
-        }
+      if (input.kind === "progress" && input.status === undefined && previous === undefined) {
+        return;
       }
 
-      drop(input.threadId, input.taskId);
-      const state = stateFor(input.threadId);
-      const bucket =
-        taskType !== undefined && MONITOR_TASK_TYPES.has(taskType) ? state.monitors : state.agents;
-      bucket.add(input.taskId);
+      const state = stateByThreadId.get(input.threadId) ?? new Map<string, ThreadBackgroundTask>();
+      stateByThreadId.set(input.threadId, state);
+      const description = input.description?.trim();
+      state.set(input.taskId, {
+        taskId: input.taskId,
+        kind: taskType !== undefined && MONITOR_TASK_TYPES.has(taskType) ? "monitor" : "agent",
+        taskType,
+        agentId: input.agentId,
+        // Later rows often omit the label; keep the last one we saw.
+        description:
+          description !== undefined && description !== "" ? description : previous?.description,
+        status: input.status,
+        startedAt: previous?.startedAt ?? input.at,
+        updatedAt: input.at ?? previous?.updatedAt,
+      });
     },
 
     clearThreadLiveness: (threadId) => {
@@ -156,16 +173,25 @@ export function make(): ThreadBackgroundLivenessService["Service"] {
 
     getThreadBackgroundLiveness: (threadId) => {
       const state = stateByThreadId.get(threadId);
-      if (!state) {
+      if (!state || state.size === 0) {
         return null;
       }
-      if (state.agents.size > 0) {
-        return "working";
+      for (const task of state.values()) {
+        if (task.kind === "agent") {
+          return "working";
+        }
       }
-      if (state.monitors.size > 0) {
-        return "monitoring";
+      return "monitoring";
+    },
+
+    getThreadBackgroundTasks: (threadId) => {
+      const state = stateByThreadId.get(threadId);
+      if (!state) {
+        return [];
       }
-      return null;
+      return [...state.values()].sort((a, b) =>
+        (a.startedAt ?? "").localeCompare(b.startedAt ?? ""),
+      );
     },
   };
 }

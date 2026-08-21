@@ -1163,6 +1163,15 @@ const makeWsRpcLayer = (
             readWorkflowScript({ scriptPath: input.scriptPath }),
             { "rpc.aggregate": "orchestration" },
           ),
+        [ORCHESTRATION_WS_METHODS.getThreadBackgroundTasks]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.getThreadBackgroundTasks,
+            // Registry read only — the answer to "the banner says background
+            // work, what work?". Empty tasks with a null liveness means the
+            // server agrees nothing is live.
+            projectionSnapshotQuery.getThreadBackgroundTasks(input.threadId),
+            { "rpc.aggregate": "orchestration" },
+          ),
         [ORCHESTRATION_WS_METHODS.getTurnDiff]: (input) =>
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.getTurnDiff,

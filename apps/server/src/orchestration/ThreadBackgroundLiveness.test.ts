@@ -196,4 +196,61 @@ describe("ThreadBackgroundLiveness", () => {
     a.clearThreadLiveness("t");
     expect(a.getThreadBackgroundLiveness("t")).toBeNull();
   });
+  it("reports the tasks behind the verdict, keeping first-seen start and last-known label", () => {
+    const liveness = ThreadBackgroundLiveness.make();
+    const threadId = "t-detail";
+    liveness.recordTaskLiveness({
+      threadId,
+      taskId: "a1",
+      taskType: "subagent",
+      status: "running",
+      kind: "started",
+      description: "review the diff",
+      at: "2026-08-21T00:00:00.000Z",
+    });
+    liveness.recordTaskLiveness({
+      threadId,
+      taskId: "m1",
+      taskType: "monitor",
+      status: "running",
+      kind: "started",
+      description: "watch CI",
+      at: "2026-08-21T00:01:00.000Z",
+    });
+    // Label-free tick: keeps the original startedAt and the last known label.
+    liveness.recordTaskLiveness({
+      threadId,
+      taskId: "a1",
+      taskType: "subagent",
+      status: "running",
+      kind: "progress",
+      at: "2026-08-21T00:02:00.000Z",
+    });
+
+    const tasks = liveness.getThreadBackgroundTasks(threadId);
+    expect(tasks.map((task) => task.taskId)).toEqual(["a1", "m1"]);
+    expect(tasks[0]).toMatchObject({
+      kind: "agent",
+      description: "review the diff",
+      startedAt: "2026-08-21T00:00:00.000Z",
+      updatedAt: "2026-08-21T00:02:00.000Z",
+    });
+    expect(tasks[1]).toMatchObject({ kind: "monitor", description: "watch CI" });
+
+    // A terminal row leaves the detail list, not just the verdict.
+    liveness.recordTaskLiveness({
+      threadId,
+      taskId: "a1",
+      taskType: "subagent",
+      status: "completed",
+      kind: "completed",
+    });
+    expect(liveness.getThreadBackgroundTasks(threadId).map((task) => task.taskId)).toEqual(["m1"]);
+    expect(liveness.getThreadBackgroundLiveness(threadId)).toBe("monitoring");
+  });
+
+  it("reports no tasks for a thread with nothing live", () => {
+    const liveness = ThreadBackgroundLiveness.make();
+    expect(liveness.getThreadBackgroundTasks("absent")).toEqual([]);
+  });
 });

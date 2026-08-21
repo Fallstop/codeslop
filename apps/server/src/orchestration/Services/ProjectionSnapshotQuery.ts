@@ -14,6 +14,7 @@ import type {
   OrchestrationReadModel,
   OrchestrationSearchThreadsInput,
   OrchestrationSearchThreadsResult,
+  OrchestrationGetThreadBackgroundTasksResult,
   OrchestrationShellSnapshot,
   OrchestrationThread,
   OrchestrationThreadDetailSnapshot,
@@ -186,6 +187,17 @@ export interface ProjectionSnapshotQueryShape {
     threadId: ThreadId,
     window?: OrchestrationThreadDetailWindow,
   ) => Effect.Effect<Option.Option<OrchestrationThreadDetailSnapshot>, ProjectionRepositoryError>;
+
+  /**
+   * Read the live background tasks behind a thread's `backgroundLiveness`.
+   *
+   * In-memory registry read, not a projection read — it lives here because
+   * this is where liveness is already stamped onto the shell. Fetched on
+   * demand so the detail never rides the shell broadcast.
+   */
+  readonly getThreadBackgroundTasks: (
+    threadId: ThreadId,
+  ) => Effect.Effect<OrchestrationGetThreadBackgroundTasksResult>;
 }
 
 /**
