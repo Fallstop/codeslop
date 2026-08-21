@@ -1,7 +1,14 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { EnvironmentId, ProjectId, ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import {
+  EnvironmentId,
+  HandoffId,
+  IsoDateTime,
+  ProjectId,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
 
 export const ExecutionEnvironmentPlatformOs = Schema.Literals([
   "darwin",
@@ -67,6 +74,14 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   /** Server understands regenerateTitle on thread.meta.update. Absent on
       older servers, so clients hide the action instead of sending it. */
   threadTitleRegeneration: Schema.optionalKey(Schema.Boolean),
+  /** Server can hand a running thread off to another environment: it accepts
+      thread.handoff.complete / thread.handoff.clear and freezes the source
+      thread. Same version-skew contract as threadSettlement. */
+  threadHandoffSource: Schema.optionalKey(Schema.Boolean),
+  /** Server can adopt a handoff: it understands continuedFrom on
+      thread.create. Absent servers silently drop the field and create a
+      thread with no provenance, so clients must not send it blind. */
+  threadHandoffTarget: Schema.optionalKey(Schema.Boolean),
   /** The update path clients should offer for this server. Absent on
       servers that must be relaunched manually (dev checkouts, Windows
       foreground runs, pre-update servers). */
@@ -135,3 +150,48 @@ export const ScopedThreadSessionRef = Schema.Struct({
   threadId: ThreadId,
 });
 export type ScopedThreadSessionRef = typeof ScopedThreadSessionRef.Type;
+
+/**
+ * One end of a thread handoff: the thread on the other environment, plus
+ * display-only snapshots of that environment's label and the thread's title.
+ * Carried whole so a client can render the link with no connection to the
+ * other environment; the snapshots are taken once at handoff time and are
+ * never refreshed.
+ */
+export const ThreadHandoffLink = Schema.Struct({
+  environmentId: EnvironmentId,
+  threadId: ThreadId,
+  // Supplied by the command issuer rather than stamped by the decider the way
+  // settledAt and snoozedAt are: the meaningful moment is when the TARGET
+  // adopted the work, and the source environment's clock does not own it.
+  at: IsoDateTime,
+  environmentLabel: Schema.optionalKey(TrimmedNonEmptyString),
+  threadTitle: Schema.optionalKey(TrimmedNonEmptyString),
+});
+export type ThreadHandoffLink = typeof ThreadHandoffLink.Type;
+
+/**
+ * Stages of an in-flight handoff, in order. Treat the list as closed: it is
+ * decoded with Schema.Literals, so a stage added later fails the whole thread
+ * payload on a client that predates it.
+ */
+export const ThreadHandoffStage = Schema.Literals([
+  "freezing",
+  "publishing",
+  "exporting",
+  "staged",
+  "transferring",
+  "adopting",
+]);
+export type ThreadHandoffStage = typeof ThreadHandoffStage.Type;
+
+export const ThreadHandoffPending = Schema.Struct({
+  handoffId: HandoffId,
+  target: ThreadHandoffLink,
+  stage: ThreadHandoffStage,
+  startedAt: IsoDateTime,
+  /** Set when a stage failed and the handoff is parked awaiting retry or
+      cancel. Absent while the handoff is progressing normally. */
+  error: Schema.optionalKey(TrimmedNonEmptyString),
+});
+export type ThreadHandoffPending = typeof ThreadHandoffPending.Type;

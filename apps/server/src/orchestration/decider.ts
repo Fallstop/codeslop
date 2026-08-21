@@ -378,6 +378,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           branch: command.branch,
           worktreePath: command.worktreePath,
           parentThreadId: command.parentThreadId ?? null,
+          continuedFrom: command.continuedFrom ?? null,
           createdAt: command.createdAt,
           updatedAt: command.createdAt,
         },
@@ -806,6 +807,67 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
       };
     }
 
+    case "thread.handoff.complete": {
+      const thread = yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      const occurredAt = yield* nowIso;
+      // Re-completing a handoff to the SAME environment is a duplicate (a
+      // retried receipt, raced clients): re-emit the recorded link so the
+      // projection is a no-op. A different target is a real re-handoff and
+      // stamps fresh, rather than settle's preserve-the-original rule, which
+      // would leave handedOffTo aimed at a stale environment forever.
+      const existingLink =
+        thread.handedOffTo != null &&
+        thread.handedOffTo.environmentId === command.target.environmentId &&
+        thread.handedOffTo.threadId === command.target.threadId
+          ? thread.handedOffTo
+          : null;
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.handed-off",
+        payload: {
+          threadId: command.threadId,
+          handedOffTo: existingLink ?? command.target,
+          updatedAt: existingLink !== null ? thread.updatedAt : occurredAt,
+        },
+      };
+    }
+
+    case "thread.handoff.clear": {
+      const thread = yield* requireThread({
+        readModel,
+        command,
+        threadId: command.threadId,
+      });
+      // Idempotent by re-emission, like thread.settle: clearing a thread this
+      // environment still owns lands on the same null state without churning
+      // updatedAt.
+      const alreadyLocal = thread.handedOffTo == null && thread.handoff == null;
+      const occurredAt = yield* nowIso;
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.handoff-cleared",
+        payload: {
+          threadId: command.threadId,
+          reason: command.reason,
+          updatedAt: alreadyLocal ? thread.updatedAt : occurredAt,
+        },
+      };
+    }
+
     case "thread.meta.update": {
       const thread = yield* requireThread({
         readModel,
@@ -930,6 +992,19 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
         command,
         threadId: command.threadId,
       });
+      // Split-brain invariant: once a handoff is in flight or has landed, this
+      // environment no longer owns the thread's provider session. Starting a
+      // turn here would fork the conversation against the copy on the target.
+      // thread.handoff.clear is the way back. Checked before the proposed-plan
+      // invariants so a departed thread reports the handoff rather than a
+      // misleading "plan does not exist", and before lifecycleResetEvents so a
+      // rejected start never emits an unsettle or unsnooze.
+      if (targetThread.handoff != null || targetThread.handedOffTo != null) {
+        return yield* new OrchestrationCommandInvariantError({
+          commandType: command.type,
+          detail: `Thread '${command.threadId}' has been handed off to another environment and cannot start a turn.`,
+        });
+      }
       const sourceProposedPlan = command.sourceProposedPlan;
       const sourceThread = sourceProposedPlan
         ? yield* requireThread({

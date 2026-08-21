@@ -612,6 +612,9 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             branch: event.payload.branch,
             worktreePath: event.payload.worktreePath,
             parentThreadId: event.payload.parentThreadId ?? null,
+            continuedFrom: event.payload.continuedFrom ?? null,
+            handedOffTo: null,
+            handoffPending: null,
             latestTurnId: null,
             createdAt: event.payload.createdAt,
             updatedAt: event.payload.updatedAt,
@@ -772,6 +775,43 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           yield* projectionThreadRepository.upsert({
             ...existingRow.value,
             pinOrderKey: event.payload.orderKey,
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.handed-off": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            handedOffTo: event.payload.handedOffTo,
+            // The move landed, so the in-flight record is spent. Clearing it
+            // here rather than in a second event keeps the two halves of the
+            // split-brain guard from drifting apart.
+            handoffPending: null,
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.handoff-cleared": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            // Both halves, always: clearing only one would leave the turn.start
+            // guard wedged with no command able to release it.
+            handedOffTo: null,
+            handoffPending: null,
             updatedAt: event.payload.updatedAt,
           });
           return;

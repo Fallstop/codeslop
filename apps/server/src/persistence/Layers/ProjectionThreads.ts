@@ -15,11 +15,14 @@ import {
   ProjectionThreadRepository,
   type ProjectionThreadRepositoryShape,
 } from "../Services/ProjectionThreads.ts";
-import { ModelSelection } from "@t3tools/contracts";
+import { ModelSelection, ThreadHandoffLink, ThreadHandoffPending } from "@t3tools/contracts";
 
 const ProjectionThreadDbRow = ProjectionThread.mapFields(
   Struct.assign({
     modelSelection: Schema.fromJsonString(ModelSelection),
+    handedOffTo: Schema.NullOr(Schema.fromJsonString(ThreadHandoffLink)),
+    continuedFrom: Schema.NullOr(Schema.fromJsonString(ThreadHandoffLink)),
+    handoffPending: Schema.NullOr(Schema.fromJsonString(ThreadHandoffPending)),
   }),
 );
 type ProjectionThreadDbRow = typeof ProjectionThreadDbRow.Type;
@@ -51,6 +54,9 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           pinned_at,
           pin_order_key,
           parent_thread_id,
+          handed_off_to_json,
+          continued_from_json,
+          handoff_pending_json,
           title_regeneration_request_id,
           title_regeneration_started_at,
           latest_user_message_at,
@@ -79,6 +85,9 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           ${row.pinnedAt},
           ${row.pinOrderKey ?? null},
           ${row.parentThreadId ?? null},
+          ${row.handedOffTo !== null ? JSON.stringify(row.handedOffTo) : null},
+          ${row.continuedFrom !== null ? JSON.stringify(row.continuedFrom) : null},
+          ${row.handoffPending !== null ? JSON.stringify(row.handoffPending) : null},
           ${row.titleRegenerationRequestId ?? null},
           ${row.titleRegenerationStartedAt ?? null},
           ${row.latestUserMessageAt},
@@ -107,6 +116,9 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           pinned_at = excluded.pinned_at,
           pin_order_key = excluded.pin_order_key,
           parent_thread_id = excluded.parent_thread_id,
+          handed_off_to_json = excluded.handed_off_to_json,
+          continued_from_json = excluded.continued_from_json,
+          handoff_pending_json = excluded.handoff_pending_json,
           title_regeneration_request_id = excluded.title_regeneration_request_id,
           title_regeneration_started_at = excluded.title_regeneration_started_at,
           latest_user_message_at = excluded.latest_user_message_at,
@@ -142,6 +154,9 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           pinned_at AS "pinnedAt",
           pin_order_key AS "pinOrderKey",
           parent_thread_id AS "parentThreadId",
+          handed_off_to_json AS "handedOffTo",
+          continued_from_json AS "continuedFrom",
+          handoff_pending_json AS "handoffPending",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
@@ -179,6 +194,9 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           pinned_at AS "pinnedAt",
           pin_order_key AS "pinOrderKey",
           parent_thread_id AS "parentThreadId",
+          handed_off_to_json AS "handedOffTo",
+          continued_from_json AS "continuedFrom",
+          handoff_pending_json AS "handoffPending",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
@@ -217,6 +235,9 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           pinned_at AS "pinnedAt",
           pin_order_key AS "pinOrderKey",
           parent_thread_id AS "parentThreadId",
+          handed_off_to_json AS "handedOffTo",
+          continued_from_json AS "continuedFrom",
+          handoff_pending_json AS "handoffPending",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",

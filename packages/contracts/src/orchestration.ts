@@ -4,7 +4,12 @@ import * as SchemaIssue from "effect/SchemaIssue";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import * as Struct from "effect/Struct";
 import { ProviderOptionSelections } from "./model.ts";
-import { RepositoryIdentity, ThreadEnvMode } from "./environment.ts";
+import {
+  RepositoryIdentity,
+  ThreadEnvMode,
+  ThreadHandoffLink,
+  ThreadHandoffPending,
+} from "./environment.ts";
 import {
   ApprovalRequestId,
   CheckpointRef,
@@ -418,6 +423,17 @@ export const OrchestrationThread = Schema.Struct({
   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   // Pending-only state. Optional so older servers remain compatible.
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
+  // Handoff moved this thread's live work to another environment. While
+  // handedOffTo is set the thread is frozen here: it renders read-only and
+  // the decider rejects new turns. Optional so payloads from pre-handoff
+  // servers still decode.
+  handedOffTo: Schema.optional(Schema.NullOr(ThreadHandoffLink)),
+  // The other end of that link, stamped at creation on the thread that
+  // adopted the handoff. Provenance only; nothing clears it.
+  continuedFrom: Schema.optional(Schema.NullOr(ThreadHandoffLink)),
+  // In-flight handoff. Set between start and completion or cancel; turns are
+  // rejected while it is set, same as handedOffTo.
+  handoff: Schema.optional(Schema.NullOr(ThreadHandoffPending)),
   deletedAt: Schema.NullOr(IsoDateTime),
   messages: Schema.Array(OrchestrationMessage),
   proposedPlans: Schema.Array(OrchestrationProposedPlan).pipe(
@@ -482,6 +498,9 @@ export const OrchestrationThreadShell = Schema.Struct({
   pinnedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   pinOrderKey: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   titleRegeneration: Schema.optional(Schema.NullOr(ThreadTitleRegeneration)),
+  handedOffTo: Schema.optional(Schema.NullOr(ThreadHandoffLink)),
+  continuedFrom: Schema.optional(Schema.NullOr(ThreadHandoffLink)),
+  handoff: Schema.optional(Schema.NullOr(ThreadHandoffPending)),
   session: Schema.NullOr(OrchestrationSession),
   latestUserMessageAt: Schema.NullOr(IsoDateTime),
   hasPendingApprovals: Schema.Boolean,
@@ -696,6 +715,12 @@ const ThreadCreateCommand = Schema.Struct({
    * shell's thread list and surfaced under their parent instead.
    */
   parentThreadId: Schema.optional(Schema.NullOr(ThreadId)),
+  /**
+   * Set when this thread adopts a handoff from another environment: it points
+   * back at the source thread the work came from. Supplied by the adopting
+   * client at creation and never changed afterwards.
+   */
+  continuedFrom: Schema.optional(Schema.NullOr(ThreadHandoffLink)),
   createdAt: IsoDateTime,
 });
 
@@ -779,6 +804,26 @@ const ThreadPinReorderCommand = Schema.Struct({
   // on other servers) are never touched. Clients compute a key that sorts
   // between the dropped position's neighbors.
   orderKey: TrimmedNonEmptyString,
+});
+
+const ThreadHandoffCompleteCommand = Schema.Struct({
+  type: Schema.Literal("thread.handoff.complete"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  // Where the work went. The decider stamps this onto the source thread and
+  // clears any pending handoff itself — completing is one command, not two.
+  target: ThreadHandoffLink,
+});
+
+const ThreadHandoffClearCommand = Schema.Struct({
+  type: Schema.Literal("thread.handoff.clear"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  // Commands only carry "user": this is the explicit "the other side is gone,
+  // give me this thread back" escape hatch. Server-decided clears (a failed or
+  // cancelled transfer) emit thread.handoff-cleared directly, so a client
+  // cannot forge them. Mirrors thread.unsettle / thread.unsnooze.
+  reason: Schema.Literal("user"),
 });
 
 const ThreadMetaUpdateCommand = Schema.Struct({
@@ -943,6 +988,8 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadPinCommand,
   ThreadUnpinCommand,
   ThreadPinReorderCommand,
+  ThreadHandoffCompleteCommand,
+  ThreadHandoffClearCommand,
   ThreadMetaUpdateCommand,
   ThreadRuntimeModeSetCommand,
   ThreadInteractionModeSetCommand,
@@ -971,6 +1018,8 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadPinCommand,
   ThreadUnpinCommand,
   ThreadPinReorderCommand,
+  ThreadHandoffCompleteCommand,
+  ThreadHandoffClearCommand,
   ThreadMetaUpdateCommand,
   ThreadRuntimeModeSetCommand,
   ThreadInteractionModeSetCommand,
@@ -1089,6 +1138,8 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.pinned",
   "thread.unpinned",
   "thread.pin-reordered",
+  "thread.handed-off",
+  "thread.handoff-cleared",
   "thread.meta-updated",
   "thread.runtime-mode-set",
   "thread.interaction-mode-set",
@@ -1158,6 +1209,11 @@ export const ThreadCreatedPayload = Schema.Struct({
    * shell's thread list and surfaced under their parent instead.
    */
   parentThreadId: Schema.NullOr(ThreadId).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  /**
+   * Set when this thread adopted a handoff from another environment. Stamped
+   * once at creation; nothing clears it.
+   */
+  continuedFrom: Schema.optional(Schema.NullOr(ThreadHandoffLink)),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 });
@@ -1224,6 +1280,24 @@ export const ThreadUnpinnedPayload = Schema.Struct({
 export const ThreadPinReorderedPayload = Schema.Struct({
   threadId: ThreadId,
   orderKey: TrimmedNonEmptyString,
+  updatedAt: IsoDateTime,
+});
+
+export const ThreadHandedOffPayload = Schema.Struct({
+  threadId: ThreadId,
+  handedOffTo: ThreadHandoffLink,
+  updatedAt: IsoDateTime,
+});
+
+export const ThreadHandoffClearedPayload = Schema.Struct({
+  threadId: ThreadId,
+  // "user" is the only reason a client can send today; "failed" and
+  // "cancelled" are server-decided and land with the transfer reactor. All
+  // three are declared now because these events are PERSISTED — a reason
+  // added later would make every already-shipped client fail to decode the
+  // history in its own database, permanently. Same reason
+  // ServerSelfUpdateMethod keeps a literal it no longer emits.
+  reason: Schema.Literals(["user", "failed", "cancelled"]),
   updatedAt: IsoDateTime,
 });
 
@@ -1435,6 +1509,16 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.pin-reordered"),
     payload: ThreadPinReorderedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.handed-off"),
+    payload: ThreadHandedOffPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.handoff-cleared"),
+    payload: ThreadHandoffClearedPayload,
   }),
   Schema.Struct({
     ...EventBaseFields,

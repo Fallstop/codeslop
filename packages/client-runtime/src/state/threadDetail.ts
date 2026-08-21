@@ -29,7 +29,9 @@ const EMPTY_CHECKPOINTS: ReadonlyArray<OrchestrationCheckpointSummary> = Object.
  * therefore briefly outlive a newer shell snapshot after reconnecting. Workspace
  * consumers must use the shell branch/worktree/project fields so they do not target
  * a stale checkout while retaining messages, activities, plans, and checkpoints
- * from the detail subscription.
+ * from the detail subscription. Every mutable metadata field must be listed below; a
+ * field may only be omitted when it is write-once (parentThreadId) or maintained by
+ * the detail reducer (titleRegeneration).
  */
 export function mergeEnvironmentThread(
   detail: EnvironmentThread | null,
@@ -63,6 +65,9 @@ export function mergeEnvironmentThread(
     snoozedAt: shell.snoozedAt,
     pinnedAt: shell.pinnedAt,
     pinOrderKey: shell.pinOrderKey,
+    handedOffTo: shell.handedOffTo,
+    continuedFrom: shell.continuedFrom,
+    handoff: shell.handoff,
     session: shell.session,
   };
 }

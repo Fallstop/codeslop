@@ -24,6 +24,8 @@ import {
   type OrchestrationThreadShell,
   ModelSelection,
   ProjectId,
+  ThreadHandoffLink,
+  ThreadHandoffPending,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Arr from "effect/Array";
@@ -89,6 +91,9 @@ const ProjectionThreadProposedPlanDbRowSchema = ProjectionThreadProposedPlan;
 const ProjectionThreadDbRowSchema = ProjectionThread.mapFields(
   Struct.assign({
     modelSelection: Schema.fromJsonString(ModelSelection),
+    handedOffTo: Schema.NullOr(Schema.fromJsonString(ThreadHandoffLink)),
+    continuedFrom: Schema.NullOr(Schema.fromJsonString(ThreadHandoffLink)),
+    handoffPending: Schema.NullOr(Schema.fromJsonString(ThreadHandoffPending)),
   }),
 );
 const ProjectionThreadActivityDbRowSchema = ProjectionThreadActivity.mapFields(
@@ -433,6 +438,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pinned_at AS "pinnedAt",
           pin_order_key AS "pinOrderKey",
           parent_thread_id AS "parentThreadId",
+          handed_off_to_json AS "handedOffTo",
+          continued_from_json AS "continuedFrom",
+          handoff_pending_json AS "handoffPending",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
@@ -470,6 +478,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pinned_at AS "pinnedAt",
           pin_order_key AS "pinOrderKey",
           parent_thread_id AS "parentThreadId",
+          handed_off_to_json AS "handedOffTo",
+          continued_from_json AS "continuedFrom",
+          handoff_pending_json AS "handoffPending",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
@@ -509,6 +520,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pinned_at AS "pinnedAt",
           pin_order_key AS "pinOrderKey",
           parent_thread_id AS "parentThreadId",
+          handed_off_to_json AS "handedOffTo",
+          continued_from_json AS "continuedFrom",
+          handoff_pending_json AS "handoffPending",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
@@ -952,6 +966,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           pinned_at AS "pinnedAt",
           pin_order_key AS "pinOrderKey",
           parent_thread_id AS "parentThreadId",
+          handed_off_to_json AS "handedOffTo",
+          continued_from_json AS "continuedFrom",
+          handoff_pending_json AS "handoffPending",
           title_regeneration_request_id AS "titleRegenerationRequestId",
           title_regeneration_started_at AS "titleRegenerationStartedAt",
           latest_user_message_at AS "latestUserMessageAt",
@@ -1699,6 +1716,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                 branch: row.branch,
                 worktreePath: row.worktreePath,
                 parentThreadId: row.parentThreadId ?? null,
+                ...(row.handedOffTo !== null ? { handedOffTo: row.handedOffTo } : {}),
+                ...(row.continuedFrom !== null ? { continuedFrom: row.continuedFrom } : {}),
+                ...(row.handoffPending !== null ? { handoff: row.handoffPending } : {}),
                 latestTurn: latestTurnByThread.get(row.threadId) ?? null,
                 createdAt: row.createdAt,
                 updatedAt: row.updatedAt,
@@ -1907,6 +1927,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                   branch: row.branch,
                   worktreePath: row.worktreePath,
                   parentThreadId: row.parentThreadId ?? null,
+                  ...(row.handedOffTo !== null ? { handedOffTo: row.handedOffTo } : {}),
+                  ...(row.continuedFrom !== null ? { continuedFrom: row.continuedFrom } : {}),
+                  ...(row.handoffPending !== null ? { handoff: row.handoffPending } : {}),
                   latestTurn: latestTurnByThread.get(row.threadId) ?? null,
                   createdAt: row.createdAt,
                   updatedAt: row.updatedAt,
@@ -2044,6 +2067,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                       branch: row.branch,
                       worktreePath: row.worktreePath,
                       parentThreadId: row.parentThreadId ?? null,
+                      ...(row.handedOffTo !== null ? { handedOffTo: row.handedOffTo } : {}),
+                      ...(row.continuedFrom !== null ? { continuedFrom: row.continuedFrom } : {}),
+                      ...(row.handoffPending !== null ? { handoff: row.handoffPending } : {}),
                       latestTurn: latestTurnByThread.get(row.threadId) ?? null,
                       createdAt: row.createdAt,
                       updatedAt: row.updatedAt,
@@ -2190,6 +2216,9 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
                   branch: row.branch,
                   worktreePath: row.worktreePath,
                   parentThreadId: row.parentThreadId ?? null,
+                  ...(row.handedOffTo !== null ? { handedOffTo: row.handedOffTo } : {}),
+                  ...(row.continuedFrom !== null ? { continuedFrom: row.continuedFrom } : {}),
+                  ...(row.handoffPending !== null ? { handoff: row.handoffPending } : {}),
                   latestTurn: latestTurnByThread.get(row.threadId) ?? null,
                   createdAt: row.createdAt,
                   updatedAt: row.updatedAt,
@@ -2489,6 +2518,15 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           threadRow.value.threadId,
         ),
         parentThreadId: threadRow.value.parentThreadId,
+        ...(threadRow.value.handedOffTo !== null
+          ? { handedOffTo: threadRow.value.handedOffTo }
+          : {}),
+        ...(threadRow.value.continuedFrom !== null
+          ? { continuedFrom: threadRow.value.continuedFrom }
+          : {}),
+        ...(threadRow.value.handoffPending !== null
+          ? { handoff: threadRow.value.handoffPending }
+          : {}),
         planProgress: threadPlanProgress.getThreadPlanProgress(threadRow.value.threadId),
       } satisfies OrchestrationThreadShell);
     });
@@ -2622,6 +2660,15 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         pinnedAt: threadRow.value.pinnedAt,
         pinOrderKey: threadRow.value.pinOrderKey ?? null,
         titleRegeneration: mapTitleRegeneration(threadRow.value),
+        ...(threadRow.value.handedOffTo !== null
+          ? { handedOffTo: threadRow.value.handedOffTo }
+          : {}),
+        ...(threadRow.value.continuedFrom !== null
+          ? { continuedFrom: threadRow.value.continuedFrom }
+          : {}),
+        ...(threadRow.value.handoffPending !== null
+          ? { handoff: threadRow.value.handoffPending }
+          : {}),
         deletedAt: null,
         messages: messageRows.map((row) => {
           const message = {

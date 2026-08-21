@@ -230,6 +230,37 @@ describe("environment entity projections", () => {
     expect(merged?.messages).toBe(messages);
   });
 
+  it("takes the shell's handoff link over a stale detail copy", () => {
+    // The detail subscription can outlive a newer shell after a reconnect, so
+    // a thread that left this machine must not keep rendering as local.
+    const handedOffTo = {
+      environmentId: EnvironmentId.make("env-desktop"),
+      threadId: THREAD_SHELL.id,
+      at: "2026-08-21T00:00:00.000Z",
+      environmentLabel: "Studio PC",
+    } as const;
+    const detail = {
+      ...THREAD_SHELL,
+      environmentId: ENVIRONMENT_ID,
+      handedOffTo: null,
+      handoff: null,
+      deletedAt: null,
+      messages: [],
+      proposedPlans: [],
+      activities: [],
+      checkpoints: [],
+    } satisfies OrchestrationThread & { readonly environmentId: EnvironmentId };
+    const shell = {
+      ...THREAD_SHELL,
+      environmentId: ENVIRONMENT_ID,
+      handedOffTo,
+    };
+
+    const merged = mergeEnvironmentThread(detail, shell);
+
+    expect(merged?.handedOffTo).toEqual(handedOffTo);
+  });
+
   it("preserves untouched project and thread identities across unrelated shell updates", () => {
     const harness = makeHarness();
     const projectRefsAtom = harness.projects.environmentProjectRefsAtom(ENVIRONMENT_ID);

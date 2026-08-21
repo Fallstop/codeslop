@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   CheckpointRef,
   CommandId,
+  EnvironmentId,
   EventId,
   MessageId,
   ProjectId,
@@ -103,6 +104,58 @@ describe("applyThreadDetailEvent", () => {
         expect(result.thread.branch).toBe("main");
         expect(result.thread.messages).toEqual([]);
         expect(result.thread.session).toBeNull();
+      }
+    });
+  });
+
+  describe("thread.handed-off / thread.handoff-cleared", () => {
+    const handedOffTo = {
+      environmentId: EnvironmentId.make("env-desktop"),
+      threadId: ThreadId.make("thread-adopted"),
+      at: "2026-04-01T02:00:00.000Z",
+      environmentLabel: "Studio PC",
+    } as const;
+
+    it("records where the work went", () => {
+      const result = applyThreadDetailEvent(baseThread, {
+        ...baseEventFields,
+        sequence: 2,
+        occurredAt: "2026-04-01T02:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.handed-off",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          handedOffTo,
+          updatedAt: "2026-04-01T02:00:00.000Z",
+        },
+      });
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.handedOffTo).toEqual(handedOffTo);
+        expect(result.thread.handoff).toBeNull();
+      }
+    });
+
+    it("clears both halves so the thread is runnable here again", () => {
+      const departed: OrchestrationThread = { ...baseThread, handedOffTo };
+      const result = applyThreadDetailEvent(departed, {
+        ...baseEventFields,
+        sequence: 3,
+        occurredAt: "2026-04-01T03:00:00.000Z",
+        aggregateKind: "thread",
+        aggregateId: ThreadId.make("thread-1"),
+        type: "thread.handoff-cleared",
+        payload: {
+          threadId: ThreadId.make("thread-1"),
+          reason: "user",
+          updatedAt: "2026-04-01T03:00:00.000Z",
+        },
+      });
+      expect(result.kind).toBe("updated");
+      if (result.kind === "updated") {
+        expect(result.thread.handedOffTo).toBeNull();
+        expect(result.thread.handoff).toBeNull();
       }
     });
   });

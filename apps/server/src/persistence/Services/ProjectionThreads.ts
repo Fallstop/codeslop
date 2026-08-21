@@ -14,6 +14,8 @@ import {
   ProjectId,
   ProviderInteractionMode,
   RuntimeMode,
+  ThreadHandoffLink,
+  ThreadHandoffPending,
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
@@ -45,6 +47,12 @@ export const ProjectionThread = Schema.Struct({
   pinOrderKey: Schema.optional(Schema.NullOr(Schema.String)),
   /** Set when this thread is a side chat opened from another thread. */
   parentThreadId: Schema.NullOr(ThreadId),
+  /** Set when this thread was handed off to another environment; it stops running here. */
+  handedOffTo: Schema.NullOr(ThreadHandoffLink),
+  /** Set when this thread was adopted from another environment. */
+  continuedFrom: Schema.NullOr(ThreadHandoffLink),
+  /** Set while a handoff is in flight; blocks new turns on both sides. */
+  handoffPending: Schema.NullOr(ThreadHandoffPending),
   titleRegenerationRequestId: Schema.optional(Schema.NullOr(CommandId)),
   titleRegenerationStartedAt: Schema.optional(Schema.NullOr(IsoDateTime)),
   latestUserMessageAt: Schema.NullOr(IsoDateTime),

@@ -87,6 +87,9 @@ export function applyThreadDetailEvent(
           branch: event.payload.branch,
           worktreePath: event.payload.worktreePath,
           parentThreadId: event.payload.parentThreadId,
+          ...(event.payload.continuedFrom != null
+            ? { continuedFrom: event.payload.continuedFrom }
+            : {}),
           latestTurn: null,
           createdAt: event.payload.createdAt,
           updatedAt: event.payload.updatedAt,
@@ -198,6 +201,28 @@ export function applyThreadDetailEvent(
         thread: {
           ...thread,
           pinOrderKey: event.payload.orderKey,
+          updatedAt: event.payload.updatedAt,
+        },
+      };
+
+    case "thread.handed-off":
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          handedOffTo: event.payload.handedOffTo,
+          handoff: null,
+          updatedAt: event.payload.updatedAt,
+        },
+      };
+
+    case "thread.handoff-cleared":
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          handedOffTo: null,
+          handoff: null,
           updatedAt: event.payload.updatedAt,
         },
       };

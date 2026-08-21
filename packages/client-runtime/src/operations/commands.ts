@@ -42,6 +42,8 @@ export type UnsnoozeThreadInput = CommandInput<"thread.unsnooze">;
 export type PinThreadInput = CommandInput<"thread.pin">;
 export type UnpinThreadInput = CommandInput<"thread.unpin">;
 export type ReorderPinnedThreadInput = CommandInput<"thread.pin.reorder">;
+export type CompleteThreadHandoffInput = CommandInput<"thread.handoff.complete">;
+export type ClearThreadHandoffInput = CommandInput<"thread.handoff.clear">;
 export type UpdateThreadMetadataInput = CommandInput<"thread.meta.update">;
 export type SetThreadRuntimeModeInput = CommandInput<"thread.runtime-mode.set">;
 export type SetThreadInteractionModeInput = CommandInput<"thread.interaction-mode.set">;
@@ -186,6 +188,26 @@ export const snoozeThread: (input: SnoozeThreadInput) => CommandEffect = Effect.
   return yield* dispatch({
     ...input,
     type: "thread.snooze",
+    commandId: yield* commandId(input),
+  });
+});
+
+export const completeThreadHandoff: (input: CompleteThreadHandoffInput) => CommandEffect =
+  Effect.fn("EnvironmentCommands.completeThreadHandoff")(function* (input) {
+    return yield* dispatch({
+      ...input,
+      type: "thread.handoff.complete",
+      commandId: yield* commandId(input),
+    });
+  });
+
+/** Take a handed-off thread back: the reverse state for every handoff. */
+export const clearThreadHandoff: (input: ClearThreadHandoffInput) => CommandEffect = Effect.fn(
+  "EnvironmentCommands.clearThreadHandoff",
+)(function* (input) {
+  return yield* dispatch({
+    ...input,
+    type: "thread.handoff.clear",
     commandId: yield* commandId(input),
   });
 });
