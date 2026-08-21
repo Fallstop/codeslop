@@ -43,6 +43,25 @@ A single user-to-assistant work cycle inside a thread. It starts with user input
 
 A user-visible log item attached to a thread. In [the contracts][1], activities cover important non-message events like approvals, tool actions, and failures. They are projected into thread state in [projector.ts][4].
 
+#### Handoff (thread)
+
+Moving a running thread from one environment to another so the same provider session continues
+there. The origin freezes the thread, publishes its worktree as a commit, and stages a bundle; the
+target adopts it. Distinct from the server-update handoff in `cloud/http.ts`, which is about one
+server process replacing another. See `apps/server/src/handoff/`.
+
+#### Handoff bundle
+
+What crosses between machines: a manifest plus the provider's own session bytes, staged under
+`<stateDir>/handoff/<handoffId>/`. Moved in offset-addressed chunks by the client, because no
+server-to-server channel exists. See `HandoffStagingStore.ts`.
+
+#### Adopt
+
+The target half of a handoff: verify a received bundle's checksum and completeness, install the
+session where this machine's provider will find it, then continue the thread. Refuses unless the
+bundle records the origin having stopped. See `HandoffBundleService.ts`.
+
 ### Orchestration
 
 Orchestration is the server-side domain layer that turns runtime activity into stable app state. The main entry point is [OrchestrationEngine.ts][7], with core logic in [decider.ts][8] and [projector.ts][4].

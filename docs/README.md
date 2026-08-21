@@ -7,6 +7,7 @@
 - [Keyboard shortcuts](./user/keybindings.md)
 - [Organizing threads](./user/thread-sidebar.md)
 - [Queueing turns](./user/queued-turns.md)
+- [Handing a thread to another machine](./user/handoff.md)
 - [Semantic chat search](./user/semantic-search.md)
 - [Review usage](./user/usage.md)
 - [Customize a project icon](./user/project-settings.md)
