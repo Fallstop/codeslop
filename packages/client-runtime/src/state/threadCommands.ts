@@ -25,6 +25,7 @@ import {
   type StartThreadHandoffInput,
   type CancelThreadHandoffInput,
   type ClearThreadHandoffInput,
+  type FailThreadHandoffInput,
   type UpdateThreadMetadataInput,
   archiveThread,
   createThread,
@@ -48,6 +49,7 @@ import {
   startThreadHandoff,
   cancelThreadHandoff,
   clearThreadHandoff,
+  failThreadHandoff,
   updateThreadMetadata,
 } from "../operations/commands.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
@@ -56,6 +58,7 @@ export type {
   ArchiveThreadInput,
   CancelThreadHandoffInput,
   ClearThreadHandoffInput,
+  FailThreadHandoffInput,
   StartThreadHandoffInput,
   CreateThreadInput,
   DeleteThreadInput,
@@ -145,6 +148,12 @@ export function createThreadEnvironmentAtoms<R, E>(
     cancelHandoff: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:handoff-cancel",
       execute: (input: CancelThreadHandoffInput) => cancelThreadHandoff(input),
+      scheduler,
+      concurrency,
+    }),
+    failHandoff: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:handoff-fail",
+      execute: (input: FailThreadHandoffInput) => failThreadHandoff(input),
       scheduler,
       concurrency,
     }),
