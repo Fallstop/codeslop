@@ -40,6 +40,9 @@ export const ORCHESTRATION_WS_METHODS = {
   subscribeShell: "orchestration.subscribeShell",
   subscribeThread: "orchestration.subscribeThread",
   getThreadBackgroundTasks: "orchestration.getThreadBackgroundTasks",
+  readHandoffBundle: "orchestration.readHandoffBundle",
+  writeHandoffBundle: "orchestration.writeHandoffBundle",
+  adoptHandoffBundle: "orchestration.adoptHandoffBundle",
 } as const;
 
 export const ProviderApprovalPolicy = Schema.Literals([
@@ -1921,6 +1924,83 @@ export class OrchestrationGetThreadBackgroundTasksError extends Schema.TaggedErr
   },
 ) {}
 
+/**
+ * A handoff bundle moves in bounded, offset-addressed chunks. RPC frames are
+ * JSON, so a multi-megabyte base64 payload would be one blocking parse on the
+ * event loop; offsets also make a retried chunk overwrite rather than append.
+ */
+export const OrchestrationHandoffBundleManifest = Schema.Struct({
+  handoffId: HandoffId,
+  provider: TrimmedNonEmptyString,
+  sessionId: TrimmedNonEmptyString,
+  sessionFileName: Schema.optional(TrimmedNonEmptyString),
+  sessionSha256: TrimmedNonEmptyString,
+  sessionBytes: NonNegativeInt,
+  originEnvironmentId: TrimmedNonEmptyString,
+  originThreadId: ThreadId,
+  targetThreadId: ThreadId,
+  repositoryRemoteUrl: Schema.optional(TrimmedNonEmptyString),
+  handoffRef: Schema.optional(TrimmedNonEmptyString),
+  handoffCommit: Schema.optional(TrimmedNonEmptyString),
+  baseCommit: Schema.optional(TrimmedNonEmptyString),
+  originBranch: Schema.optional(TrimmedNonEmptyString),
+  /** Proof the origin actually stopped; adopt refuses without it. */
+  originStoppedAt: IsoDateTime,
+});
+export type OrchestrationHandoffBundleManifest = typeof OrchestrationHandoffBundleManifest.Type;
+
+export const OrchestrationReadHandoffBundleInput = Schema.Struct({
+  handoffId: HandoffId,
+  offset: NonNegativeInt,
+  length: PositiveInt,
+});
+export type OrchestrationReadHandoffBundleInput = typeof OrchestrationReadHandoffBundleInput.Type;
+
+export const OrchestrationReadHandoffBundleResult = Schema.Struct({
+  manifest: OrchestrationHandoffBundleManifest,
+  /** base64; empty once the offset reaches the end. */
+  chunk: Schema.String,
+  totalBytes: NonNegativeInt,
+});
+export type OrchestrationReadHandoffBundleResult = typeof OrchestrationReadHandoffBundleResult.Type;
+
+export const OrchestrationWriteHandoffBundleInput = Schema.Struct({
+  handoffId: HandoffId,
+  manifest: OrchestrationHandoffBundleManifest,
+  offset: NonNegativeInt,
+  chunk: Schema.String,
+});
+export type OrchestrationWriteHandoffBundleInput = typeof OrchestrationWriteHandoffBundleInput.Type;
+
+export const OrchestrationWriteHandoffBundleResult = Schema.Struct({
+  receivedBytes: NonNegativeInt,
+});
+export type OrchestrationWriteHandoffBundleResult =
+  typeof OrchestrationWriteHandoffBundleResult.Type;
+
+export const OrchestrationAdoptHandoffBundleInput = Schema.Struct({
+  handoffId: HandoffId,
+  /** Where the adopted thread will run; Claude keys its session on this. */
+  cwd: TrimmedNonEmptyString,
+});
+export type OrchestrationAdoptHandoffBundleInput = typeof OrchestrationAdoptHandoffBundleInput.Type;
+
+export const OrchestrationAdoptHandoffBundleResult = Schema.Struct({
+  /** The cursor the adopted thread resumes with. */
+  sessionId: TrimmedNonEmptyString,
+  provider: TrimmedNonEmptyString,
+});
+export type OrchestrationAdoptHandoffBundleResult =
+  typeof OrchestrationAdoptHandoffBundleResult.Type;
+
+export class OrchestrationHandoffBundleError extends Schema.TaggedErrorClass<OrchestrationHandoffBundleError>()(
+  "OrchestrationHandoffBundleError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
+
 export const OrchestrationRpcSchemas = {
   dispatchCommand: {
     input: ClientOrchestrationCommand,
@@ -1957,6 +2037,18 @@ export const OrchestrationRpcSchemas = {
   getThreadBackgroundTasks: {
     input: OrchestrationGetThreadBackgroundTasksInput,
     output: OrchestrationGetThreadBackgroundTasksResult,
+  },
+  readHandoffBundle: {
+    input: OrchestrationReadHandoffBundleInput,
+    output: OrchestrationReadHandoffBundleResult,
+  },
+  writeHandoffBundle: {
+    input: OrchestrationWriteHandoffBundleInput,
+    output: OrchestrationWriteHandoffBundleResult,
+  },
+  adoptHandoffBundle: {
+    input: OrchestrationAdoptHandoffBundleInput,
+    output: OrchestrationAdoptHandoffBundleResult,
   },
 } as const;
 

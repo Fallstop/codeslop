@@ -104,6 +104,7 @@ import * as ServerConfig from "./config.ts";
 import { makeRoutesLayer } from "./server.ts";
 import { isThreadDetailEvent, resolveAvailableEditorsForConfig } from "./ws.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
+import * as HandoffBundleService from "./handoff/HandoffBundleService.ts";
 import * as GitManager from "./git/GitManager.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
@@ -835,6 +836,9 @@ const buildAppUnderTest = (options?: {
               }),
             ...options?.layers?.checkpointDiffQuery,
           }),
+          // The router seam only needs the service to exist; bundle movement
+          // has its own tests against the real staging store.
+          Layer.mock(HandoffBundleService.HandoffBundleService)({}),
         ),
       ),
     );

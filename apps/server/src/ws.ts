@@ -64,6 +64,7 @@ import { HttpRouter, HttpServerRequest, HttpServerRespondable } from "effect/uns
 import { RpcSerialization, RpcServer } from "effect/unstable/rpc";
 
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
+import * as HandoffBundleService from "./handoff/HandoffBundleService.ts";
 import * as ServerConfig from "./config.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
@@ -363,6 +364,7 @@ const makeWsRpcLayer = (
       const hybridThreadSearch = yield* HybridThreadSearch;
       const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
       const checkpointDiffQuery = yield* CheckpointDiffQuery.CheckpointDiffQuery;
+      const handoffBundleService = yield* HandoffBundleService.HandoffBundleService;
       const keybindings = yield* Keybindings.Keybindings;
       const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
       const remoteOpenTargets = yield* RemoteOpenTargets.RemoteOpenTargets;
@@ -1170,6 +1172,27 @@ const makeWsRpcLayer = (
             // work, what work?". Empty tasks with a null liveness means the
             // server agrees nothing is live.
             projectionSnapshotQuery.getThreadBackgroundTasks(input.threadId),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.readHandoffBundle]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.readHandoffBundle,
+            handoffBundleService.readBundle(input),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.writeHandoffBundle]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.writeHandoffBundle,
+            handoffBundleService.writeBundle(input),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_WS_METHODS.adoptHandoffBundle]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_WS_METHODS.adoptHandoffBundle,
+            // Installs the provider session and returns before any command is
+            // dispatched, so the caller creates the thread only once the bytes
+            // are genuinely on this machine.
+            handoffBundleService.adoptBundle(input),
             { "rpc.aggregate": "orchestration" },
           ),
         [ORCHESTRATION_WS_METHODS.getTurnDiff]: (input) =>

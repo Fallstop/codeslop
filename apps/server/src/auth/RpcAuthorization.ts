@@ -31,6 +31,11 @@ export const RPC_REQUIRED_SCOPES = {
   [ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot]: AuthOrchestrationReadScope,
   [ORCHESTRATION_WS_METHODS.subscribeThread]: AuthOrchestrationReadScope,
   [ORCHESTRATION_WS_METHODS.getThreadBackgroundTasks]: AuthOrchestrationReadScope,
+  // Reading a bundle hands over a full provider transcript, and writing one
+  // puts bytes into a provider home, so both sit at operate rather than read.
+  [ORCHESTRATION_WS_METHODS.readHandoffBundle]: AuthOrchestrationOperateScope,
+  [ORCHESTRATION_WS_METHODS.writeHandoffBundle]: AuthOrchestrationOperateScope,
+  [ORCHESTRATION_WS_METHODS.adoptHandoffBundle]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverProbe]: AuthOrchestrationReadScope,
   [WS_METHODS.serverGetConfig]: AuthOrchestrationReadScope,
   [WS_METHODS.serverRefreshProviders]: AuthOrchestrationOperateScope,

@@ -66,6 +66,7 @@ import {
   OrchestrationRpcSchemas,
   OrchestrationGetWorkflowScriptError,
   OrchestrationGetThreadBackgroundTasksError,
+  OrchestrationHandoffBundleError,
 } from "./orchestration.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
@@ -898,6 +899,38 @@ export const WsOrchestrationGetWorkflowScriptRpc = Rpc.make(
   },
 );
 
+const handoffBundleErrors = Schema.Union([
+  OrchestrationHandoffBundleError,
+  EnvironmentAuthorizationError,
+]);
+
+export const WsOrchestrationReadHandoffBundleRpc = Rpc.make(
+  ORCHESTRATION_WS_METHODS.readHandoffBundle,
+  {
+    payload: OrchestrationRpcSchemas.readHandoffBundle.input,
+    success: OrchestrationRpcSchemas.readHandoffBundle.output,
+    error: handoffBundleErrors,
+  },
+);
+
+export const WsOrchestrationWriteHandoffBundleRpc = Rpc.make(
+  ORCHESTRATION_WS_METHODS.writeHandoffBundle,
+  {
+    payload: OrchestrationRpcSchemas.writeHandoffBundle.input,
+    success: OrchestrationRpcSchemas.writeHandoffBundle.output,
+    error: handoffBundleErrors,
+  },
+);
+
+export const WsOrchestrationAdoptHandoffBundleRpc = Rpc.make(
+  ORCHESTRATION_WS_METHODS.adoptHandoffBundle,
+  {
+    payload: OrchestrationRpcSchemas.adoptHandoffBundle.input,
+    success: OrchestrationRpcSchemas.adoptHandoffBundle.output,
+    error: handoffBundleErrors,
+  },
+);
+
 export const WsOrchestrationGetThreadBackgroundTasksRpc = Rpc.make(
   ORCHESTRATION_WS_METHODS.getThreadBackgroundTasks,
   {
@@ -1108,4 +1141,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationSubscribeShellRpc,
   WsOrchestrationSubscribeThreadRpc,
   WsOrchestrationGetThreadBackgroundTasksRpc,
+  WsOrchestrationReadHandoffBundleRpc,
+  WsOrchestrationWriteHandoffBundleRpc,
+  WsOrchestrationAdoptHandoffBundleRpc,
 );
