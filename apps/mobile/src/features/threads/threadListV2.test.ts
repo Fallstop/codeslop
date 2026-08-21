@@ -127,6 +127,23 @@ describe("resolveThreadListV2Enabled", () => {
 });
 
 describe("resolveThreadListV2Status", () => {
+  it("shows a departed thread as elsewhere, over any local state", () => {
+    // A cancelled approval and a stale session row both describe a thread that
+    // is no longer running here.
+    const thread = makeThread({
+      id: ThreadId.make("t"),
+      title: "t",
+      hasPendingApprovals: true,
+      handedOffTo: {
+        environmentId: "env-desktop" as never,
+        threadId: ThreadId.make("t2"),
+        at: NOW,
+        environmentLabel: "Studio PC",
+      },
+    });
+    expect(resolveThreadListV2Status(thread)).toBe("handed-off");
+  });
+
   it("prioritizes approval over a running session", () => {
     const thread = makeThread({
       id: ThreadId.make("t"),

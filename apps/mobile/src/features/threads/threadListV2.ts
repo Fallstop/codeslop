@@ -27,7 +27,13 @@ export { snoozeWakeLabel };
  * (approval), "in motion" (working), and "broken" (failed). Ready is the
  * unlabeled resting state.
  */
-export type ThreadListV2Status = "approval" | "input" | "working" | "failed" | "ready";
+export type ThreadListV2Status =
+  | "handed-off"
+  | "approval"
+  | "input"
+  | "working"
+  | "failed"
+  | "ready";
 export type ThreadListV2SwipeAction = "archive" | "settle" | "unsettle" | "snooze" | "unsnooze";
 
 export function resolveThreadListV2SnoozeMenuSelection(input: {
@@ -126,8 +132,16 @@ export function resolveThreadListV2Enabled(input: {
 }
 
 export function resolveThreadListV2Status(
-  thread: Pick<EnvironmentThreadShell, "hasPendingApprovals" | "hasPendingUserInput" | "session">,
+  thread: Pick<
+    EnvironmentThreadShell,
+    "hasPendingApprovals" | "hasPendingUserInput" | "session" | "handedOffTo" | "handoff"
+  >,
 ): ThreadListV2Status {
+  // The work is not on this machine, so a lingering session row or an approval
+  // cancelled by the freeze must not describe a thread that has already left.
+  if (thread.handedOffTo != null || thread.handoff != null) {
+    return "handed-off";
+  }
   if (thread.hasPendingApprovals) {
     return "approval";
   }

@@ -54,6 +54,9 @@ const MONO_FONT = Platform.select({
 const STATUS_LABEL_BY_STATUS: Partial<
   Record<ThreadListV2Status, { label: string; className: string }>
 > = {
+  // Muted rather than coloured, matching web: the work is fine, it is just on
+  // another machine, and colour here means act-now, in-motion or broken.
+  "handed-off": { label: "Elsewhere", className: "text-muted-foreground" },
   approval: { label: "Approval", className: "text-amber-700 dark:text-amber-300" },
   input: { label: "Input", className: "text-indigo-600 dark:text-indigo-300" },
   working: { label: "Working", className: "text-sky-600 dark:text-sky-400" },

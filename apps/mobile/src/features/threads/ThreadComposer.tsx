@@ -293,7 +293,11 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
   // Opening and presentation count as active so the composer stays expanded
   // while focus moves between its native editor and the settings picker.
   const isExpanded = isFocused || settingsSheetPresentation.isActive;
-  const canSend = hasContent;
+  // The server rejects turns on a thread whose work has moved, so refuse here
+  // rather than let the user compose a message that bounces.
+  const handedOff =
+    props.selectedThread.handedOffTo != null || props.selectedThread.handoff != null;
+  const canSend = hasContent && !handedOff;
 
   // Notify the parent from the derived value, not focus events: the parent
   // sizes the feed inset from this, and blur-during-sheet would otherwise
