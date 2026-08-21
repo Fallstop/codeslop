@@ -838,56 +838,64 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // mobile Live Activity/widgets (amber approval, indigo input, sky working)
   // so a thread reads the same color everywhere it surfaces.
   const topStatus =
-    status === "working"
+    status === "handed-off"
       ? {
-          label: "Working",
-          icon: "working" as const,
-          // No shimmer: a label that animates forever is noise in a sidebar
-          // full of them (and repaints every vsync on high-refresh displays).
-          // Working is a background state, so it rests at the dim end of what
-          // the old pulse cycled through; only the thread you have open gets
-          // the label at full strength.
-          className: cn("text-sky-600 dark:text-sky-400", !props.isActive && "opacity-75"),
+          // Muted, not colored: the work is fine, it is simply somewhere else.
+          // Colour in this sidebar is reserved for act-now, in-motion, broken.
+          label: "Elsewhere",
+          icon: null,
+          className: "text-muted-foreground",
         }
-      : status === "monitoring"
+      : status === "working"
         ? {
-            // Monitoring is calm background presence, not active progress
-            // (monitoring-pill D6), so it keeps the label at full strength.
-            label: "Monitoring",
-            icon: null,
-            className: "text-sky-600 dark:text-sky-400",
+            label: "Working",
+            icon: "working" as const,
+            // No shimmer: a label that animates forever is noise in a sidebar
+            // full of them (and repaints every vsync on high-refresh displays).
+            // Working is a background state, so it rests at the dim end of what
+            // the old pulse cycled through; only the thread you have open gets
+            // the label at full strength.
+            className: cn("text-sky-600 dark:text-sky-400", !props.isActive && "opacity-75"),
           }
-        : status === "approval"
+        : status === "monitoring"
           ? {
-              label: "Approval",
+              // Monitoring is calm background presence, not active progress
+              // (monitoring-pill D6), so it keeps the label at full strength.
+              label: "Monitoring",
               icon: null,
-              className: "text-amber-700 dark:text-amber-300",
+              className: "text-sky-600 dark:text-sky-400",
             }
-          : status === "input"
+          : status === "approval"
             ? {
-                label: "Input",
+                label: "Approval",
                 icon: null,
-                className: "text-indigo-600 dark:text-indigo-300",
+                className: "text-amber-700 dark:text-amber-300",
               }
-            : status === "failed"
+            : status === "input"
               ? {
-                  label: "Failed",
+                  label: "Input",
                   icon: null,
-                  className: "text-red-700 dark:text-red-300",
+                  className: "text-indigo-600 dark:text-indigo-300",
                 }
-              : isWoke
+              : status === "failed"
                 ? {
-                    label: "Woke",
-                    icon: "woke" as const,
-                    className: "text-amber-700 dark:text-amber-300",
+                    label: "Failed",
+                    icon: null,
+                    className: "text-red-700 dark:text-red-300",
                   }
-                : isUnread
+                : isWoke
                   ? {
-                      label: "Done",
-                      icon: "done" as const,
-                      className: "text-emerald-700 dark:text-emerald-300",
+                      label: "Woke",
+                      icon: "woke" as const,
+                      className: "text-amber-700 dark:text-amber-300",
                     }
-                  : null;
+                  : isUnread
+                    ? {
+                        label: "Done",
+                        icon: "done" as const,
+                        className: "text-emerald-700 dark:text-emerald-300",
+                      }
+                    : null;
   const isWokeStatus = topStatus?.icon === "woke";
 
   const branchMismatch = resolveLocalCheckoutBranchMismatch({

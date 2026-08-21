@@ -170,6 +170,7 @@ import {
   CheckCircle2Icon,
   ChevronDownIcon,
   GitBranchIcon,
+  LaptopMinimalIcon,
   PaperclipIcon,
   WifiOffIcon,
   MessageCircleQuestion as MessageCircleQuestionIcon,
@@ -4347,6 +4348,11 @@ function ChatViewContent(props: ChatViewProps) {
   // partition (same shell, same capability gate, same PR auto-settle input)
   // so the banner and the sidebar row never disagree.
   const activeThreadShell = useThreadShell(isServerThread ? activeThreadRef : null);
+  // Handoff state rides the shell for the same reason snooze and settle do: it
+  // is mutable, it changes without a detail refetch, and the sidebar row and
+  // this banner must never disagree about where the work is.
+  const activeThreadHandedOffTo = activeThreadShell?.handedOffTo ?? null;
+  const activeThreadHandoffPending = activeThreadShell?.handoff ?? null;
   const activeComposerTasksProgress =
     activeLatestTurn !== null && !latestTurnSettled
       ? (activeThreadShell?.planProgress ?? null)
@@ -4791,6 +4797,44 @@ function ChatViewContent(props: ChatViewProps) {
   // A side chat opened as a full thread is deliberately absent from the
   // sidebar, so without this the user lands in a thread with no explanation of
   // what it belongs to and no obvious way back to it.
+  // A thread that has left this machine is frozen here. Without this the user
+  // types into a thread that will never answer, and the server's rejection is
+  // their first hint that the work moved.
+  const handoffBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
+    if (!activeThread) return null;
+    if (activeThreadHandoffPending !== null) {
+      const target = activeThreadHandoffPending.target.environmentLabel ?? "another machine";
+      const failed = activeThreadHandoffPending.error;
+      if (failed !== undefined) {
+        return {
+          id: `thread-handoff-failed:${activeThread.id}`,
+          variant: "error",
+          icon: <LaptopMinimalIcon />,
+          title: `Handing off to ${target} failed`,
+          // The thread is already stopped, so say what state they are in
+          // rather than only what went wrong.
+          description: `${failed} This thread stays stopped here until you retry, cancel, or take it back.`,
+        };
+      }
+      return {
+        id: `thread-handoff-pending:${activeThread.id}`,
+        variant: "info",
+        icon: <LaptopMinimalIcon />,
+        title: `Handing off to ${target}`,
+        description: `${activeThreadHandoffPending.stage}… This thread is paused while the work moves.`,
+      };
+    }
+    if (activeThreadHandedOffTo === null) return null;
+    const target = activeThreadHandedOffTo.environmentLabel ?? "another machine";
+    return {
+      id: `thread-handed-off:${activeThread.id}`,
+      variant: "info",
+      icon: <LaptopMinimalIcon />,
+      title: `Continued on ${target}`,
+      description: "This thread is read-only here. Take it back to keep working on this machine.",
+    };
+  }, [activeThread, activeThreadHandedOffTo, activeThreadHandoffPending]);
+
   const sideChatParentBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
     const parentThreadId = activeThread?.parentThreadId ?? null;
     if (!activeThread || parentThreadId === null) return null;
@@ -4831,10 +4875,15 @@ function ChatViewContent(props: ChatViewProps) {
     const wokeThreadItems = wokeThreadBannerItem === null ? [] : [wokeThreadBannerItem];
     const parkedThreadItems = parkedThreadBannerItem === null ? [] : [parkedThreadBannerItem];
     const sideChatParentItems = sideChatParentBannerItem === null ? [] : [sideChatParentBannerItem];
+    // Front of the calm group: a thread that has left this machine outranks
+    // every other informational notice, because it changes what the user can
+    // do rather than just what they should know.
+    const handoffItems = handoffBannerItem === null ? [] : [handoffBannerItem];
     if (!localCheckoutBranchMismatch || !showBranchMismatchBanner || !activeBranchMismatchKey) {
       return [
         ...urgentSystemItems,
         ...backgroundLivenessItems,
+        ...handoffItems,
         ...calmSystemItems,
         ...wokeThreadItems,
         ...parkedThreadItems,
@@ -4844,6 +4893,7 @@ function ChatViewContent(props: ChatViewProps) {
     return [
       ...urgentSystemItems,
       ...backgroundLivenessItems,
+      ...handoffItems,
       ...calmSystemItems,
       ...wokeThreadItems,
       {
@@ -6871,7 +6921,18 @@ function ChatViewContent(props: ChatViewProps) {
                             phase={phase}
                             isConnecting={isConnecting}
                             isSendBusy={isSendBusy}
-                            sendDisabledReason={threadDetailLoading ? "Messages loading" : null}
+                            sendDisabledReason={
+                              // The server rejects turns on a departed thread;
+                              // saying so here beats letting the user type a
+                              // message that bounces.
+                              activeThreadHandedOffTo !== null
+                                ? "Handed off to another machine"
+                                : activeThreadHandoffPending !== null
+                                  ? "Handing off to another machine"
+                                  : threadDetailLoading
+                                    ? "Messages loading"
+                                    : null
+                            }
                             isPreparingWorktree={isPreparingWorktree}
                             externalDrawerAttached={externalComposerDrawerAttached}
                             environmentUnavailable={activeEnvironmentUnavailableState}

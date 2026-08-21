@@ -679,6 +679,41 @@ describe("resolveSidebarThreadStatus", () => {
 
   const idle = { hasPendingApprovals: false, hasPendingUserInput: false };
 
+  const handedOffTo = {
+    environmentId: "env-desktop" as never,
+    threadId: ThreadId.make("thread-2"),
+    at: "2026-08-21T00:00:00.000Z",
+    environmentLabel: "Studio PC",
+  };
+
+  it("shows a departed thread as elsewhere, over any local state", () => {
+    // A stale session row or a cancelled approval on this machine must not
+    // outrank the fact that the work is no longer here.
+    expect(
+      resolveSidebarThreadStatus({
+        ...idle,
+        hasPendingApprovals: true,
+        session,
+        handedOffTo,
+      }),
+    ).toBe("handed-off");
+  });
+
+  it("shows a thread as elsewhere while the handoff is still in flight", () => {
+    expect(
+      resolveSidebarThreadStatus({
+        ...idle,
+        session,
+        handoff: {
+          handoffId: "handoff-1" as never,
+          target: handedOffTo,
+          stage: "transferring",
+          startedAt: "2026-08-21T00:00:00.000Z",
+        },
+      }),
+    ).toBe("handed-off");
+  });
+
   it("prioritizes approval over a running session", () => {
     expect(resolveSidebarThreadStatus({ ...idle, hasPendingApprovals: true, session })).toBe(
       "approval",

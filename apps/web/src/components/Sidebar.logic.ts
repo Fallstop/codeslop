@@ -460,6 +460,7 @@ export function resolveThreadRowClassName(input: {
 // Unread completion is tracked separately: it describes whether a ready
 // thread needs attention, not what the thread is currently doing.
 export type SidebarThreadStatus =
+  | "handed-off"
   | "approval"
   | "input"
   | "working"
@@ -469,10 +470,22 @@ export type SidebarThreadStatus =
 
 type SidebarThreadStatusInput = Pick<
   SidebarThreadSummary,
-  "hasPendingApprovals" | "hasPendingUserInput" | "session" | "backgroundLiveness"
+  | "hasPendingApprovals"
+  | "hasPendingUserInput"
+  | "session"
+  | "backgroundLiveness"
+  | "handedOffTo"
+  | "handoff"
 >;
 
 export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): SidebarThreadStatus {
+  // Outranks everything: the work is not on this machine, so a lingering
+  // session row or background liveness here would be describing a thread that
+  // has already left. Also outranks approval — an approval on a departed
+  // thread was cancelled by the freeze and cannot be answered here.
+  if (thread.handedOffTo != null || thread.handoff != null) {
+    return "handed-off";
+  }
   if (thread.hasPendingApprovals) {
     return "approval";
   }
