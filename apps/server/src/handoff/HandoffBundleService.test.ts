@@ -11,6 +11,7 @@ import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 
 import * as ServerConfig from "../config.ts";
+import { ProviderSessionRuntimeRepository } from "../persistence/ProviderSessionRuntime.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { claudeProjectSlug } from "../provider/Drivers/ClaudeSessionTransfer.ts";
 import { HandoffBundleService, layer as bundleLayer } from "./HandoffBundleService.ts";
@@ -41,12 +42,24 @@ const settingsLayerFor = (claudeHome: string) =>
     } as never),
   });
 
+// Captures the cursor adopt seeds, which is what makes the installed session
+// actually resume rather than sit unread on disk.
+const seededCursors: Array<{ threadId: string; resumeCursor: unknown }> = [];
+
+const sessionRuntimeLayer = Layer.mock(ProviderSessionRuntimeRepository)({
+  upsert: (runtime) =>
+    Effect.sync(() => {
+      seededCursors.push({ threadId: runtime.threadId, resumeCursor: runtime.resumeCursor });
+    }),
+});
+
 const makeLayer = (claudeHome: string) =>
   bundleLayer.pipe(
     // provideMerge, not provide: the test drives the staging store directly to
     // stand in for the origin having frozen a thread.
     Layer.provideMerge(stagingLayer),
     Layer.provide(settingsLayerFor(claudeHome)),
+    Layer.provide(sessionRuntimeLayer),
     Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-handoff-bundle-" })),
     Layer.provideMerge(NodeServices.layer),
   );
@@ -126,6 +139,14 @@ it.layer(makeLayer(CLAUDE_HOME))("handoff bundle transport", (it) => {
       );
       const landed = yield* fileSystem.readFile(installed);
       expect(sha256(landed)).toBe(sha256(session));
+
+      // ...and the adopted thread is pointed at it.
+      const seeded = seededCursors.find((entry) => entry.threadId === "thread-2");
+      expect(seeded?.resumeCursor).toEqual({
+        threadId: "thread-2",
+        resume: SESSION_ID,
+        turnCount: 0,
+      });
     }).pipe(Effect.scoped),
   );
 

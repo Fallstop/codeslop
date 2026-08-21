@@ -339,7 +339,7 @@ const CheckpointingLayerLive = Layer.empty.pipe(
 // Both ends of a handoff use the same staging store: the origin writes a
 // bundle, the target assembles one.
 const HandoffLayerLive = Layer.empty.pipe(
-  Layer.provideMerge(HandoffBundleService.layer),
+  Layer.provideMerge(HandoffBundleService.layer.pipe(Layer.provide(ProviderSessionRuntime.layer))),
   Layer.provideMerge(HandoffExportService.layer),
   Layer.provideMerge(HandoffStagingStore.layer),
   // Export publishes the worktree, so it needs the checkpoint store; merging

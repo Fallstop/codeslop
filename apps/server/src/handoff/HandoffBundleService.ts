@@ -23,12 +23,15 @@ import {
   type ProviderDriverKind,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 
+import { ProviderSessionRuntimeRepository } from "../persistence/ProviderSessionRuntime.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { makeHandoffResumeCursor } from "./HandoffSessionCursor.ts";
 import { resolveHandoffProviderHome } from "./HandoffProviderHome.ts";
 import { installHandoffSession, isTransferableProvider } from "./HandoffSessionTransfer.ts";
 import {
@@ -59,6 +62,7 @@ export class HandoffBundleService extends Context.Service<
 const make = Effect.gen(function* () {
   const staging = yield* HandoffStagingStore;
   const settingsService = yield* ServerSettingsService;
+  const providerSessionRuntime = yield* ProviderSessionRuntimeRepository;
   // Captured once so the service surface stays requirement-free: callers get a
   // plain Effect rather than one that drags FileSystem through the RPC layer.
   const fileSystem = yield* FileSystem.FileSystem;
@@ -168,6 +172,28 @@ const make = Effect.gen(function* () {
           fileName: manifest.sessionFileName,
         }),
       ).pipe(Effect.mapError((cause) => bundleError("Failed to install the session.", cause)));
+
+      // Seed the cursor the adopted thread resumes with. Installing the file
+      // alone is not enough: without a cursor the adapter starts a fresh
+      // session and the transcript sits on disk unread.
+      const lastSeenAt = yield* DateTime.now.pipe(Effect.map(DateTime.formatIso));
+      yield* providerSessionRuntime
+        .upsert({
+          threadId: manifest.targetThreadId,
+          providerName: manifest.provider,
+          providerInstanceId: defaultInstanceIdForDriver(manifest.provider as ProviderDriverKind),
+          adapterKey: manifest.provider,
+          runtimeMode: "full-access",
+          status: "stopped",
+          lastSeenAt,
+          resumeCursor: makeHandoffResumeCursor({
+            provider: home.provider,
+            threadId: manifest.targetThreadId,
+            sessionId: manifest.sessionId,
+          }),
+          runtimePayload: null,
+        })
+        .pipe(Effect.mapError((cause) => bundleError("Failed to seed the resume cursor.", cause)));
 
       return { sessionId: manifest.sessionId, provider: manifest.provider };
     }),

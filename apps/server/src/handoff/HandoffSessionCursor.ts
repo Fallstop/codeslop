@@ -32,3 +32,26 @@ export function readHandoffSessionId(
   // the transcript's — reading the wrong one would look right and find nothing.
   return provider === "claudeAgent" ? readString(cursor, "resume") : readString(cursor, "threadId");
 }
+
+/**
+ * Build the cursor an adopted thread resumes with.
+ *
+ * This is what turns a transported file into a continued conversation: without
+ * it the adapter starts a fresh session and the transcript sits on disk unused,
+ * which reads to the user as an agent that quietly forgot everything.
+ *
+ * `resumeSessionAt` is deliberately omitted. On the origin it points at the
+ * last assistant message, which after a mid-turn freeze precedes the tool call
+ * that was interrupted — keeping it would truncate away the very interruption
+ * the agent needs to see.
+ */
+export function makeHandoffResumeCursor(input: {
+  readonly provider: TransferableProvider;
+  readonly threadId: string;
+  readonly sessionId: string;
+}): Record<string, unknown> {
+  if (input.provider === "claudeAgent") {
+    return { threadId: input.threadId, resume: input.sessionId, turnCount: 0 };
+  }
+  return { threadId: input.sessionId };
+}
