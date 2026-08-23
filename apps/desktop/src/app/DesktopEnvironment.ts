@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - state-home resolution runs before Electron is ready, where the FileSystem service would suspend.
 import type {
   DesktopAppBranding,
   DesktopAppStageLabel,
@@ -9,10 +10,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
-
-import { stateHomeDatabaseCandidates, userStateHomeCandidates } from "@t3tools/shared/stateHome";
+import * as NodeFS from "node:fs";
 
 import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopConfig from "./DesktopConfig.ts";
@@ -145,11 +144,7 @@ function resolveDesktopRuntimeInfo(input: {
 
 const make = Effect.fn("desktop.environment.make")(function* (
   input: MakeDesktopEnvironmentInput,
-): Effect.fn.Return<
-  DesktopEnvironment["Service"],
-  Config.ConfigError,
-  Path.Path | FileSystem.FileSystem
-> {
+): Effect.fn.Return<DesktopEnvironment["Service"], Config.ConfigError, Path.Path> {
   const path = yield* Path.Path;
   const config = yield* DesktopConfig.DesktopConfig;
   const homeDirectory = input.homeDirectory;
@@ -163,31 +158,15 @@ const make = Effect.fn("desktop.environment.make")(function* (
       : input.platform === "darwin"
         ? path.join(homeDirectory, "Library", "Application Support")
         : Option.getOrElse(config.xdgConfigHome, () => path.join(homeDirectory, ".config"));
-  // resolveDesktopBaseDir needs a synchronous probe, so settle the candidate
-  // paths up front and hand it a lookup over the results.
-  const { current, legacy } = userStateHomeCandidates(homeDirectory, path.join);
-  const stateHomeProbes = [current, legacy].flatMap((candidate) =>
-    stateHomeDatabaseCandidates(candidate, path.join),
-  );
-  const fileSystem = yield* FileSystem.FileSystem;
-  const existingStateHomePaths = new Set(
-    (yield* Effect.forEach(
-      stateHomeProbes,
-      (candidate) =>
-        fileSystem.exists(candidate).pipe(
-          Effect.orElseSucceed(() => false),
-          Effect.map((exists) => ({ candidate, exists })),
-        ),
-      { concurrency: "unbounded" },
-    ))
-      .filter((probe) => probe.exists)
-      .map((probe) => probe.candidate),
-  );
   const baseDir = resolveDesktopBaseDir({
     homeDirectory,
     joinPath: path.join,
     t3Home: config.t3Home,
-    fileExists: (candidate) => existingStateHomePaths.has(candidate),
+    // Deliberately `existsSync`: this whole layer is built before Electron
+    // emits `ready`, and awaiting the FileSystem service here hands `ready` the
+    // race — the Clerk bridge then registers its scheme too late and startup
+    // dies. Two stat calls on a path we already have cost nothing.
+    fileExists: NodeFS.existsSync,
   });
   const rootDir = path.resolve(input.dirname, "../../..");
   const appRoot = input.isPackaged ? input.appPath : rootDir;

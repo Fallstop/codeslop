@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - the userData probe runs before Electron is ready, where the FileSystem service would suspend.
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -5,6 +6,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
+import * as NodeFS from "node:fs";
 
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as DesktopAssets from "./DesktopAssets.ts";
@@ -46,32 +48,42 @@ const normalizeCommitHash = (value: string): Option.Option<string> => {
     : Option.none();
 };
 
-export const resolveUserDataPath = Effect.gen(function* () {
-  const environment = yield* DesktopEnvironment.DesktopEnvironment;
-  const fileSystem = yield* FileSystem.FileSystem;
-  const legacyPath = environment.path.join(
-    environment.appDataDirectory,
-    environment.legacyUserDataDirName,
-  );
-  // Chromium writes a bare `Local State` into the pre-`setPath` directory during early
-  // startup, so a legacy directory can exist while holding no profile at all. Probing for
-  // `Preferences` distinguishes a real pre-rebrand profile from that stub — adopting the
-  // stub would silently orphan the current profile.
-  const legacyProfileExists = yield* fileSystem
-    .exists(environment.path.join(legacyPath, LEGACY_PROFILE_MARKER))
-    .pipe(
-      Effect.mapError(
-        (cause) =>
-          new DesktopUserDataPathResolutionError({
-            legacyPath,
-            cause,
-          }),
-      ),
+/**
+ * Resolves the userData directory without ever yielding to the event loop.
+ *
+ * The Clerk bridge registers its renderer scheme, which Electron only accepts
+ * before `ready`, and it cannot be created until userData points at the real
+ * directory. Electron emits `ready` from the event loop, so a single `await`
+ * anywhere on the way here hands it the race and the bridge throws. `fileExists`
+ * is injected rather than taken from the app's FileSystem service for the same
+ * reason its counterpart in DesktopStatePaths is: that service is async, and
+ * this runs before Electron is ready.
+ */
+export const makeResolveUserDataPath = (fileExists: (path: string) => boolean) =>
+  Effect.gen(function* () {
+    const environment = yield* DesktopEnvironment.DesktopEnvironment;
+    const legacyPath = environment.path.join(
+      environment.appDataDirectory,
+      environment.legacyUserDataDirName,
     );
-  return legacyProfileExists
-    ? legacyPath
-    : environment.path.join(environment.appDataDirectory, environment.userDataDirName);
-}).pipe(Effect.withSpan("desktop.appIdentity.resolveUserDataPath"));
+    // Chromium writes a bare `Local State` into the pre-`setPath` directory during early
+    // startup, so a legacy directory can exist while holding no profile at all. Probing for
+    // `Preferences` distinguishes a real pre-rebrand profile from that stub — adopting the
+    // stub would silently orphan the current profile.
+    const legacyProfileExists = yield* Effect.try({
+      try: () => fileExists(environment.path.join(legacyPath, LEGACY_PROFILE_MARKER)),
+      catch: (cause) =>
+        new DesktopUserDataPathResolutionError({
+          legacyPath,
+          cause,
+        }),
+    });
+    return legacyProfileExists
+      ? legacyPath
+      : environment.path.join(environment.appDataDirectory, environment.userDataDirName);
+  }).pipe(Effect.withSpan("desktop.appIdentity.resolveUserDataPath"));
+
+export const resolveUserDataPath = makeResolveUserDataPath(NodeFS.existsSync);
 
 export const make = Effect.gen(function* () {
   const assets = yield* DesktopAssets.DesktopAssets;
@@ -119,9 +131,7 @@ export const make = Effect.gen(function* () {
   });
 
   const userDataPath = resolveUserDataPath.pipe(
-    Effect.provide(
-      yield* Effect.context<DesktopEnvironment.DesktopEnvironment | FileSystem.FileSystem>(),
-    ),
+    Effect.provide(yield* Effect.context<DesktopEnvironment.DesktopEnvironment>()),
   );
 
   const configure = Effect.gen(function* () {

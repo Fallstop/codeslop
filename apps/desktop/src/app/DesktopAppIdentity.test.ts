@@ -4,7 +4,6 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as PlatformError from "effect/PlatformError";
 
 import type * as Electron from "electron";
 
@@ -108,8 +107,6 @@ const withIdentity = <A, E, R>(
   input: {
     readonly calls?: ElectronAppCalls;
     readonly environment?: TestEnvironmentInput;
-    readonly legacyProfileExists?: boolean;
-    readonly legacyPathProbeError?: PlatformError.PlatformError;
     readonly packageJson?: string;
     readonly pngIconPath?: Option.Option<string>;
   } = {},
@@ -125,12 +122,6 @@ const withIdentity = <A, E, R>(
       DesktopAppIdentity.layer.pipe(
         Layer.provideMerge(
           FileSystem.layerNoop({
-            exists: (path) =>
-              input.legacyPathProbeError
-                ? Effect.fail(input.legacyPathProbeError)
-                : Effect.succeed(
-                    input.legacyProfileExists === true && path.endsWith("t3code/Preferences"),
-                  ),
             readFileString: () =>
               Effect.succeed(input.packageJson ?? '{"t3codeCommitHash":"abcdef1234567890"}'),
           }),
@@ -144,56 +135,65 @@ const withIdentity = <A, E, R>(
 };
 
 describe("DesktopAppIdentity", () => {
-  it.effect("keeps using the legacy userData path when it holds a profile", () =>
-    withIdentity(
-      Effect.gen(function* () {
-        const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
-        const userDataPath = yield* identity.resolveUserDataPath;
+  // The pre-ready path is driven directly: it takes its probe as an argument
+  // precisely so it never touches the async FileSystem service.
+  // oxlint-disable t3code/no-manual-effect-runtime-in-tests -- runSync IS the assertion for
+  // the pre-ready path: it throws on a suspended effect, which it.effect would happily await.
+  const resolvePreReadyUserDataPath = (fileExists: (path: string) => boolean) =>
+    DesktopAppIdentity.makeResolveUserDataPath(fileExists).pipe(
+      Effect.provide(makeEnvironmentLayer()),
+    );
 
-        assert.equal(userDataPath, "/Users/alice/Library/Application Support/t3code");
+  it("keeps using the legacy userData path when it holds a profile", () => {
+    const userDataPath = Effect.runSync(
+      resolvePreReadyUserDataPath((path) => path.endsWith("t3code/Preferences")),
+    );
+
+    assert.equal(userDataPath, "/Users/alice/Library/Application Support/t3code");
+  });
+
+  it("ignores a legacy directory that holds only Chromium's early-startup stub", () => {
+    const userDataPath = Effect.runSync(resolvePreReadyUserDataPath(() => false));
+
+    assert.equal(userDataPath, "/Users/alice/Library/Application Support/codeslop");
+  });
+
+  // `runSync` is the assertion: it throws on an effect that suspends, so a probe
+  // that goes async again fails here instead of losing the race to Electron's
+  // `ready` and taking the Clerk bridge down with it.
+  it("resolves without yielding to the event loop", () => {
+    const probed: string[] = [];
+
+    Effect.runSync(
+      resolvePreReadyUserDataPath((path) => {
+        probed.push(path);
+        return false;
       }),
-      { legacyProfileExists: true },
-    ),
-  );
+    );
 
-  it.effect("ignores a legacy directory that holds only Chromium's early-startup stub", () =>
-    withIdentity(
-      Effect.gen(function* () {
-        const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
-        const userDataPath = yield* identity.resolveUserDataPath;
+    assert.deepEqual(probed, ["/Users/alice/Library/Application Support/t3code/Preferences"]);
+  });
 
-        assert.equal(userDataPath, "/Users/alice/Library/Application Support/codeslop");
-      }),
-      { legacyProfileExists: false },
-    ),
-  );
-
-  it.effect("preserves failures while inspecting the legacy userData path", () => {
+  it("preserves failures while inspecting the legacy userData path", () => {
     const legacyPath = "/Users/alice/Library/Application Support/t3code";
-    const cause = PlatformError.systemError({
-      _tag: "PermissionDenied",
-      module: "FileSystem",
-      method: "exists",
-      description: "permission denied",
-      pathOrDescriptor: legacyPath,
-    });
+    const cause = new Error("permission denied");
 
-    return withIdentity(
-      Effect.gen(function* () {
-        const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
-        const error = yield* identity.resolveUserDataPath.pipe(Effect.flip);
+    const error = Effect.runSync(
+      resolvePreReadyUserDataPath(() => {
+        throw cause;
+      }).pipe(Effect.flip),
+    );
 
-        assert.instanceOf(error, DesktopAppIdentity.DesktopUserDataPathResolutionError);
-        assert.equal(error.legacyPath, legacyPath);
-        assert.strictEqual(error.cause, cause);
-        assert.equal(
-          error.message,
-          `Failed to inspect legacy desktop user-data path at "${legacyPath}".`,
-        );
-      }),
-      { legacyPathProbeError: cause },
+    assert.instanceOf(error, DesktopAppIdentity.DesktopUserDataPathResolutionError);
+    assert.equal(error.legacyPath, legacyPath);
+    assert.strictEqual(error.cause, cause);
+    assert.equal(
+      error.message,
+      `Failed to inspect legacy desktop user-data path at "${legacyPath}".`,
     );
   });
+
+  // oxlint-enable t3code/no-manual-effect-runtime-in-tests
 
   it.effect("configures app identity from the environment commit override", () => {
     const calls: ElectronAppCalls = {
