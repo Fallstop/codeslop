@@ -57,6 +57,7 @@ import Migration0041 from "./Migrations/041_MessageEmbeddings.ts";
 import Migration0042 from "./Migrations/042_ThreadAsides.ts";
 import Migration0043 from "./Migrations/043_ThreadParentAndDropAsides.ts";
 import Migration0044 from "./Migrations/044_ThreadHandoff.ts";
+import Migration0045 from "./Migrations/045_AuthSessionClientConnection.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -113,6 +114,7 @@ export const migrationEntries = [
   [42, "ThreadAsides", Migration0042],
   [43, "ThreadParentAndDropAsides", Migration0043],
   [44, "ThreadHandoff", Migration0044],
+  [45, "AuthSessionClientConnection", Migration0045],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
