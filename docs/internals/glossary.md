@@ -12,6 +12,7 @@ This is a living glossary for codeslop. It explains what common terms mean in th
 - [Provider runtime](#provider-runtime)
 - [Checkpointing](#checkpointing)
 - [State home](#state-home)
+- [Appearance](#appearance)
 
 ## Concepts
 
@@ -136,6 +137,10 @@ Controls how assistant text reaches the thread timeline. In [the contracts][1], 
 
 A point-in-time view of state. The word is used in multiple layers, including orchestration, provider, and checkpointing. See [ProjectionSnapshotQuery.ts][10], [ProviderAdapter.ts][15], and [CheckpointStore.ts][19].
 
+#### Model manifest
+
+The per-driver list of current model slugs that decides which models land in the model picker's legacy section. Bundled at `apps/server/src/provider/model-manifest.json` and refreshed at runtime from the same file on `main`, so classification updates ship as commits instead of releases. See the [provider architecture][16] model manifest section.
+
 ### Checkpointing
 
 Checkpointing captures workspace state over time so the app can diff turns and restore earlier points. The main pieces are [CheckpointStore.ts][19], [CheckpointDiffQuery.ts][20], and [CheckpointReactor.ts][6].
@@ -171,6 +176,21 @@ The rule is duplicated deliberately in four places because they cannot share a r
 #### Server runtime record
 
 `<stateDir>/server-runtime.json`, written by a server once it is listening, telling local callers (`t3 pair`, the SSH reuse probe) which pid and port to talk to. There is one slot per state directory, so it names the server that clients should find. A server only clears the record while it still describes itself; a second server sharing the directory — one launched over SSH beside a running desktop app — publishes to its own path via `T3CODE_RUNTIME_STATE_PATH` instead. See [serverRuntimeState.ts][29].
+
+### Appearance
+
+#### Environment theme
+
+A theme an environment's machine publishes for clients to follow, one file per theme under `themes/` in that environment's state directory; the filename is the theme id. [environmentTheme.ts][30] watches the directory and streams the set over `subscribeServerConfig`; clients render each as a library card, generating a full palette when the file carries seed colors and using the palette directly when it is a standard exported theme file. A desktop that retints its apps when the system theme changes rewrites its file, so codeslop follows along without a restart. See [environment-theme.md][31].
+
+#### Default theme
+
+The environment's theme, held in its `settings.json` as `defaultTheme` (with `defaultThemeSetAt`
+as the set-generation) and set with `t3 theme set <id>`. Web and desktop clients apply each set
+once — live when connected, on the next connect otherwise — so setting it switches them, while a
+theme a user picks in Settings afterwards sticks until the next set; mobile keeps its own
+appearance settings. Naming a published [environment theme](#environment-theme) is how a desktop
+ships codeslop already matching it.
 
 ## Practical Shortcuts
 
@@ -217,3 +237,5 @@ The rule is duplicated deliberately in four places because they cannot share a r
 [27]: ../../apps/server/src/os-jank.ts
 [28]: ../../packages/ssh/src/tunnel.ts
 [29]: ../../apps/server/src/serverRuntimeState.ts
+[30]: ../../apps/server/src/environmentTheme.ts
+[31]: ../user/environment-theme.md
