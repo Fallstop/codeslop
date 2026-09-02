@@ -1,4 +1,5 @@
-// @effect-diagnostics nodeBuiltinImport:off - the userData probe runs before Electron is ready, where the FileSystem service would suspend.
+// @effect-diagnostics nodeBuiltinImport:off - the legacy-profile probe must stay synchronous; see resolveUserDataPath.
+import * as NodeFS from "node:fs";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -49,18 +50,25 @@ const normalizeCommitHash = (value: string): Option.Option<string> => {
 };
 
 /**
- * Resolves the userData directory without ever yielding to the event loop.
- *
- * The Clerk bridge registers its renderer scheme, which Electron only accepts
- * before `ready`, and it cannot be created until userData points at the real
- * directory. Electron emits `ready` from the event loop, so a single `await`
- * anywhere on the way here hands it the race and the bridge throws. `fileExists`
- * is injected rather than taken from the app's FileSystem service for the same
- * reason its counterpart in DesktopStatePaths is: that service is async, and
- * this runs before Electron is ready.
+ * Probes the legacy profile marker without yielding the event loop. `statSync` rather than
+ * `existsSync` so an unreadable legacy directory raises instead of reading as "missing" —
+ * silently adopting the new path there would orphan the profile this probe exists to find.
  */
-export const makeResolveUserDataPath = (fileExists: (path: string) => boolean) =>
-  Effect.gen(function* () {
+const legacyProfileExistsSync = (path: string): boolean =>
+  NodeFS.statSync(path, { throwIfNoEntry: false }) !== undefined;
+
+/**
+ * Resolves the Electron userData directory, given a synchronous existence probe.
+ *
+ * The probe must stay synchronous. `DesktopClerk` creates the Clerk bridge immediately after
+ * this resolves, and the bridge registers privileged schemes, which Electron rejects once
+ * `ready` has fired. Awaiting here hands the event loop back and lets `ready` win the race,
+ * failing startup with `protocol.registerSchemesAsPrivileged should be called before app is
+ * ready`. `fileExists` is injected rather than taken from the app's FileSystem service because
+ * that service is async, and this runs before Electron is ready.
+ */
+export const makeResolveUserDataPath = Effect.fn("desktop.appIdentity.resolveUserDataPath")(
+  function* (fileExists: (path: string) => boolean) {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
     const legacyPath = environment.path.join(
       environment.appDataDirectory,
@@ -81,10 +89,10 @@ export const makeResolveUserDataPath = (fileExists: (path: string) => boolean) =
     return legacyProfileExists
       ? legacyPath
       : environment.path.join(environment.appDataDirectory, environment.userDataDirName);
-  }).pipe(Effect.withSpan("desktop.appIdentity.resolveUserDataPath"));
+  },
+);
 
-export const resolveUserDataPath = makeResolveUserDataPath(NodeFS.existsSync);
-
+export const resolveUserDataPath = makeResolveUserDataPath(legacyProfileExistsSync);
 export const make = Effect.gen(function* () {
   const assets = yield* DesktopAssets.DesktopAssets;
   const electronApp = yield* ElectronApp.ElectronApp;
