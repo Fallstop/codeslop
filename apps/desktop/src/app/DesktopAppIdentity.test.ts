@@ -4,7 +4,6 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as PlatformError from "effect/PlatformError";
 
 import type * as Electron from "electron";
 
@@ -108,8 +107,6 @@ const withIdentity = <A, E, R>(
   input: {
     readonly calls?: ElectronAppCalls;
     readonly environment?: TestEnvironmentInput;
-    readonly legacyProfileExists?: boolean;
-    readonly legacyPathProbeError?: PlatformError.PlatformError;
     readonly packageJson?: string;
     readonly pngIconPath?: Option.Option<string>;
   } = {},
@@ -125,12 +122,6 @@ const withIdentity = <A, E, R>(
       DesktopAppIdentity.layer.pipe(
         Layer.provideMerge(
           FileSystem.layerNoop({
-            exists: (path) =>
-              input.legacyPathProbeError
-                ? Effect.fail(input.legacyPathProbeError)
-                : Effect.succeed(
-                    input.legacyProfileExists === true && path.endsWith("t3code/Preferences"),
-                  ),
             readFileString: () =>
               Effect.succeed(input.packageJson ?? '{"t3codeCommitHash":"abcdef1234567890"}'),
           }),
@@ -143,45 +134,43 @@ const withIdentity = <A, E, R>(
   );
 };
 
+const withEnvironment = <A, E, R>(
+  effect: Effect.Effect<A, E, R | DesktopEnvironment.DesktopEnvironment>,
+  environment: TestEnvironmentInput = {},
+) => effect.pipe(Effect.provide(makeEnvironmentLayer(environment)));
+
 describe("DesktopAppIdentity", () => {
   it.effect("keeps using the legacy userData path when it holds a profile", () =>
-    withIdentity(
+    withEnvironment(
       Effect.gen(function* () {
-        const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
-        const userDataPath = yield* identity.resolveUserDataPath;
+        const userDataPath = yield* DesktopAppIdentity.makeResolveUserDataPath((path) =>
+          path.endsWith("t3code/Preferences"),
+        );
 
         assert.equal(userDataPath, "/Users/alice/Library/Application Support/t3code");
       }),
-      { legacyProfileExists: true },
     ),
   );
 
   it.effect("ignores a legacy directory that holds only Chromium's early-startup stub", () =>
-    withIdentity(
+    withEnvironment(
       Effect.gen(function* () {
-        const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
-        const userDataPath = yield* identity.resolveUserDataPath;
+        const userDataPath = yield* DesktopAppIdentity.makeResolveUserDataPath(() => false);
 
         assert.equal(userDataPath, "/Users/alice/Library/Application Support/codeslop");
       }),
-      { legacyProfileExists: false },
     ),
   );
 
   it.effect("preserves failures while inspecting the legacy userData path", () => {
     const legacyPath = "/Users/alice/Library/Application Support/t3code";
-    const cause = PlatformError.systemError({
-      _tag: "PermissionDenied",
-      module: "FileSystem",
-      method: "exists",
-      description: "permission denied",
-      pathOrDescriptor: legacyPath,
-    });
+    const cause = new Error("permission denied");
 
-    return withIdentity(
+    return withEnvironment(
       Effect.gen(function* () {
-        const identity = yield* DesktopAppIdentity.DesktopAppIdentity;
-        const error = yield* identity.resolveUserDataPath.pipe(Effect.flip);
+        const error = yield* DesktopAppIdentity.makeResolveUserDataPath(() => {
+          throw cause;
+        }).pipe(Effect.flip);
 
         assert.instanceOf(error, DesktopAppIdentity.DesktopUserDataPathResolutionError);
         assert.equal(error.legacyPath, legacyPath);
@@ -191,9 +180,30 @@ describe("DesktopAppIdentity", () => {
           `Failed to inspect legacy desktop user-data path at "${legacyPath}".`,
         );
       }),
-      { legacyPathProbeError: cause },
     );
   });
+
+  // DesktopClerk creates the Clerk bridge right after this resolves, and the bridge
+  // registers privileged schemes — which Electron rejects once `ready` has fired. Any
+  // await here drains the microtask queue first, which is how `ready` wins the race.
+  it.effect("resolves the userData path without yielding the event loop", () =>
+    withEnvironment(
+      Effect.gen(function* () {
+        let yieldedToEventLoop = false;
+        void Promise.resolve().then(() => {
+          yieldedToEventLoop = true;
+        });
+
+        const userDataPath = yield* DesktopAppIdentity.makeResolveUserDataPath(() => false);
+
+        assert.isFalse(
+          yieldedToEventLoop,
+          "resolveUserDataPath must stay synchronous; the Clerk bridge registers schemes after it.",
+        );
+        assert.equal(userDataPath, "/Users/alice/Library/Application Support/codeslop");
+      }),
+    ),
+  );
 
   it.effect("configures app identity from the environment commit override", () => {
     const calls: ElectronAppCalls = {

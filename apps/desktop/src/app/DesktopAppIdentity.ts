@@ -1,3 +1,6 @@
+// @effect-diagnostics nodeBuiltinImport:off - the legacy-profile probe must stay synchronous; see resolveUserDataPath.
+import * as NodeFS from "node:fs";
+
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -46,32 +49,49 @@ const normalizeCommitHash = (value: string): Option.Option<string> => {
     : Option.none();
 };
 
-export const resolveUserDataPath = Effect.gen(function* () {
-  const environment = yield* DesktopEnvironment.DesktopEnvironment;
-  const fileSystem = yield* FileSystem.FileSystem;
-  const legacyPath = environment.path.join(
-    environment.appDataDirectory,
-    environment.legacyUserDataDirName,
-  );
-  // Chromium writes a bare `Local State` into the pre-`setPath` directory during early
-  // startup, so a legacy directory can exist while holding no profile at all. Probing for
-  // `Preferences` distinguishes a real pre-rebrand profile from that stub — adopting the
-  // stub would silently orphan the current profile.
-  const legacyProfileExists = yield* fileSystem
-    .exists(environment.path.join(legacyPath, LEGACY_PROFILE_MARKER))
-    .pipe(
-      Effect.mapError(
-        (cause) =>
-          new DesktopUserDataPathResolutionError({
-            legacyPath,
-            cause,
-          }),
-      ),
+/**
+ * Probes the legacy profile marker without yielding the event loop. `statSync` rather than
+ * `existsSync` so an unreadable legacy directory raises instead of reading as "missing" —
+ * silently adopting the new path there would orphan the profile this probe exists to find.
+ */
+const legacyProfileExistsSync = (path: string): boolean =>
+  NodeFS.statSync(path, { throwIfNoEntry: false }) !== undefined;
+
+/**
+ * Resolves the Electron userData directory, given a synchronous existence probe.
+ *
+ * The probe must stay synchronous. `DesktopClerk` creates the Clerk bridge immediately after
+ * this resolves, and the bridge registers privileged schemes, which Electron rejects once
+ * `ready` has fired. Awaiting here hands the event loop back and lets `ready` win the race,
+ * failing startup with `protocol.registerSchemesAsPrivileged should be called before app is
+ * ready`.
+ */
+export const makeResolveUserDataPath = Effect.fn("desktop.appIdentity.resolveUserDataPath")(
+  function* (fileExists: (path: string) => boolean) {
+    const environment = yield* DesktopEnvironment.DesktopEnvironment;
+    const legacyPath = environment.path.join(
+      environment.appDataDirectory,
+      environment.legacyUserDataDirName,
     );
-  return legacyProfileExists
-    ? legacyPath
-    : environment.path.join(environment.appDataDirectory, environment.userDataDirName);
-}).pipe(Effect.withSpan("desktop.appIdentity.resolveUserDataPath"));
+    // Chromium writes a bare `Local State` into the pre-`setPath` directory during early
+    // startup, so a legacy directory can exist while holding no profile at all. Probing for
+    // `Preferences` distinguishes a real pre-rebrand profile from that stub — adopting the
+    // stub would silently orphan the current profile.
+    const legacyProfileExists = yield* Effect.try({
+      try: () => fileExists(environment.path.join(legacyPath, LEGACY_PROFILE_MARKER)),
+      catch: (cause) =>
+        new DesktopUserDataPathResolutionError({
+          legacyPath,
+          cause,
+        }),
+    });
+    return legacyProfileExists
+      ? legacyPath
+      : environment.path.join(environment.appDataDirectory, environment.userDataDirName);
+  },
+);
+
+export const resolveUserDataPath = makeResolveUserDataPath(legacyProfileExistsSync);
 
 export const make = Effect.gen(function* () {
   const assets = yield* DesktopAssets.DesktopAssets;
@@ -119,9 +139,7 @@ export const make = Effect.gen(function* () {
   });
 
   const userDataPath = resolveUserDataPath.pipe(
-    Effect.provide(
-      yield* Effect.context<DesktopEnvironment.DesktopEnvironment | FileSystem.FileSystem>(),
-    ),
+    Effect.provide(yield* Effect.context<DesktopEnvironment.DesktopEnvironment>()),
   );
 
   const configure = Effect.gen(function* () {
