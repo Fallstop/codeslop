@@ -8,15 +8,6 @@ export interface ComposerTrigger {
   rangeEnd: number;
 }
 
-const SIMPLE_MENTION_PATH_REGEX = /^[^\s@"\\]+$/;
-
-export function serializeComposerMentionPath(path: string): string {
-  if (SIMPLE_MENTION_PATH_REGEX.test(path)) {
-    return path;
-  }
-  return `"${path.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
-}
-
 function composerFileLinkBasename(path: string): string {
   const separatorIndex = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   return separatorIndex >= 0 ? path.slice(separatorIndex + 1) : path;
@@ -124,18 +115,6 @@ export function detectComposerTrigger(
   };
 }
 
-export function parseStandaloneComposerSlashCommand(
-  text: string,
-): Exclude<ComposerSlashCommand, "model"> | null {
-  const match = /^\/(plan|default)\s*$/i.exec(text.trim());
-  if (!match) {
-    return null;
-  }
-  const command = match[1]?.toLowerCase();
-  if (command === "plan") return "plan";
-  return "default";
-}
-
 export function replaceTextRange(
   text: string,
   rangeStart: number,
@@ -146,4 +125,13 @@ export function replaceTextRange(
   const safeEnd = Math.max(safeStart, Math.min(text.length, rangeEnd));
   const nextText = `${text.slice(0, safeStart)}${replacement}${text.slice(safeEnd)}`;
   return { text: nextText, cursor: safeStart + replacement.length };
+}
+
+const SIMPLE_MENTION_PATH_REGEX = /^[^\s@"\\]+$/;
+
+export function serializeComposerMentionPath(path: string): string {
+  if (SIMPLE_MENTION_PATH_REGEX.test(path)) {
+    return path;
+  }
+  return `"${path.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 }

@@ -30,7 +30,6 @@ import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSn
 import { OrchestrationLayerLive } from "../orchestration/runtimeLayer.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "../persistence/Layers/Sqlite.ts";
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
-import * as ServerRuntimeStartup from "../serverRuntimeStartup.ts";
 import { clearStaleServerRuntimeState, readLiveServerRuntimeState } from "../serverRuntimeState.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { type CliAuthLocationFlags, projectLocationFlags, resolveCliAuthConfig } from "./config.ts";
@@ -280,10 +279,10 @@ const findActiveProjectTarget = Effect.fn("findActiveProjectTarget")(function* (
   const normalizedWorkspaceRoot =
     normalizedWorkspaceRootResult._tag === "Success" ? normalizedWorkspaceRootResult.success : null;
 
-  const exactWorkspaceMatch =
-    normalizedWorkspaceRoot === null
-      ? undefined
-      : activeProjects.find((project) => project.workspaceRoot === normalizedWorkspaceRoot);
+  // A stored workspace path still identifies its project after the directory is gone.
+  const exactWorkspaceMatch = activeProjects.find(
+    (project) => project.workspaceRoot === (normalizedWorkspaceRoot ?? trimmedIdentifier),
+  );
 
   const resolved = exactWorkspaceMatch;
   if (!resolved) {
@@ -484,7 +483,6 @@ const projectAddCommand = Command.make("add", {
           projectId,
           title,
           workspaceRoot,
-          defaultModelSelection: ServerRuntimeStartup.getAutoBootstrapDefaultModelSelection(),
           createdAt: DateTime.formatIso(yield* DateTime.now),
         });
         return `Added project ${projectId} (${title}) at ${workspaceRoot}.`;
