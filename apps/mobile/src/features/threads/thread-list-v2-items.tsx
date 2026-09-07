@@ -31,6 +31,7 @@ import {
   resolveThreadListV2SwipeActions,
   type ThreadListV2Status,
 } from "./threadListV2";
+import { QueuedMessageIcon } from "./queued-message-icon";
 import { ThreadSearchMatchExcerpt } from "./thread-search-match";
 
 /**
@@ -57,7 +58,7 @@ const STATUS_LABEL_BY_STATUS: Partial<
   "handed-off": { label: "Elsewhere", className: "text-foreground-muted" },
   approval: { label: "Approval", className: "text-warning-foreground" },
   input: { label: "Input", className: "text-foreground-secondary" },
-  working: { label: "Working", className: "text-foreground-secondary" },
+  working: { label: "Working", className: "text-adaptive-sky-600-400" },
   failed: { label: "Failed", className: "text-danger-foreground" },
 };
 
@@ -337,6 +338,8 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
 export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly thread: EnvironmentThreadShell;
   readonly variant: "card" | "slim";
+  /** A message for this thread is waiting in the outbox. */
+  readonly hasQueuedMessages?: boolean;
   /** Snoozed-shelf row: shows its wake time and offers Wake. */
   readonly snoozed?: boolean;
   /** Pinned-block row: shows the pin glyph and offers Unpin. */
@@ -373,6 +376,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly fullSwipeWidth?: number;
   readonly onSelectThread: (thread: EnvironmentThreadShell) => void;
   readonly onDeleteThread: (thread: EnvironmentThreadShell) => void;
+  readonly onNewThreadOnBranch: (thread: EnvironmentThreadShell) => void;
   readonly onRegenerateThreadTitle: (thread: EnvironmentThreadShell) => void;
   readonly onSettleThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
   readonly onSnoozeThread: (thread: EnvironmentThreadShell, snoozedUntil: string) => void;
@@ -412,6 +416,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     onSelectThread,
     onDeleteThread,
     onRegenerateThreadTitle,
+    onNewThreadOnBranch,
     onSettleThread,
     onSnoozeThread,
     onUnsnoozeThread,
@@ -589,6 +594,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   );
   const handleMenuAction = useCallback(
     ({ nativeEvent }: { readonly nativeEvent: { readonly event: string } }) => {
+      if (nativeEvent.event === "new-thread-on-branch") onNewThreadOnBranch(thread);
       if (nativeEvent.event === "settle") handleSettle();
       if (nativeEvent.event === "unsettle") handleUnsettle();
       if (nativeEvent.event === "unsnooze") handleUnsnooze();
@@ -611,6 +617,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       }
     },
     [
+      onNewThreadOnBranch,
+      thread,
       handleArchive,
       handleDelete,
       handleRegenerateTitle,
@@ -656,7 +664,6 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
           accessibilityLabel: `Settle ${thread.title}`,
           icon: "checkmark" as const,
           label: "Settle",
-          dismissOnPress: true as const,
           onPress: handleSettle,
         };
   }, [
@@ -712,6 +719,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         >
           {props.projectTitle ?? props.project?.title ?? ""}
         </Text>
+        {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
         {pinnedRow ? (
           <SymbolView
             name="pin"
@@ -833,7 +841,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     variant === "card" ? (
       <Pressable
         accessibilityHint={swipeAccessibilityHint}
-        accessibilityLabel={thread.title}
+        accessibilityLabel={
+          props.hasQueuedMessages ? `${thread.title}, messages queued to send` : thread.title
+        }
         accessibilityRole="button"
         accessibilityState={{ selected }}
         onPress={() => {
@@ -873,7 +883,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     ) : (
       <Pressable
         accessibilityHint={swipeAccessibilityHint}
-        accessibilityLabel={thread.title}
+        accessibilityLabel={
+          props.hasQueuedMessages ? `${thread.title}, messages queued to send` : thread.title
+        }
         accessibilityRole="button"
         accessibilityState={{ selected }}
         className={sidebarPane ? undefined : "bg-screen"}
@@ -930,6 +942,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
               />
             ) : null}
           </View>
+          {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
           <Text
             className={cn(
               "text-sm tabular-nums",
@@ -952,6 +965,7 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   return (
     <>
       <ThreadSwipeable
+        threadKey={`${thread.environmentId}:${thread.id}`}
         backgroundColor={sidebarPane ? drawerColor : screenColor}
         compactActions={variant === "slim"}
         containerStyle={
@@ -967,14 +981,26 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         onSwipeableWillOpen={props.onSwipeableWillOpen}
         primaryAction={primaryAction}
         secondaryAction={secondaryAction}
-        resetKey={`${thread.environmentId}:${thread.id}:${variant}:${snoozedRow}`}
+        resetKey={`${thread.environmentId}:${thread.id}:${variant}:${snoozedRow}:${thread.settledAt}:${thread.unsettledAt}:${thread.snoozedUntil}`}
         simultaneousWithExternalGesture={props.simultaneousSwipeGesture}
         threadTitle={thread.title}
       >
         {(close) => (
           <ControlPillMenu
-            actions={
-              snoozedRow
+            actions={[
+              ...(thread.branch
+                ? [
+                    {
+                      id: "new-thread-on-branch",
+                      title:
+                        Platform.OS === "ios"
+                          ? "New thread on branch"
+                          : `New thread on ${thread.branch}`,
+                      image: "square.and.pencil",
+                    },
+                  ]
+                : []),
+              ...(snoozedRow
                 ? snoozedMenuActions
                 : !props.settlementSupported
                   ? legacyMenuActions
@@ -982,8 +1008,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
                     ? slimMenuActions
                     : swipeActions.secondary === "snooze"
                       ? snoozableCardMenuActions
-                      : cardMenuActions
-            }
+                      : cardMenuActions),
+            ]}
             onPressAction={handleMenuAction}
             shouldOpenOnLongPress
           >
