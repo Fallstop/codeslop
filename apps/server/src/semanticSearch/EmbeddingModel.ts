@@ -30,7 +30,7 @@ export const DEFAULT_EMBEDDING_MODEL_ID = "Xenova/all-MiniLM-L6-v2";
 const LOAD_RETRY_BACKOFF_MS = 15 * 60 * 1000;
 const LOAD_TIMEOUT = "5 minutes";
 
-export class EmbeddingModelUnavailableError extends Schema.TaggedErrorClass<EmbeddingModelUnavailableError>()(
+export class EmbeddingModelUnavailableError extends Schema.TaggedError<EmbeddingModelUnavailableError>()(
   "EmbeddingModelUnavailableError",
   {
     reason: Schema.String,

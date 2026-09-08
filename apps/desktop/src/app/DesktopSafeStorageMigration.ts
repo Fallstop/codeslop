@@ -25,7 +25,7 @@ const DesktopSafeStorageKeyMigrationOperation = Schema.Literals([
   "copy-legacy-key",
 ]);
 
-export class DesktopSafeStorageKeyMigrationError extends Schema.TaggedErrorClass<DesktopSafeStorageKeyMigrationError>()(
+export class DesktopSafeStorageKeyMigrationError extends Schema.TaggedError<DesktopSafeStorageKeyMigrationError>()(
   "DesktopSafeStorageKeyMigrationError",
   {
     operation: DesktopSafeStorageKeyMigrationOperation,

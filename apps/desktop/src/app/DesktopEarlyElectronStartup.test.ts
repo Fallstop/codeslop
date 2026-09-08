@@ -86,7 +86,9 @@ describe("DesktopEarlyElectronStartup", () => {
     });
 
     assert.deepEqual(options, {
+      isDevelopment: true,
       linuxWmClass: "codeslop-dev",
+      linuxDesktopEntryName: "codeslop-dev.desktop",
       passwordStore: "gnome-libsecret",
     });
   });
