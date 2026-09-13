@@ -543,7 +543,14 @@ export function makeCursorAdapter(
           const mcpSession = McpProviderSession.readMcpProviderSession(input.threadId);
           const acp = yield* makeCursorAcpRuntime({
             cursorSettings: effectiveCursorSettings,
-            ...(options?.environment ? { environment: options.environment } : {}),
+            ...(options?.environment || mcpSession?.agentDeviceEnvironment
+              ? {
+                  environment: McpProviderSession.withAgentDeviceEnvironment(
+                    options?.environment ?? process.env,
+                    mcpSession,
+                  ),
+                }
+              : {}),
             childProcessSpawner,
             cwd,
             runtimeMode: input.runtimeMode,
@@ -1180,7 +1187,7 @@ export function makeCursorAdapter(
 
     const rollbackThread: CursorAdapterShape["rollbackThread"] = (threadId, numTurns) =>
       Effect.gen(function* () {
-        const ctx = yield* requireSession(threadId);
+        yield* requireSession(threadId);
         if (!Number.isInteger(numTurns) || numTurns < 1) {
           return yield* new ProviderAdapterValidationError({
             provider: PROVIDER,
@@ -1188,9 +1195,11 @@ export function makeCursorAdapter(
             issue: "numTurns must be an integer >= 1.",
           });
         }
-        const nextLength = Math.max(0, ctx.turns.length - numTurns);
-        ctx.turns.splice(nextLength);
-        return { threadId, turns: ctx.turns };
+        return yield* new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "thread/rollback",
+          detail: "Cursor ACP sessions do not support provider-side rollback.",
+        });
       });
 
     const stopSession: CursorAdapterShape["stopSession"] = (threadId) =>
@@ -1233,6 +1242,7 @@ export function makeCursorAdapter(
         // No single-file session on disk to carry, so a thread here cannot be
         // handed to another machine.
         sessionTransfer: "unsupported",
+        supportsConversationRollback: false,
       },
       compaction: { type: "slash-command", command: "/compress" },
       startSession,

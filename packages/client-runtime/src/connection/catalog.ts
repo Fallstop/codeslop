@@ -39,6 +39,8 @@ export type ConnectionProfile = typeof ConnectionProfile.Type;
 export interface ConnectionCatalogEntry {
   readonly target: ConnectionTarget;
   readonly profile: Option.Option<ConnectionProfile>;
+  /** False when the user switched the environment off: saved, but never connects. */
+  readonly enabled: boolean;
 }
 
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -149,12 +151,14 @@ export function connectionRegistrationCatalogEntry(
       return {
         target: registration.target,
         profile: Option.none(),
+        enabled: true,
       };
     case "BearerConnectionRegistration":
     case "SshConnectionRegistration":
       return {
         target: registration.target,
         profile: Option.some(registration.profile),
+        enabled: true,
       };
   }
 }

@@ -48,6 +48,7 @@ function makeReadModel(
         branch: null,
         worktreePath: null,
         parentThreadId: null,
+        pullRequests: [],
         latestTurn: null,
         createdAt: NOW,
         updatedAt: NOW,

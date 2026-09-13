@@ -6,7 +6,15 @@ import type {
 } from "@t3tools/contracts";
 
 import type { PersistedComposerImageAttachment } from "./composerDraftStore";
-import type { ElementContextDraft } from "./lib/elementContext";
+import type { ElementContextSelection } from "./lib/elementContext";
+import type { ThreadId } from "@t3tools/contracts";
+
+// Legacy queued picks remain readable after composer context migration.
+interface ElementContextDraft extends ElementContextSelection {
+  id: string;
+  threadId: ThreadId;
+  pickedAt: string;
+}
 import type { TerminalContextDraft } from "./lib/terminalContext";
 import type { ReviewCommentContext } from "./reviewCommentContext";
 import type { OrchestrationSessionStatus } from "@t3tools/contracts";
