@@ -58,6 +58,12 @@ export const CLI_RUNTIME_EXTERNAL_PREFIXES = [
   // through a bare specifier, which resolves from disk either way.
   "onnxruntime-node",
   "onnxruntime-common",
+  // @huggingface/transformers statically imports sharp, a libvips addon that
+  // loads its @img/sharp-<platform> binding by package name. Inlined, the whole
+  // embedding chunk fails to load. semver and @img/colour are its runtime closure.
+  "sharp",
+  "@img/",
+  "semver",
 ] as const;
 
 /**

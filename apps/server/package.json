@@ -33,6 +33,7 @@
     "msgpackr-extract": "3.0.4",
     "node-pty": "^1.1.0",
     "onnxruntime-node": "1.24.3",
+    "sharp": "0.34.5",
     "stream-chain": "^4.2.5",
     "stream-json": "3.6.0",
     "yaml": "catalog:",

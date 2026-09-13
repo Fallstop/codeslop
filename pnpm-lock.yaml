@@ -527,6 +527,9 @@ importers:
       onnxruntime-node:
         specifier: 1.24.3
         version: 1.24.3
+      sharp:
+        specifier: 0.34.5
+        version: 0.34.5
       stream-chain:
         specifier: ^4.2.5
         version: 4.2.5
@@ -771,7 +774,7 @@ importers:
         version: link:../../packages/shared
       alchemy:
         specifier: 2.0.0-beta.76
-        version: 2.0.0-beta.76(f9ba69336981aa67e18049068cff1d15)
+        version: 2.0.0-beta.76(c0a94f4536fde22157edb577d4fe7b63)
       drizzle-orm:
         specifier: 1.0.0-rc.5-ab785fc
         version: 1.0.0-rc.5-ab785fc(44b671b05b121a46716279a906f3aa0a)
@@ -16751,7 +16754,7 @@ snapshots:
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
-  alchemy@2.0.0-beta.76(f9ba69336981aa67e18049068cff1d15):
+  alchemy@2.0.0-beta.76(c0a94f4536fde22157edb577d4fe7b63):
     dependencies:
       '@alchemy.run/cloudflare-runtime': 2.0.0-beta.76(@distilled.cloud/cloudflare@1.0.0-rc.8(effect@4.0.0-rc.112(patch_hash=200b70758a8f02f5a4e6a4abea5f0079ad36fe9c2006486ebaf6ab1002a38320)))(@effect/platform-bun@4.0.0-rc.112(bufferutil@4.1.0)(effect@4.0.0-rc.112(patch_hash=200b70758a8f02f5a4e6a4abea5f0079ad36fe9c2006486ebaf6ab1002a38320))(utf-8-validate@6.0.6))(@effect/platform-node@4.0.0-rc.112(bufferutil@4.1.0)(effect@4.0.0-rc.112(patch_hash=200b70758a8f02f5a4e6a4abea5f0079ad36fe9c2006486ebaf6ab1002a38320))(redis@6.2.1(@opentelemetry/api@1.9.1))(utf-8-validate@6.0.6))(@types/node@24.12.4)(@voidzero-dev/vite-plus-core@0.3.0(@types/node@24.12.4)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(yaml@2.9.0))(effect@4.0.0-rc.112(patch_hash=200b70758a8f02f5a4e6a4abea5f0079ad36fe9c2006486ebaf6ab1002a38320))(rolldown@1.2.5)(typescript@7.0.2)
       '@alchemy.run/floci': 2.0.0-beta.76(effect@4.0.0-rc.112(patch_hash=200b70758a8f02f5a4e6a4abea5f0079ad36fe9c2006486ebaf6ab1002a38320))
