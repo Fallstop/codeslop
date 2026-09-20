@@ -17,6 +17,7 @@ import {
   ThreadLinkedPullRequest,
   ThreadHandoffLink,
   ThreadHandoffPending,
+  ThreadTitleState,
   ThreadId,
   TurnId,
 } from "@t3tools/contracts";
@@ -31,6 +32,7 @@ export const ProjectionThread = Schema.Struct({
   threadId: ThreadId,
   projectId: ProjectId,
   title: Schema.String,
+  titleState: Schema.optional(Schema.NullOr(ThreadTitleState)),
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
@@ -73,16 +75,6 @@ export const GetProjectionThreadInput = Schema.Struct({
 });
 export type GetProjectionThreadInput = typeof GetProjectionThreadInput.Type;
 
-export const DeleteProjectionThreadInput = Schema.Struct({
-  threadId: ThreadId,
-});
-export type DeleteProjectionThreadInput = typeof DeleteProjectionThreadInput.Type;
-
-export const ListProjectionThreadsByProjectInput = Schema.Struct({
-  projectId: ProjectId,
-});
-export type ListProjectionThreadsByProjectInput = typeof ListProjectionThreadsByProjectInput.Type;
-
 export const ListProjectionThreadsByParentInput = Schema.Struct({
   parentThreadId: ThreadId,
 });
@@ -107,28 +99,12 @@ export interface ProjectionThreadRepositoryShape {
   ) => Effect.Effect<Option.Option<ProjectionThread>, ProjectionRepositoryError>;
 
   /**
-   * List projected threads for a project.
-   *
-   * Returned in deterministic creation order.
-   */
-  readonly listByProjectId: (
-    input: ListProjectionThreadsByProjectInput,
-  ) => Effect.Effect<ReadonlyArray<ProjectionThread>, ProjectionRepositoryError>;
-
-  /**
    * Live side chats opened from a thread. Deleted rows are excluded so a
    * cascade does not keep re-deleting what it already removed.
    */
   readonly listByParentThreadId: (
     input: ListProjectionThreadsByParentInput,
   ) => Effect.Effect<ReadonlyArray<ProjectionThread>, ProjectionRepositoryError>;
-
-  /**
-   * Soft-delete a projected thread row by id.
-   */
-  readonly deleteById: (
-    input: DeleteProjectionThreadInput,
-  ) => Effect.Effect<void, ProjectionRepositoryError>;
 }
 
 /**

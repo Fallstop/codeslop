@@ -30,6 +30,7 @@ const thread: OrchestrationThread = {
   interactionMode: "default",
   branch: null,
   worktreePath: null,
+  parentThreadId: null,
   latestTurn: null,
   createdAt: timestamp,
   updatedAt: timestamp,

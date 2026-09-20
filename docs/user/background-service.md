@@ -5,25 +5,40 @@ to keep a terminal open.
 
 ## Manage the service
 
-Run these commands on the machine that will host codeslop:
+Install the codeslop CLI first ([Install codeslop](./install.md#command-line)), then
+run these commands on the machine that will host codeslop:
 
-| Task                            | Command                           |
-| ------------------------------- | --------------------------------- |
-| Install and start               | `npx t3@latest service install`   |
-| Inspect status and log location | `npx t3@latest service status`    |
-| Update or repair                | `npx t3@latest service update`    |
-| Stop and remove from startup    | `npx t3@latest service uninstall` |
+| Task                            | Command                  |
+| ------------------------------- | ------------------------ |
+| Install and start               | `slop service install`   |
+| Inspect status and log location | `slop service status`    |
+| Move to a newer release         | `slop update`            |
+| Restart                         | `slop service restart`   |
+| Stop and remove from startup    | `slop service uninstall` |
 
 Uninstalling the service leaves your projects, threads, and settings intact.
+Running `slop service install` again repairs a service that `slop service status`
+reports as broken.
 
-Install and update use the version of the CLI you invoke. For nightly, use
-`npx t3@nightly service update`; replace `nightly` with an exact version to pin
-one. An older CLI refuses to replace a newer service unless you explicitly add
-`--allow-downgrade`.
-
-Updating restarts the server. Finish active work first, and wait for any remote
-update already in progress. To match a remote client's version, follow
+`slop update` downloads the newest release on your channel and switches `slop`
+and the service to it. Restarting interrupts running agent turns, terminals,
+and remote clients, so it asks first; answer no and the service keeps running
+the old version until you run `slop service restart`. Pass `--yes` from a
+script. A server you started by hand is left running; stop and start it again
+to pick up the new version. Wait for any remote update already in progress
+before updating; to match a remote client's version, follow
 [Updating codeslop](./updating.md).
+
+Pass an exact version (`slop update 0.0.42`) to pin one, `--channel nightly` to
+switch trains, or `--allow-downgrade` to move backwards. `preview` is a
+maintainers' test train: its builds can be broken and are never offered as
+updates, so the installer and `slop update` ask for confirmation before
+installing one.
+
+`slop uninstall` removes the background service, the `slop` launcher, and the
+downloaded versions after showing you the list and asking once. Your projects,
+threads, and settings under `~/.t3/userdata` are kept. Pass `--yes` from a
+script.
 
 ## Platform support
 
@@ -70,10 +85,11 @@ that session open.
 | `linger-unavailable`                    | Run `loginctl show-user "$(id -un)" --property=Linger` and check that systemd-logind is available.                             |
 | `user-manager-unavailable`              | Run `systemctl --user status` in a login session for the service user; check your distribution's systemd user-session support. |
 | `service-disabled` or `service-stopped` | Read the log and `systemctl --user status t3code.service`, then use the repair command printed by codeslop.                    |
+| `restart-pending`                       | A newer version is installed but the service still runs the previous one. Run `slop service restart`.                          |
 
 On macOS, check **System Settings → General → Login Items** if the service no
 longer starts at login. If agent work cannot access Desktop, Documents, or
-Downloads, it may need Full Disk Access for the Node executable listed in
+Downloads, it may need Full Disk Access for the `slop` executable listed in
 `ProgramArguments` in
 `~/Library/LaunchAgents/com.t3tools.t3code.service.plist`.
 

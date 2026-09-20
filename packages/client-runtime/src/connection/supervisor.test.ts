@@ -74,6 +74,7 @@ const LOOPBACK_ENTRY: ConnectionCatalogEntry = {
     wsBaseUrl: "ws://127.0.0.1:3773",
   }),
   profile: Option.none(),
+  enabled: true,
 };
 
 const DESKTOP_LOCAL_ENTRY: ConnectionCatalogEntry = {
@@ -91,6 +92,7 @@ const DESKTOP_LOCAL_ENTRY: ConnectionCatalogEntry = {
       wsBaseUrl: "ws://localhost:3775",
     }),
   ),
+  enabled: true,
 };
 
 const PREPARED_CONNECTION: PreparedConnection = {

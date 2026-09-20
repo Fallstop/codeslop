@@ -41,6 +41,8 @@ export interface ConnectionCatalogEntry {
   readonly profile: Option.Option<ConnectionProfile>;
   /** False when the user switched the environment off: saved, but never connects. */
   readonly enabled: boolean;
+  /** Discovery rejection stays visible while the saved connection is switched off. */
+  readonly unsupportedReason?: string;
 }
 
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);

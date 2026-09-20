@@ -15,6 +15,7 @@ import {
   BotIcon,
   createLucideIcon,
   GitBranchIcon,
+  HardDriveIcon,
   PanelsTopLeftIcon,
   KeyboardIcon,
   Link2Icon,
@@ -24,7 +25,6 @@ import {
   XIcon,
 } from "lucide-react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import { useCompactSidebarEnabled } from "../../hooks/useSettings";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -84,6 +84,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/providers": BotIcon,
   "/settings/integrations": BlocksIcon,
   "/settings/source-control": GitBranchIcon,
+  "/settings/storage": HardDriveIcon,
   "/settings/connections": Link2Icon,
   "/settings/archived": ArchiveIcon,
 };
@@ -112,13 +113,12 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
     (item) => item.to !== "/settings/projects" || isSettingsOverviewVisible(scopeSearch),
   );
   const { isMobile, setOpenMobile, open, setOpen } = useSidebar();
-  const compactSidebarEnabled = useCompactSidebarEnabled();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [activeResultIndex, setActiveResultIndex] = useState(0);
   const searchableItems = useAvailableSettingsSearchItems();
   const results = useMemo(() => searchSettings(query, searchableItems), [query, searchableItems]);
-  const isSearching = query.trim().length > 0 && !(compactSidebarEnabled && !isMobile && !open);
+  const isSearching = query.trim().length > 0;
   const hasResults = results.length > 0;
 
   useEffect(() => {
@@ -235,18 +235,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
     <>
       <SidebarContent className="overflow-x-hidden">
         <SidebarGroup className="gap-2 p-[var(--sidebar-content-inset)]">
-          <SidebarMenuButton
-            className="hidden group-data-[collapsible=icon]:flex"
-            aria-label="Search settings"
-            tooltip="Search settings"
-            onClick={() => {
-              setOpen(true);
-              requestAnimationFrame(() => searchInputRef.current?.focus());
-            }}
-          >
-            <SearchIcon />
-          </SidebarMenuButton>
-          <div className="flex h-8 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground group-data-[collapsible=icon]:hidden">
+          <div className="flex h-8 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground">
             <SearchIcon className="size-4 shrink-0 text-sidebar-muted-foreground/80" />
             <Input
               ref={searchInputRef}
@@ -343,14 +332,10 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                   <SidebarMenuItem key={item.to}>
                     <SidebarMenuButton
                       isActive={isActive}
-                      aria-label={item.label}
-                      tooltip={item.label}
                       onClick={() => handleSectionClick(item.to)}
                     >
                       <Icon />
-                      <span className="truncate group-data-[collapsible=icon]:hidden">
-                        {item.label}
-                      </span>
+                      <span className="truncate">{item.label}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 );
@@ -360,12 +345,10 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="px-[var(--sidebar-content-inset)] py-1">
-        <div className="contents group-data-[collapsible=icon]:hidden">
-          <Suspense fallback={null}>
-            <T3ConnectSidebarSignIn />
-          </Suspense>
-        </div>
-        <div className="flex items-center gap-1 group-data-[collapsible=icon]:flex-col">
+        <Suspense fallback={null}>
+          <T3ConnectSidebarSignIn />
+        </Suspense>
+        <div className="flex items-center gap-1">
           <div className="min-w-0 flex-1">
             <SidebarUtilityMenu />
           </div>
