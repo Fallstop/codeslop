@@ -29,6 +29,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import { identity } from "effect/Function";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Cookies from "effect/unstable/http/Cookies";
 import * as HttpEffect from "effect/unstable/http/HttpEffect";
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
@@ -390,7 +391,33 @@ export const authHttpApiLayer = HttpApiBuilder.group(
             yield* annotateEnvironmentRequest(args.endpoint.name);
             const session = yield* EnvironmentAuthenticatedPrincipal;
             yield* appendCredentialResponseHeaders;
-            return yield* serverAuth.issueWebSocketTicket(session);
+            const result = yield* serverAuth.issueWebSocketTicket(session);
+            // Every client asks for a ticket before it opens a socket, so this
+            // is the one authenticated call every surface makes on a regular
+            // cadence — and therefore where a sliding session renews itself,
+            // with no extra endpoint and no timer for the client to run.
+            const refreshed = yield* serverAuth.refreshSessionCredential(session);
+            if (Option.isNone(refreshed)) {
+              return result;
+            }
+            // A browser holds its credential in an httpOnly cookie it cannot
+            // read; handing the replacement back in the body would put the
+            // session token in reach of scripts. Set-Cookie instead.
+            if (session.method === "browser-session-cookie") {
+              yield* appendSessionCookie(
+                sessions.cookieName,
+                refreshed.value.token,
+                refreshed.value.expiresAt,
+              );
+              return result;
+            }
+            return {
+              ...result,
+              refreshedCredential: {
+                token: refreshed.value.token,
+                expiresAt: DateTime.toUtc(refreshed.value.expiresAt),
+              },
+            };
           },
           Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
             failEnvironmentInternal("websocket_ticket_issuance_failed", error),

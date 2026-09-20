@@ -465,7 +465,7 @@ describe("remote environment authorization", () => {
         ),
       );
 
-      const url = yield* resolveRemoteWebSocketConnectionUrl({
+      const resolved = yield* resolveRemoteWebSocketConnectionUrl({
         wsBaseUrl: "wss://remote.example.com/",
         httpBaseUrl: "https://remote.example.com/",
         bearerToken: "bearer-token",
@@ -480,9 +480,38 @@ describe("remote environment authorization", () => {
         connectionMethod: "relay",
       }).pipe(provideRemoteHttp(fetch.fetchFn));
 
-      expect(url).toBe(
+      expect(resolved.url).toBe(
         "wss://remote.example.com/ws?wsTicket=ws-ticket&clientSurface=mobile&clientAppVersion=1.2.3&clientDeviceType=phone&clientOs=Android&clientOsMajorVersion=15&clientDeviceModel=Pixel+9&connectionMethod=relay",
       );
+      // A server with nothing to renew leaves the client on the credential it
+      // already holds.
+      expect(resolved.refreshedCredential).toBeNull();
+    }),
+  );
+
+  it.effect("passes back a renewed credential when the ticket carries one", () =>
+    Effect.gen(function* () {
+      const fetch = recordedFetch(
+        Response.json(
+          {
+            ticket: "ws-ticket",
+            expiresAt: "2026-05-01T12:05:00.000Z",
+            refreshedCredential: {
+              token: "renewed-bearer-token",
+              expiresAt: "2026-08-01T12:00:00.000Z",
+            },
+          },
+          { status: 200 },
+        ),
+      );
+
+      const resolved = yield* resolveRemoteWebSocketConnectionUrl({
+        wsBaseUrl: "wss://remote.example.com/",
+        httpBaseUrl: "https://remote.example.com/",
+        bearerToken: "bearer-token",
+      }).pipe(provideRemoteHttp(fetch.fetchFn));
+
+      expect(resolved.refreshedCredential?.token).toBe("renewed-bearer-token");
     }),
   );
 });

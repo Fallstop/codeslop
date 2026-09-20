@@ -220,7 +220,14 @@ export const resolveRemoteWebSocketConnectionUrl = Effect.fn(
   }
   url.searchParams.set("wsTicket", issued.ticket);
   appendClientConnectionParams(url, input.clientMetadata, input.connectionMethod);
-  return url.toString();
+  // The server slides a long-lived session forward when it is far enough
+  // through its window, and answers with the replacement here. Connecting is
+  // the only moment a client is guaranteed to be both online and authorized,
+  // so it is also where the stored credential is rolled over.
+  return {
+    url: url.toString(),
+    refreshedCredential: issued.refreshedCredential ?? null,
+  };
 });
 
 export const resolveRemoteDpopWebSocketConnectionUrl = Effect.fn(

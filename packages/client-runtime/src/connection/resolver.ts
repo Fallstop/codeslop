@@ -144,6 +144,18 @@ const makeBearerBroker = Effect.fn("clientRuntime.connection.broker.makeBearer")
       bearerToken: credential.token,
       connectionMethod: "direct",
     });
+    // A server that slid this session forward answered with a new credential.
+    // Storing it here is what keeps a phone or browser paired indefinitely
+    // while it keeps connecting, instead of expiring on the original window.
+    if (
+      authorized.httpAuthorization?._tag === "Bearer" &&
+      authorized.httpAuthorization.token !== credential.token
+    ) {
+      yield* credentials.put(
+        target.connectionId,
+        new BearerConnectionCredential({ token: authorized.httpAuthorization.token }),
+      );
+    }
     return {
       environmentId: authorized.environmentId,
       label: authorized.label,

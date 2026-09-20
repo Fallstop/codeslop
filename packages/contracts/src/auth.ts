@@ -204,9 +204,25 @@ export const AuthAccessTokenResult = Schema.Struct({
 });
 export type AuthAccessTokenResult = typeof AuthAccessTokenResult.Type;
 
+/**
+ * A replacement session credential, returned only when the presented one has
+ * entered its refresh window. Optional so an older client simply keeps using
+ * the credential it already holds until that one lapses.
+ */
+export const AuthRefreshedSessionCredential = Schema.Struct({
+  token: TrimmedNonEmptyString,
+  expiresAt: Schema.DateTimeUtc,
+});
+export type AuthRefreshedSessionCredential = typeof AuthRefreshedSessionCredential.Type;
+
 export const AuthWebSocketTicketResult = Schema.Struct({
   ticket: TrimmedNonEmptyString,
   expiresAt: Schema.DateTimeUtc,
+  /**
+   * Present only for credentials the client itself stores. A browser session
+   * is refreshed through its cookie instead, so this stays absent there.
+   */
+  refreshedCredential: Schema.optionalKey(AuthRefreshedSessionCredential),
 });
 export type AuthWebSocketTicketResult = typeof AuthWebSocketTicketResult.Type;
 
