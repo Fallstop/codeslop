@@ -12,6 +12,8 @@
  *
  * @module EmbeddingModel
  */
+import * as NodeModule from "node:module";
+
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -26,6 +28,11 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import { EMBEDDING_SCHEME_VERSION } from "./embeddingText.ts";
 
 export const DEFAULT_EMBEDDING_MODEL_ID = "Xenova/all-MiniLM-L6-v2";
+
+const requireFromHere = NodeModule.createRequire(import.meta.url);
+type TransformersModule = typeof import("@huggingface/transformers");
+const loadTransformers = (): TransformersModule =>
+  requireFromHere("@huggingface/transformers") as TransformersModule;
 
 const LOAD_RETRY_BACKOFF_MS = 15 * 60 * 1000;
 const LOAD_TIMEOUT = "5 minutes";
@@ -130,7 +137,13 @@ export const make = Effect.fn("semanticSearch.embeddingModel.make")(function* ()
 
   const loadPipeline = Effect.tryPromise({
     try: async () => {
-      const transformers = await import("@huggingface/transformers");
+      // `require`, not `import`: the package is a runtime external, and a
+      // static or bundler-visible dynamic import would put its own imports of
+      // sharp and onnxruntime-common in the emitted module graph. The single
+      // executable can only `import` built-ins, so those would pass the
+      // bundler and then throw inside the binary. Its CJS entry point loads
+      // from the node_modules tree staged beside the executable.
+      const transformers = loadTransformers();
       transformers.env.cacheDir = cacheDir;
       const pipeline = await transformers.pipeline("feature-extraction", modelId, {
         dtype: "q8",

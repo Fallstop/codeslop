@@ -43,14 +43,19 @@ export const CLI_RUNTIME_EXTERNAL_PREFIXES = [
   // becoming real if either is ever declared as a dependency.
   "bufferutil",
   "utf-8-validate",
+  // The embedding runtime and its runtime closure (jinja, tokenizers), loaded
+  // through createRequire at the point of use. External so the bundler never
+  // walks into transformers: it statically imports sharp and
+  // onnxruntime-common, and those imports in the emitted graph are
+  // unresolvable inside the single executable, which can only `import`
+  // built-ins.
+  "@huggingface/",
   // Semantic search's embedding runtime. onnxruntime-node loads its prebuilt
   // addon with `require("../bin/napi-v6/<platform>/<arch>/onnxruntime_binding.node")`,
   // a path relative to its own lib directory. Inlined into a bundle chunk that
   // path resolves against apps/server/dist instead and misses, so the model
   // never loads and semantic search silently degrades to lexical-only.
   // onnxruntime-common follows it because the runtime requires it by name.
-  // @huggingface/transformers itself stays bundled: it reaches onnxruntime-node
-  // through a bare specifier, which resolves from disk either way.
   "onnxruntime-node",
   "onnxruntime-common",
   // @huggingface/transformers statically imports sharp, a libvips addon that
@@ -75,7 +80,14 @@ export const CLI_RUNTIME_EXTERNAL_PREFIXES = [
  * exempting them keeps semver, type-fest, escape-string-regexp and the rest of
  * global-agent's tree inside the bundle where they belong.
  */
-export const CLI_EXTERNAL_INSTALL_ONLY_DEPENDENCIES = ["adm-zip", "global-agent"] as const;
+export const CLI_EXTERNAL_INSTALL_ONLY_DEPENDENCIES = [
+  "adm-zip",
+  "global-agent",
+  // transformers declares the web runtime but its Node build inlines the parts
+  // it needs, so nothing ever requires the package (or its protobufjs tree) by
+  // name on this platform. On Node it loads onnxruntime-node instead.
+  "onnxruntime-web",
+] as const;
 
 /** True when `name` is only reached by an external package's install script. */
 export function isInstallOnlyExternalDependency(name: string): boolean {

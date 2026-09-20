@@ -87,7 +87,7 @@ describe("selectCliRuntimeExternalDependencies", () => {
   it("selects every external root declared by the server", () => {
     assert.deepStrictEqual(
       Object.keys(selectCliRuntimeExternalDependencies(serverPackageJson.dependencies)).sort(),
-      ["@ff-labs/fff-node", "node-pty", "onnxruntime-node", "sharp"],
+      ["@ff-labs/fff-node", "@huggingface/transformers", "node-pty", "onnxruntime-node", "sharp"],
     );
   });
 });
