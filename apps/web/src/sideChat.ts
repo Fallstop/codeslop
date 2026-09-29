@@ -147,22 +147,18 @@ export function mergeSideChatTimeline(
   workEntries: ReadonlyArray<WorkLogEntry>,
 ): ReadonlyArray<SideChatRow> {
   const rows: SideChatRow[] = [
-    ...messages.map(
-      (message): SideChatRow => ({
-        kind: "message",
-        id: `message:${message.id}`,
-        createdAt: message.createdAt,
-        message,
-      }),
-    ),
-    ...workEntries.map(
-      (entry): SideChatRow => ({
-        kind: "work",
-        id: `work:${entry.id}`,
-        createdAt: entry.createdAt,
-        entry,
-      }),
-    ),
+    ...messages.map((message): SideChatRow => ({
+      kind: "message",
+      id: `message:${message.id}`,
+      createdAt: message.createdAt,
+      message,
+    })),
+    ...workEntries.map((entry): SideChatRow => ({
+      kind: "work",
+      id: `work:${entry.id}`,
+      createdAt: entry.createdAt,
+      entry,
+    })),
   ];
 
   return rows.toSorted((left, right) => {

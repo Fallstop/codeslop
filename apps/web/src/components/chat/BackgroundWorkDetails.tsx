@@ -29,7 +29,7 @@ export function BackgroundWorkDetails({
         Details
       </PopoverTrigger>
       {/* Base UI unmounts the popup when closed, so the fetch only runs on open. */}
-      <PopoverPopup side="top" align="end" className="w-80" viewportClassName="py-2">
+      <PopoverPopup side="top" align="end" width="md" padding="compact">
         <BackgroundWorkTaskList environmentId={environmentId} threadId={threadId} />
       </PopoverPopup>
     </Popover>

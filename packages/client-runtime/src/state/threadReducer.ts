@@ -135,6 +135,7 @@ export function applyThreadDetailEvent(
           settledAt: null,
           unsettledAt: null,
           activeOrderKey: null,
+          autoSettleDisabledAt: null,
           snoozedUntil: null,
           snoozedAt: null,
           deletedAt: null,
@@ -253,6 +254,16 @@ export function applyThreadDetailEvent(
         },
       };
 
+    case "thread.auto-settle-set":
+      return {
+        kind: "updated",
+        thread: {
+          ...thread,
+          autoSettleDisabledAt: event.payload.autoSettleDisabledAt,
+          updatedAt: event.payload.updatedAt,
+        },
+      };
+
     case "thread.handoff-started":
       return {
         kind: "updated",
@@ -332,6 +343,9 @@ export function applyThreadDetailEvent(
         thread: {
           ...thread,
           ...(event.payload.title !== undefined ? { title: event.payload.title } : {}),
+          ...(event.payload.titleState !== undefined
+            ? { titleState: event.payload.titleState }
+            : {}),
           ...(event.payload.titleRegeneration !== undefined
             ? { titleRegeneration: event.payload.titleRegeneration }
             : {}),

@@ -48,6 +48,7 @@ export type FailThreadHandoffInput = CommandInput<"thread.handoff.fail">;
 export type CancelThreadHandoffInput = CommandInput<"thread.handoff.cancel">;
 export type CompleteThreadHandoffInput = CommandInput<"thread.handoff.complete">;
 export type ClearThreadHandoffInput = CommandInput<"thread.handoff.clear">;
+export type SetThreadAutoSettleInput = CommandInput<"thread.auto-settle.set">;
 export type ReorderActiveThreadInput = CommandInput<"thread.active.reorder">;
 export type UpdateThreadMetadataInput = CommandInput<"thread.meta.update">;
 export type LinkThreadPullRequestInput = CommandInput<"thread.pull-request.link">;
@@ -289,6 +290,16 @@ export const unpinThread: (input: UnpinThreadInput) => CommandEffect = Effect.fn
   return yield* dispatch({
     ...input,
     type: "thread.unpin",
+    commandId: yield* commandId(input),
+  });
+});
+
+export const setThreadAutoSettle: (input: SetThreadAutoSettleInput) => CommandEffect = Effect.fn(
+  "EnvironmentCommands.setThreadAutoSettle",
+)(function* (input) {
+  return yield* dispatch({
+    ...input,
+    type: "thread.auto-settle.set",
     commandId: yield* commandId(input),
   });
 });

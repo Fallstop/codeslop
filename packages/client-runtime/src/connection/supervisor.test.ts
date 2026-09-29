@@ -74,6 +74,7 @@ const LOOPBACK_ENTRY: ConnectionCatalogEntry = {
     wsBaseUrl: "ws://127.0.0.1:3773",
   }),
   profile: Option.none(),
+  enabled: true,
 };
 
 const DESKTOP_LOCAL_ENTRY: ConnectionCatalogEntry = {
@@ -91,6 +92,7 @@ const DESKTOP_LOCAL_ENTRY: ConnectionCatalogEntry = {
       wsBaseUrl: "ws://localhost:3775",
     }),
   ),
+  enabled: true,
 };
 
 const PREPARED_CONNECTION: PreparedConnection = {
@@ -1369,11 +1371,11 @@ describe("EnvironmentSupervisor", () => {
             Layer.succeed(ManagedRelayDpopSigner, signer),
             Layer.succeed(ManagedRelayClient, relay),
             Layer.succeed(ClientCapabilities.CloudSession, {
-              identity: Effect.succeed(Option.some({ accountId: "test-account" })),
+              identity: Effect.succeedSome({ accountId: "test-account" }),
               clerkToken: Effect.succeed("clerk-token"),
             }),
             Layer.succeed(ClientCapabilities.RelayDeviceIdentity, {
-              deviceId: Effect.succeed(Option.none()),
+              deviceId: Effect.succeedNone,
             }),
             TokenStore.layer({
               get: () => Ref.get(token),
