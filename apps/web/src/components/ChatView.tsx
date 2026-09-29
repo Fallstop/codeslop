@@ -303,14 +303,11 @@ import {
   type ComposerImageAttachment,
   type DraftThreadEnvMode,
   finalizePromotedDraftThreadByRef,
-  hydrateImagesFromPersisted,
   markPromotedDraftThreadByRef,
   restoreFailedBackgroundDraftThread,
   useComposerDraftStore,
   DraftId,
 } from "../composerDraftStore";
-import { threadQueueHoldReason, type QueuedTurn, type ThreadQueueHoldReason } from "../threadQueue";
-import { useThreadQueueStore } from "../threadQueueStore";
 import {
   formatTerminalContextLabel,
   type TerminalContextDraft,
@@ -749,9 +746,6 @@ function formatOutgoingPrompt(params: {
   const promptEffort = resolvePromptInjectedEffort(caps, params.effort);
   return applyClaudePromptEffortPrefix(params.text, promptEffort);
 }
-/** Stable identity for threads with no queue, so the selector never re-renders. */
-const EMPTY_QUEUED_TURNS: ReadonlyArray<QueuedTurn> = [];
-
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
 
@@ -3329,36 +3323,6 @@ export default function ChatView(props: ChatViewProps) {
     activePendingUserInput: activePendingUserInput?.requestId ?? null,
     threadError,
   });
-  // ------------------------------------------------------------------
-  // Queued turns
-  // ------------------------------------------------------------------
-  const queuedTurnsForThread = useThreadQueueStore(
-    (state) =>
-      (activeThreadKey ? state.entriesByThreadKey[activeThreadKey] : undefined) ??
-      EMPTY_QUEUED_TURNS,
-  );
-  const removeQueuedTurn = useThreadQueueStore((state) => state.removeEntry);
-  const restoreQueuedTurnToFront = useThreadQueueStore((state) => state.restoreEntryToFront);
-  const queueHoldReason = useMemo<ThreadQueueHoldReason | null>(
-    () =>
-      threadQueueHoldReason({
-        sessionStatus: activeThread?.session?.status ?? null,
-        hasPendingApproval: pendingApprovals.length > 0,
-        hasPendingUserInput: pendingUserInputs.length > 0,
-        isSendBusy,
-        isConnecting,
-        environmentUnavailable: Boolean(activeEnvironmentUnavailable),
-      }),
-    [
-      activeEnvironmentUnavailable,
-      activeThread?.session?.status,
-      isConnecting,
-      isSendBusy,
-      pendingApprovals.length,
-      pendingUserInputs.length,
-    ],
-  );
-
   const optimisticCompactionMessage = optimisticUserMessages.at(-1);
   const pendingCompactionMessage =
     isSendBusy &&
@@ -7584,13 +7548,6 @@ export default function ChatView(props: ChatViewProps) {
       annotation: PreviewAnnotationPayload;
       image: ComposerImageAttachment | null;
     },
-    /**
-     * When present, the turn's content comes from the queue instead of the
-     * live composer, which stays untouched. The composer is still consulted
-     * for provider availability — a queued turn cannot send to a thread whose
-     * provider has since been disabled.
-     */
-    queuedTurn?: QueuedTurn,
   ) => {
     e?.preventDefault();
     // Typed out in full rather than picked from the menu. Attachments or contexts
@@ -7699,33 +7656,18 @@ export default function ChatView(props: ChatViewProps) {
     }
     const {
       images: sendContextImages,
-      files: sendContextFiles,
-      terminalContexts: sendContextTerminalContexts,
+      files: composerFiles,
+      terminalContexts: composerTerminalContexts,
       previewAnnotations: sendContextPreviewAnnotations,
-      reviewComments: sendContextReviewComments,
+      reviewComments: composerReviewComments,
       selectedProvider: ctxSelectedProvider,
-      selectedModel: sendContextSelectedModel,
+      selectedModel: ctxSelectedModel,
       selectedProviderModels: ctxSelectedProviderModels,
       selectedPromptEffort: ctxSelectedPromptEffort,
-      selectedModelSelection: sendContextModelSelection,
+      selectedModelSelection: ctxSelectedModelSelection,
       interactionMode: sendInteractionMode,
       interactionModeEnabled: sendInteractionModeEnabled,
     } = sendCtx;
-    const composerFiles = queuedTurn ? [] : sendContextFiles;
-    const composerTerminalContexts = queuedTurn
-      ? queuedTurn.terminalContexts
-      : sendContextTerminalContexts;
-    const composerReviewComments = queuedTurn
-      ? queuedTurn.reviewComments
-      : sendContextReviewComments;
-    const ctxSelectedModelSelection = queuedTurn
-      ? queuedTurn.modelSelection
-      : sendContextModelSelection;
-    const ctxSelectedModel = queuedTurn
-      ? queuedTurn.modelSelection.model
-      : sendContextSelectedModel;
-    const runtimeModeForSend = queuedTurn ? queuedTurn.runtimeMode : runtimeMode;
-    const interactionModeForSend = queuedTurn ? queuedTurn.interactionMode : sendInteractionMode;
     const annotationImageAlreadyAttached =
       directAnnotation?.image !== undefined &&
       sendContextImages.some((image) => image.id === directAnnotation.image?.id);
@@ -7735,17 +7677,15 @@ export default function ChatView(props: ChatViewProps) {
       directAnnotation?.image !== undefined &&
       !annotationImageAlreadyAttached &&
       sendContextImages.length + composerFiles.length < PROVIDER_SEND_TURN_MAX_ATTACHMENTS;
-    const composerImages = queuedTurn
-      ? hydrateImagesFromPersisted(queuedTurn.attachments)
-      : directAnnotation?.image && annotationImageAppended
+    const composerImages =
+      directAnnotation?.image && annotationImageAppended
         ? [...sendContextImages, directAnnotation.image]
         : sendContextImages;
-    const composerPreviewAnnotations = queuedTurn
-      ? queuedTurn.previewAnnotations
-      : directAnnotation &&
-          !sendContextPreviewAnnotations.some(
-            (annotation) => annotation.id === directAnnotation.annotation.id,
-          )
+    const composerPreviewAnnotations =
+      directAnnotation &&
+      !sendContextPreviewAnnotations.some(
+        (annotation) => annotation.id === directAnnotation.annotation.id,
+      )
         ? [
             ...sendContextPreviewAnnotations,
             {
@@ -7762,13 +7702,11 @@ export default function ChatView(props: ChatViewProps) {
         : sendContextPreviewAnnotations;
     // A direct "send annotation" writes the draft and sends in the same tick; the reference
     // must be in the text now, not after the next render.
-    const promptForSend = queuedTurn
-      ? queuedTurn.text
-      : directAnnotation
-        ? ensureInlineContextReferences(promptRef.current, [
-            previewAnnotationContextReference(directAnnotation.annotation),
-          ])
-        : promptRef.current;
+    const promptForSend = directAnnotation
+      ? ensureInlineContextReferences(promptRef.current, [
+          previewAnnotationContextReference(directAnnotation.annotation),
+        ])
+      : promptRef.current;
     const {
       trimmedPrompt: trimmed,
       sendableTerminalContexts: sendableComposerTerminalContexts,
@@ -7839,7 +7777,6 @@ export default function ChatView(props: ChatViewProps) {
       return;
     }
     if (
-      !queuedTurn &&
       !directAnnotation &&
       sendInteractionModeEnabled &&
       showPlanFollowUpPrompt &&
@@ -7905,9 +7842,8 @@ export default function ChatView(props: ChatViewProps) {
     // `/btw` opens a side chat instead of sending a turn. Checked before the
     // other slash commands and without a feature gate: it is the only way to
     // reach the panel from the keyboard, and it must never reach the agent as
-    // text. Queued turns are exempt — a queue drains into the thread it was
-    // stacked on, not into a side chat.
-    const sideChatCommand = queuedTurn ? null : parseSideChatCommand(trimmed);
+    // text.
+    const sideChatCommand = parseSideChatCommand(trimmed);
     if (sideChatCommand) {
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
@@ -7917,7 +7853,6 @@ export default function ChatView(props: ChatViewProps) {
     }
     // Providers without the legacy toggle receive their native commands unchanged.
     const standaloneSlashCommand =
-      !queuedTurn &&
       sendInteractionModeEnabled &&
       composerImages.length === 0 &&
       composerFiles.length === 0 &&
@@ -7966,10 +7901,8 @@ export default function ChatView(props: ChatViewProps) {
       (useQueuedMessageStore.getState().queuesByThreadKey[activeThreadKey] ?? []).some(
         (message) => message.sending !== undefined || !message.holdUntilUserAction,
       );
-    // A drained queued turn is already a separate turn; it never re-queues here.
     if (
       !directAnnotation &&
-      !queuedTurn &&
       activeThreadKey &&
       (queueStillSending ||
         (phase === "running" &&
@@ -8052,21 +7985,13 @@ export default function ChatView(props: ChatViewProps) {
     const outgoingMessageContext = buildOutgoingMessageContext(
       composerAttachmentsSnapshot.map((attachment) => attachment.id),
     );
-    // A queued turn resolved its effort against the model it was queued with,
-    // so the prefix is applied from that snapshot rather than re-derived from
-    // whatever the composer points at now.
-    const outgoingMessageText = queuedTurn
-      ? applyClaudePromptEffortPrefix(
-          messageTextForSend || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
-          queuedTurn.injectedPromptEffort,
-        )
-      : formatOutgoingPrompt({
-          provider: ctxSelectedProvider,
-          model: ctxSelectedModel,
-          models: ctxSelectedProviderModels,
-          effort: ctxSelectedPromptEffort,
-          text: messageTextForSend || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
-        });
+    const outgoingMessageText = formatOutgoingPrompt({
+      provider: ctxSelectedProvider,
+      model: ctxSelectedModel,
+      models: ctxSelectedProviderModels,
+      effort: ctxSelectedPromptEffort,
+      text: messageTextForSend || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
+    });
     if (composerRef.current?.validateProviderInput(outgoingMessageText) === false) {
       return;
     }
@@ -8567,18 +8492,9 @@ export default function ChatView(props: ChatViewProps) {
         }),
       );
     }
-    if (queuedTurn) {
-      // Committed: past this point the turn is dispatching, so it leaves the
-      // queue and the failure path below is what puts it back.
-      const queueThreadKey = drainingQueueThreadKeyRef.current;
-      if (queueThreadKey) {
-        removeQueuedTurn(queueThreadKey, queuedTurn.id);
-      }
-    } else {
-      promptRef.current = "";
-      clearComposerDraftContent(composerDraftTarget);
-      composerRef.current?.resetCursorState();
-    }
+    promptRef.current = "";
+    clearComposerDraftContent(composerDraftTarget);
+    composerRef.current?.resetCursorState();
 
     let firstComposerImageName: string | null = null;
     if (composerImagesSnapshot.length > 0) {
@@ -8633,8 +8549,8 @@ export default function ChatView(props: ChatViewProps) {
         ...(localCheckoutBranchMismatch
           ? { branch: localCheckoutBranchMismatch.currentBranch }
           : {}),
-        runtimeMode: runtimeModeForSend,
-        interactionMode: interactionModeForSend,
+        runtimeMode,
+        interactionMode: sendInteractionMode,
       });
       if (settingsResult._tag === "Failure") {
         failure = settingsResult;
@@ -8665,8 +8581,8 @@ export default function ChatView(props: ChatViewProps) {
                       projectId: activeProject.id,
                       title,
                       modelSelection: threadCreateModelSelection,
-                      runtimeMode: runtimeModeForSend,
-                      interactionMode: interactionModeForSend,
+                      runtimeMode,
+                      interactionMode: sendInteractionMode,
                       branch: activeThreadBranch,
                       worktreePath: activeThread.worktreePath,
                       createdAt: activeThread.createdAt,
@@ -8731,8 +8647,8 @@ export default function ChatView(props: ChatViewProps) {
           },
           modelSelection: ctxSelectedModelSelection,
           titleSeed: title,
-          runtimeMode: runtimeModeForSend,
-          interactionMode: interactionModeForSend,
+          runtimeMode,
+          interactionMode: sendInteractionMode,
           ...(bootstrap ? { bootstrap } : {}),
           createdAt: messageCreatedAt,
         },
@@ -8820,22 +8736,7 @@ export default function ChatView(props: ChatViewProps) {
         );
         clearBackgroundDraftSubmissionByRef(scopeThreadRef(environmentId, threadIdForSend));
       }
-      if (queuedTurn) {
-        // The entry goes back to the front of the queue rather than into the
-        // composer, which may already hold the user's next message.
-        setOptimisticUserMessages((existing) => {
-          const removed = existing.filter((message) => message.id === messageIdForSend);
-          for (const message of removed) {
-            revokeUserMessagePreviewUrls(message);
-          }
-          const next = existing.filter((message) => message.id !== messageIdForSend);
-          return next.length === existing.length ? existing : next;
-        });
-        const queueThreadKey = drainingQueueThreadKeyRef.current;
-        if (queueThreadKey) {
-          restoreQueuedTurnToFront(queueThreadKey, queuedTurn);
-        }
-      } else if (
+      if (
         backgroundDraftOpened
           ? !composerDraftHasUserContent(
               useComposerDraftStore.getState().getComposerDraft(composerDraftTarget),
@@ -8924,51 +8825,6 @@ export default function ChatView(props: ChatViewProps) {
       resetLocalDispatch();
     }
   };
-
-  // `onSend` is rebuilt every render, so the drain reads it through a ref
-  // rather than listing it as a dependency and re-running on every keystroke.
-  const onSendRef = useRef(onSend);
-  onSendRef.current = onSend;
-  const queueDrainInFlightRef = useRef(false);
-  /**
-   * The queue a draining turn came from. A failed send has to go back to that
-   * thread's queue, not to whichever thread is active by the time the send
-   * settles.
-   */
-  const drainingQueueThreadKeyRef = useRef<string | null>(null);
-
-  const drainNextQueuedTurn = useCallback(async () => {
-    if (queueDrainInFlightRef.current) return;
-    if (!activeThreadKey) return;
-    queueDrainInFlightRef.current = true;
-    drainingQueueThreadKeyRef.current = activeThreadKey;
-    try {
-      // The entry stays queued until `onSend` commits it. Its early returns
-      // (no thread, detail still loading) then leave the queue untouched and
-      // the next state change retries, rather than silently eating a turn.
-      const next = queuedTurnsForThread[0];
-      if (next) {
-        await onSendRef.current(undefined, "foreground", undefined, next);
-      }
-    } finally {
-      drainingQueueThreadKeyRef.current = null;
-      queueDrainInFlightRef.current = false;
-    }
-  }, [activeThreadKey, queuedTurnsForThread]);
-
-  // One turn at a time: the effect re-runs when the queue shrinks or the hold
-  // clears, so the next entry goes out on the following pass rather than in a
-  // loop that could outrun the session status it is gating on.
-  useEffect(() => {
-    if (queuedTurnsForThread.length === 0) return;
-    if (queueHoldReason !== null) return;
-    void drainNextQueuedTurn();
-  }, [drainNextQueuedTurn, queueHoldReason, queuedTurnsForThread.length]);
-
-  /** Releases a queue parked by an interrupt or a thread error. */
-  const onSendQueueNow = useCallback(() => {
-    void drainNextQueuedTurn();
-  }, [drainNextQueuedTurn]);
 
   // Queued messages go out from QueuedMessageSender, which also covers
   // threads that are not on screen. Send now uses the same path but skips the
@@ -9739,6 +9595,8 @@ export default function ChatView(props: ChatViewProps) {
       setWorkLocallyResendDraftId(draftId);
     })();
   }, [cancelWorktreeSetup, draftId, routeThreadRef.environmentId, worktreeSetup]);
+  const onSendRef = useRef(onSend);
+  onSendRef.current = onSend;
   // Resend once the cancelled dispatch has settled and the composer is free.
   // Every state that makes `onSend` bail and wait is part of the readiness
   // check, so the flag survives a reconnect, a reverting checkpoint, or a
@@ -10465,8 +10323,6 @@ export default function ChatView(props: ChatViewProps) {
                             respondingRequestIds={respondingRequestIds}
                             showPlanFollowUpPrompt={showPlanFollowUpPrompt}
                             activeProposedPlan={activeProposedPlan}
-                            queueHoldReason={queueHoldReason}
-                            onSendQueueNow={onSendQueueNow}
                             activeTasksProgress={activeComposerTasksProgress}
                             activeTaskSteps={activeComposerTaskSteps}
                             threadSyncPhase={activeEnvironmentUnavailable ? null : threadSyncPhase}

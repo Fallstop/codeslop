@@ -2,7 +2,6 @@
 
 ## Using codeslop
 
-- [Queueing turns](./user/queued-turns.md)
 - [Handing a thread to another machine](./user/handoff.md)
 - [Semantic chat search](./user/semantic-search.md)
 - [Environment themes](./user/environment-theme.md)

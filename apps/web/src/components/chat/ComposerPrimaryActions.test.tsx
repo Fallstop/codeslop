@@ -37,35 +37,8 @@ function renderPendingActions(isRunning: boolean) {
       isEnvironmentUnavailable: false,
       isPreparingWorktree: false,
       hasSendableContent: false,
-      queuedTurnCount: 0,
-      queueShortcutLabel: null,
       onPreviousPendingQuestion: () => {},
       onInterrupt: () => {},
-      onQueueAsNewTurn: () => {},
-      onImplementPlanInNewThread: () => {},
-    }),
-  );
-}
-
-function renderStandaloneStop() {
-  return renderToStaticMarkup(
-    createElement(ComposerPrimaryActions, {
-      compact: true,
-      pendingAction: null,
-      isRunning: true,
-      showPlanFollowUpPrompt: false,
-      promptHasText: false,
-      isSendBusy: false,
-      sendDisabledReason: null,
-      isConnecting: false,
-      isEnvironmentUnavailable: false,
-      isPreparingWorktree: false,
-      hasSendableContent: false,
-      queuedTurnCount: 0,
-      queueShortcutLabel: null,
-      onPreviousPendingQuestion: () => {},
-      onInterrupt: () => {},
-      onQueueAsNewTurn: () => {},
       onImplementPlanInNewThread: () => {},
     }),
   );
@@ -85,11 +58,8 @@ function renderRunningActions(hasSendableContent: boolean) {
       isEnvironmentUnavailable: false,
       isPreparingWorktree: false,
       hasSendableContent,
-      queuedTurnCount: 0,
-      queueShortcutLabel: null,
       onPreviousPendingQuestion: () => {},
       onInterrupt: () => {},
-      onQueueAsNewTurn: () => {},
       onImplementPlanInNewThread: () => {},
     }),
   );
@@ -109,11 +79,8 @@ function renderSendButton(sendDisabledReason: string | null = null) {
       isEnvironmentUnavailable: false,
       isPreparingWorktree: false,
       hasSendableContent: true,
-      queuedTurnCount: 0,
-      queueShortcutLabel: null,
       onPreviousPendingQuestion: () => {},
       onInterrupt: () => {},
-      onQueueAsNewTurn: () => {},
       onImplementPlanInNewThread: () => {},
     }),
   );
@@ -123,47 +90,6 @@ afterEach(() => {
   stageArtworkState.mode = "none";
   stageArtworkState.variant = null;
 });
-
-/** The single `<button>` tag carrying the given aria-label, siblings excluded. */
-function buttonMarkup(markup: string, label: string): string {
-  const labelIndex = markup.indexOf(`aria-label="${label}"`);
-  if (labelIndex === -1) return "";
-  const start = markup.lastIndexOf("<button", labelIndex);
-  return markup.slice(start, markup.indexOf(">", labelIndex) + 1);
-}
-
-function stopButtonMarkup(markup: string): string {
-  return buttonMarkup(markup, "Stop generation");
-}
-
-function queueButtonMarkup(markup: string): string {
-  const withCount = markup.match(/aria-label="(Queue as a new turn[^"]*)"/);
-  return withCount ? buttonMarkup(markup, withCount[1]!) : "";
-}
-
-function renderRunningWithQueue(queuedTurnCount: number, hasSendableContent = false) {
-  return renderToStaticMarkup(
-    createElement(ComposerPrimaryActions, {
-      compact: true,
-      pendingAction: null,
-      isRunning: true,
-      showPlanFollowUpPrompt: false,
-      promptHasText: false,
-      isSendBusy: false,
-      sendDisabledReason: null,
-      isConnecting: false,
-      isEnvironmentUnavailable: false,
-      isPreparingWorktree: false,
-      hasSendableContent,
-      queuedTurnCount,
-      queueShortcutLabel: null,
-      onPreviousPendingQuestion: () => {},
-      onInterrupt: () => {},
-      onQueueAsNewTurn: () => {},
-      onImplementPlanInNewThread: () => {},
-    }),
-  );
-}
 
 describe("ComposerPrimaryActions", () => {
   it("disables and labels the send button while feedback is uploading", () => {
@@ -179,32 +105,6 @@ describe("ComposerPrimaryActions", () => {
 
   it("does not offer Stop generation for a pending request without a running turn", () => {
     expect(renderPendingActions(false)).not.toContain('aria-label="Stop generation"');
-  });
-
-  it("matches the small pending action size without changing the standalone size", () => {
-    expect(renderPendingActions(true)).toContain("size-8 sm:size-7");
-    // Scoped to the Stop button itself: it now renders beside a Queue button
-    // that legitimately carries the smaller icon sizing.
-    expect(stopButtonMarkup(renderStandaloneStop())).toContain("size-8 sm:h-8 sm:w-8");
-    expect(stopButtonMarkup(renderStandaloneStop())).not.toContain("sm:size-7");
-  });
-
-  it("offers Queue alongside Stop while a turn is running", () => {
-    const markup = renderStandaloneStop();
-    expect(markup).toContain('aria-label="Queue as a new turn"');
-    expect(markup).toContain('aria-label="Stop generation"');
-  });
-
-  it("counts the turns already waiting in the Queue label", () => {
-    expect(renderRunningWithQueue(2)).toContain(
-      'aria-label="Queue as a new turn (2 already waiting)"',
-    );
-  });
-
-  it("disables Queue when the composer has nothing to queue", () => {
-    // The attribute, not the substring: the class list carries `disabled:` variants.
-    expect(queueButtonMarkup(renderStandaloneStop())).toContain('disabled=""');
-    expect(queueButtonMarkup(renderRunningWithQueue(0, true))).not.toContain('disabled=""');
   });
 
   it("renders stage artwork inside the send button when artwork identification is active", () => {
@@ -232,7 +132,7 @@ describe("ComposerPrimaryActions", () => {
     expect(markup).toContain('type="submit"');
   });
 
-  it("offers no send action while running with an empty composer", () => {
+  it("keeps stop as the only action while running with an empty composer", () => {
     const markup = renderRunningActions(false);
 
     expect(markup).toContain('aria-label="Stop generation"');

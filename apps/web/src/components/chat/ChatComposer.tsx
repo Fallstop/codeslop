@@ -50,11 +50,7 @@ import {
 } from "@t3tools/client-runtime/text-paste";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import { folderDropTarget, resolveDroppedFolderPath } from "./folderDrop";
-import {
-  createModelSelection,
-  normalizeModelSlug,
-  resolvePromptInjectedEffort,
-} from "@t3tools/shared/model";
+import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
 import { USAGE_LIMITS_COMMAND } from "@t3tools/shared/usageLimits";
 import {
   memo,
@@ -125,14 +121,6 @@ import {
 } from "../../promptStashStore";
 import { ComposerStashBadge } from "./ComposerStashBadge";
 import { ComposerStashMenu } from "./ComposerStashMenu";
-import { ComposerQueuedTurns } from "./ComposerQueuedTurns";
-import {
-  queuedTurnHasContent,
-  type QueuedTurn,
-  type QueuedTurnContent,
-  type ThreadQueueHoldReason,
-} from "../../threadQueue";
-import { MAX_QUEUED_TURNS_PER_THREAD, useThreadQueueStore } from "../../threadQueueStore";
 import { useComposerMenuState } from "./useComposerMenuState";
 import { useComposerTriggerState } from "./useComposerTriggerState";
 import { useComposerFocusState } from "./useComposerFocusState";
@@ -190,7 +178,6 @@ import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { getTerminalFocusOwner } from "../../lib/terminalFocus";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../../keybindings";
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   type TerminalContextDraft,
   type TerminalContextSelection,
@@ -957,7 +944,6 @@ import {
   XIcon,
 } from "lucide-react";
 import { proposedPlanTitle } from "../../proposedPlan";
-import { getProviderModelCapabilities } from "../../providerModels";
 import { hasProviderSetup } from "./ProviderStatusBanner";
 import {
   applyProviderInstanceSettings,
@@ -999,8 +985,6 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { serverEnvironment } from "../../state/server";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
 
-/** Stable identity for threads with no queue, so the selector never re-renders. */
-const EMPTY_QUEUE: ReadonlyArray<QueuedTurn> = [];
 const WORKSPACE_SNAPSHOT_RETRY_COOLDOWN_MS = 10_000;
 
 const extendReplacementRangeForTrailingSpace = (
@@ -1223,11 +1207,8 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   isEnvironmentUnavailable: boolean;
   hasSendableContent: boolean;
   preserveComposerFocusOnPointerDown?: boolean;
-  queuedTurnCount: number;
-  queueShortcutLabel: string | null;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
-  onQueueAsNewTurn: () => void;
   onImplementPlanInNewThread: () => void;
   onCompactContext?: (() => void) | undefined;
   compactDisabled: boolean;
@@ -1259,11 +1240,8 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         isPreparingWorktree={props.isPreparingWorktree}
         hasSendableContent={props.hasSendableContent}
         preserveComposerFocusOnPointerDown={props.preserveComposerFocusOnPointerDown ?? false}
-        queuedTurnCount={props.queuedTurnCount}
-        queueShortcutLabel={props.queueShortcutLabel}
         onPreviousPendingQuestion={props.onPreviousPendingQuestion}
         onInterrupt={props.onInterrupt}
-        onQueueAsNewTurn={props.onQueueAsNewTurn}
         onImplementPlanInNewThread={props.onImplementPlanInNewThread}
       />
     </>
@@ -1412,12 +1390,6 @@ export interface ChatComposerProps {
   activeTaskSteps: readonly ComposerTaskStep[] | null;
   threadSyncPhase: ThreadSyncPhase | null;
 
-  // Queued turns
-  /** Why the queue is parked, or null when it is free to drain. */
-  queueHoldReason: ThreadQueueHoldReason | null;
-  /** Releases a queue held by an interrupt or a thread error. */
-  onSendQueueNow: () => void;
-
   // Mode
   runtimeMode: RuntimeMode;
   interactionMode: ProviderInteractionMode;
@@ -1551,8 +1523,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     respondingRequestIds,
     showPlanFollowUpPrompt,
     activeProposedPlan,
-    queueHoldReason,
-    onSendQueueNow,
     runtimeMode,
     interactionMode: requestedInteractionMode,
     lockedProvider,
@@ -1802,7 +1772,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const clearComposerDraftPromptAndImages = useComposerDraftStore(
     (store) => store.clearComposerPromptAndImages,
   );
-  const clearComposerDraftContent = useComposerDraftStore((store) => store.clearComposerContent);
   const syncComposerDraftPersistedAttachments = useComposerDraftStore(
     (store) => store.syncPersistedAttachments,
   );
@@ -3873,191 +3842,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     showPlanFollowUpPrompt,
   ]);
 
-  // ------------------------------------------------------------------
-  // Queued turns
-  // ------------------------------------------------------------------
-  // Only server threads queue. A draft thread has nothing running in front of
-  // it, so its first send is always immediate.
-  const queueThreadKey = routeKind === "server" ? scopedThreadKey(routeThreadRef) : null;
-  const queuedTurns = useThreadQueueStore(
-    (state) =>
-      (queueThreadKey ? state.entriesByThreadKey[queueThreadKey] : undefined) ?? EMPTY_QUEUE,
-  );
-  const enqueueThreadTurn = useThreadQueueStore((state) => state.enqueue);
-  const setQueuedTurnText = useThreadQueueStore((state) => state.setEntryText);
-  const removeQueuedTurn = useThreadQueueStore((state) => state.removeEntry);
-  const moveQueuedTurn = useThreadQueueStore((state) => state.moveEntry);
-  const clearThreadQueue = useThreadQueueStore((state) => state.clearThread);
-  const queueShortcutLabel = useMemo(
-    () => shortcutLabelForCommand(keybindings, "composer.queue"),
-    [keybindings],
-  );
-
-  /**
-   * Serializes enqueues so image encoding cannot let a later send overtake an
-   * earlier one. Text-only sends take the synchronous path below and never
-   * touch this chain.
-   */
-  const enqueueChainRef = useRef<Promise<void>>(Promise.resolve());
-
-  /** Returns the editor to a cleared, trigger-free state after the draft moves out. */
-  const resetComposerCursorState = useCallback(() => {
-    setComposerHighlightedItemId(null);
-    setComposerCursor(0);
-    setComposerTrigger(null);
-  }, []);
-
-  const buildQueuedTurnContent = useCallback(
-    (attachments: PersistedComposerImageAttachment[]): QueuedTurnContent | null => {
-      const sendState = deriveComposerSendState({
-        prompt: promptRef.current,
-        imageCount: attachments.length,
-        terminalContexts: composerTerminalContextsRef.current,
-        elementContextCount: composerPreviewAnnotations.length + composerReviewComments.length,
-      });
-      const content: QueuedTurnContent = {
-        text: promptRef.current,
-        attachments,
-        droppedImageNames: [],
-        // Expired terminal captures are dropped here rather than at drain:
-        // the queue can sit for minutes and a stale capture would only get
-        // staler.
-        terminalContexts: [...sendState.sendableTerminalContexts],
-        elementContexts: [],
-        previewAnnotations: [...composerPreviewAnnotations],
-        reviewComments: [...composerReviewComments],
-        modelSelection: selectedModelSelection,
-        runtimeMode,
-        interactionMode,
-        // Resolved now rather than at drain: the composer's provider selection
-        // can move on while the turn waits, and the queued turn should carry
-        // the effort the user chose for it.
-        injectedPromptEffort: resolvePromptInjectedEffort(
-          getProviderModelCapabilities(selectedProviderModels, selectedModel, selectedProvider),
-          selectedPromptEffort,
-        ),
-      };
-      return queuedTurnHasContent(content) ? content : null;
-    },
-    [
-      composerPreviewAnnotations,
-      composerReviewComments,
-      composerTerminalContextsRef,
-      interactionMode,
-      promptRef,
-      runtimeMode,
-      selectedModel,
-      selectedModelSelection,
-      selectedPromptEffort,
-      selectedProvider,
-      selectedProviderModels,
-    ],
-  );
-
-  const commitQueuedTurn = useCallback(
-    (threadKey: string, content: QueuedTurnContent) => {
-      const result = enqueueThreadTurn(threadKey, content, {
-        id: `queued-${randomUUID()}`,
-        createdAt: new Date().toISOString(),
-      });
-      if (!result.accepted) {
-        toastManager.add({
-          type: "warning",
-          title: "Queue is full",
-          description: `A thread holds at most ${MAX_QUEUED_TURNS_PER_THREAD} queued turns. Let some send first.`,
-        });
-        return false;
-      }
-      if (result.droppedImageNames.length > 0) {
-        toastManager.add({
-          type: "warning",
-          title: "Some images were not queued",
-          description: `${result.droppedImageNames.join(", ")} exceeded the storage limit.`,
-        });
-      }
-      if (!result.durable) {
-        toastManager.add({
-          type: "info",
-          title: "Queued turn kept in memory only",
-          description: "Browser storage is unavailable, so a reload would lose it.",
-        });
-      }
-      return true;
-    },
-    [enqueueThreadTurn],
-  );
-
-  const enqueueComposerContent = useCallback(() => {
-    const threadKey = queueThreadKey;
-    if (!threadKey) return;
-
-    if (composerFilesRef.current.length > 0) {
-      toastManager.add({
-        type: "warning",
-        title: "Send file attachments directly",
-        description: "File attachments cannot be queued yet. Your draft has been kept.",
-      });
-      return;
-    }
-    const images = composerImagesRef.current;
-    // Clearing before the encode finishes would let a second Enter read an
-    // already-empty composer, so the composer is cleared only once the
-    // content is safely captured — synchronously in the common text-only
-    // case, and at the end of the chain otherwise.
-    if (images.length === 0) {
-      const content = buildQueuedTurnContent([]);
-      if (!content) return;
-      if (!commitQueuedTurn(threadKey, content)) return;
-      promptRef.current = "";
-      clearComposerDraftContent(composerDraftTarget);
-      resetComposerCursorState();
-      return;
-    }
-
-    const queuedContent = buildQueuedTurnContent([]);
-    if (!queuedContent) return;
-    const snapshot = { content: queuedContent, images: [...images] };
-    promptRef.current = "";
-    clearComposerDraftContent(composerDraftTarget);
-    resetComposerCursorState();
-
-    enqueueChainRef.current = enqueueChainRef.current
-      .then(async () => {
-        const attachments = await Promise.all(
-          snapshot.images.map(async (image) => ({
-            id: image.id,
-            name: image.name,
-            mimeType: image.mimeType,
-            sizeBytes: image.sizeBytes,
-            dataUrl: await readFileAsDataUrl(image.file),
-          })),
-        );
-        commitQueuedTurn(threadKey, { ...snapshot.content, attachments });
-      })
-      .catch((error: unknown) => {
-        console.error("[THREAD-QUEUE] Could not queue turn.", error);
-        toastManager.add({
-          type: "error",
-          title: "Could not queue this turn",
-          description: "Its images could not be read. Try sending it again.",
-        });
-      });
-  }, [
-    buildQueuedTurnContent,
-    clearComposerDraftContent,
-    commitQueuedTurn,
-    composerDraftTarget,
-    composerImagesRef,
-    composerFilesRef,
-    promptRef,
-    queueThreadKey,
-    resetComposerCursorState,
-  ]);
-
-  const queueAsNewTurn = useCallback(() => {
-    enqueueComposerContent();
-  }, [enqueueComposerContent]);
-
   const submitComposer = useCallback(
     (event?: { preventDefault: () => void }, intent: ComposerSubmissionIntent = "foreground") => {
       if (noProviderAvailable || isSendDisabled) {
@@ -5528,50 +5312,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     terminalOpen,
   ]);
 
-  // The queue shortcut is the "keep this as its own turn" half of the pair —
-  // an ordinary send folds into the turn already waiting instead.
-  useEffect(() => {
-    const handler = (event: globalThis.KeyboardEvent) => {
-      const command = resolveShortcutCommand(event, keybindings, {
-        context: {
-          terminalFocus: getTerminalFocusOwner() !== null,
-          terminalOpen,
-          modelPickerOpen: isComposerModelPickerOpen,
-        },
-      });
-      if (command !== "composer.queue") return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (
-        queueThreadKey === null ||
-        isCommandPaletteOpen() ||
-        isComposerApprovalState ||
-        pendingUserInputs.length > 0 ||
-        projectSelectionRequired ||
-        noProviderAvailable ||
-        environmentUnavailable !== null ||
-        activePendingProgress !== null
-      ) {
-        return;
-      }
-      enqueueComposerContent();
-    };
-    window.addEventListener("keydown", handler, true);
-    return () => window.removeEventListener("keydown", handler, true);
-  }, [
-    activePendingProgress,
-    enqueueComposerContent,
-    environmentUnavailable,
-    isComposerApprovalState,
-    isComposerModelPickerOpen,
-    keybindings,
-    noProviderAvailable,
-    pendingUserInputs.length,
-    projectSelectionRequired,
-    queueThreadKey,
-    terminalOpen,
-  ]);
-
   // ------------------------------------------------------------------
   // Callbacks: attachments
   // ------------------------------------------------------------------
@@ -6516,19 +6256,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       className="mx-auto w-full min-w-0 max-w-(--chat-max-width)"
       data-chat-composer-form="true"
     >
-      {queueThreadKey ? (
-        <ComposerQueuedTurns
-          className="mb-2"
-          entries={queuedTurns}
-          holdReason={queueHoldReason}
-          queueShortcutLabel={queueShortcutLabel}
-          onEditText={(entryId, text) => setQueuedTurnText(queueThreadKey, entryId, text)}
-          onRemove={(entryId) => removeQueuedTurn(queueThreadKey, entryId)}
-          onMove={(entryId, direction) => moveQueuedTurn(queueThreadKey, entryId, direction)}
-          onSendNow={onSendQueueNow}
-          onClearAll={() => clearThreadQueue(queueThreadKey)}
-        />
-      ) : null}
       {composerControlsInStrip && restingControlsHost
         ? createPortal(
             <div
@@ -6673,9 +6400,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                               preserveComposerFocusOnPointerDown
                               onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
                               onInterrupt={handleInterruptPrimaryAction}
-                              queuedTurnCount={queuedTurns.length}
-                              queueShortcutLabel={queueShortcutLabel}
-                              onQueueAsNewTurn={queueAsNewTurn}
                               onImplementPlanInNewThread={
                                 handleImplementPlanInNewThreadPrimaryAction
                               }
@@ -7293,9 +7017,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       preserveComposerFocusOnPointerDown
                       onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
                       onInterrupt={handleInterruptPrimaryAction}
-                      queuedTurnCount={queuedTurns.length}
-                      queueShortcutLabel={queueShortcutLabel}
-                      onQueueAsNewTurn={queueAsNewTurn}
                       onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryAction}
                     />
                   </div>
@@ -7405,9 +7126,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     preserveComposerFocusOnPointerDown={isMobileViewport || isComposerResting}
                     onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
                     onInterrupt={handleInterruptPrimaryAction}
-                    queuedTurnCount={queuedTurns.length}
-                    queueShortcutLabel={queueShortcutLabel}
-                    onQueueAsNewTurn={queueAsNewTurn}
                     onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryAction}
                     compactDisabled={
                       compactDisabled || noProviderAvailable || isSendBusy || isConnecting
