@@ -11,13 +11,13 @@ launch codeslop and configure providers afterwards.
 ## Command line
 
 ```bash
-curl -fsSL https://t3.codes/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Fallstop/codeslop/main/scripts/install.sh | sh
 ```
 
 On Windows, in PowerShell:
 
 ```powershell
-irm https://t3.codes/install.ps1 | iex
+irm https://raw.githubusercontent.com/Fallstop/codeslop/main/scripts/install.ps1 | iex
 ```
 
 This puts `slop` in `~/.local/bin`. If your shell reports `command not found`

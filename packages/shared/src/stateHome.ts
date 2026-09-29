@@ -6,7 +6,7 @@
  * to the new name while the CLI, dev worktrees, and the SSH launcher kept
  * preferring the old one. On a machine carrying a pre-rebrand `~/.t3` that split
  * the same environment in two — the desktop serving one database, every
- * `t3 serve` serving another, with different environment ids.
+ * `slop serve` serving another, with different environment ids.
  *
  * One rule, shared by all of them: whichever home already holds a database wins,
  * and the current name breaks the tie. That keeps a pre-rebrand install on its

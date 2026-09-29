@@ -75,7 +75,7 @@ The rule is duplicated deliberately in four places because they cannot share a r
 
 #### Server runtime record
 
-`<stateDir>/server-runtime.json`, written by a server once it is listening, telling local callers (`t3 pair`, the SSH reuse probe) which pid and port to talk to. There is one slot per state directory, so it names the server that clients should find. A server only clears the record while it still describes itself; a second server sharing the directory — one launched over SSH beside a running desktop app — publishes to its own path via `T3CODE_RUNTIME_STATE_PATH` instead. See [serverRuntimeState.ts][29].
+`<stateDir>/server-runtime.json`, written by a server once it is listening, telling local callers (`slop pair`, the SSH reuse probe) which pid and port to talk to. There is one slot per state directory, so it names the server that clients should find. A server only clears the record while it still describes itself; a second server sharing the directory — one launched over SSH beside a running desktop app — publishes to its own path via `T3CODE_RUNTIME_STATE_PATH` instead. See [serverRuntimeState.ts][29].
 
 [25]: ../../packages/shared/src/stateHome.ts
 [26]: ../../apps/desktop/src/app/DesktopStatePaths.ts

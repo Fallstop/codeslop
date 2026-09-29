@@ -25,13 +25,13 @@ We wanted something performant, remote-ready, and truly open. If we ever go the 
 ### Command line
 
 ```bash
-curl -fsSL https://t3.codes/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Fallstop/codeslop/main/scripts/install.sh | sh
 ```
 
 On Windows, in PowerShell:
 
 ```powershell
-irm https://t3.codes/install.ps1 | iex
+irm https://raw.githubusercontent.com/Fallstop/codeslop/main/scripts/install.ps1 | iex
 ```
 
 Then run `slop` to start the server and open the local web app. `slop service install` keeps it running in the background, `slop update` moves to a newer release, and `slop --help` has the full reference.

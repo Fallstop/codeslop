@@ -1,5 +1,5 @@
 /**
- * `t3 trace summary` - per-span counts, rates, and latency percentiles from
+ * `slop trace summary` - per-span counts, rates, and latency percentiles from
  * the local server trace file and its rotated backups. It reads the files
  * directly, so it works while the server is stalled or stopped.
  */
