@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { serializeRenderedMarkdownFragment } from "./markdown-clipboard";
+import { serializeRenderedMarkdownFragment, tableCsvFilename } from "./markdown-clipboard";
 import { EnvironmentId, MessageId, ThreadId } from "@t3tools/contracts";
 import {
   collectAssistantCitations,
@@ -341,5 +341,24 @@ describe("serializeRenderedMarkdownFragment", () => {
     expect(serializeRenderedMarkdownFragment(asNode(container))).toBe(
       "Hello World (Document template)",
     );
+  });
+});
+
+describe("tableCsvFilename", () => {
+  it("names the file after the header row", () => {
+    expect(tableCsvFilename(["Service", "Status (prod)", "Owner"])).toBe(
+      "service-status-prod-owner.csv",
+    );
+  });
+
+  it("falls back when the headers carry no usable characters", () => {
+    expect(tableCsvFilename([])).toBe("table.csv");
+    expect(tableCsvFilename(["✅", "—"])).toBe("table.csv");
+  });
+
+  it("keeps long header rows to a readable length", () => {
+    const filename = tableCsvFilename(["A very long column heading", "and another long one", "x"]);
+    expect(filename.length).toBeLessThanOrEqual(52);
+    expect(filename).not.toMatch(/-\.csv$/);
   });
 });

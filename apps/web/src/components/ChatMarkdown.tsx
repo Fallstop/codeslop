@@ -8,6 +8,7 @@ import {
   CheckIcon,
   ChevronRightIcon,
   CopyIcon,
+  DownloadIcon,
   FileSpreadsheetIcon,
   FileTextIcon,
   GlobeIcon,
@@ -147,7 +148,9 @@ import {
   chatMarkdownClipboardPayload,
   serializeTableElementToCsv,
   serializeTableElementToMarkdown,
+  tableCsvFilename,
 } from "../markdown-clipboard";
+import { downloadTextFile } from "../lib/downloadTextFile";
 import { remarkNormalizeListItemIndentation } from "../markdown-list-indentation";
 import {
   extractMarkdownLinkHrefs,
@@ -779,6 +782,23 @@ function MarkdownTable({ children, ...props }: React.ComponentProps<"table">) {
       });
   }, []);
 
+  const handleDownloadCsv = useCallback(() => {
+    const table = tableRef.current;
+    if (!table) return;
+    const headerRow = table.tHead?.rows[0] ?? table.rows[0];
+    const headers = [...(headerRow?.cells ?? [])].map((cell) => cell.textContent ?? "");
+    try {
+      // The BOM makes Excel read the file as UTF-8; Slack and Sheets ignore it.
+      downloadTextFile(
+        tableCsvFilename(headers),
+        `\uFEFF${serializeTableElementToCsv(table)}\n`,
+        "text/csv;charset=utf-8",
+      );
+    } catch (cause) {
+      reportMarkdownActionFailure({ operation: "download-table", format: "csv" }, cause);
+    }
+  }, []);
+
   useEffect(
     () => () => {
       if (copiedTimerRef.current != null) {
@@ -818,31 +838,49 @@ function MarkdownTable({ children, ...props }: React.ComponentProps<"table">) {
           </TooltipTrigger>
           <TooltipPopup side="top">{expandLabel}</TooltipPopup>
         </Tooltip>
-        <Menu>
+        <div className="flex items-center">
           <Tooltip>
             <TooltipTrigger
               render={
-                <MenuTrigger
-                  render={
-                    <Button
-                      type="button"
-                      variant="ghost-muted"
-                      size="icon-xs"
-                      aria-label={copyLabel}
-                    />
-                  }
+                <Button
+                  type="button"
+                  variant="ghost-muted"
+                  size="icon-xs"
+                  onClick={handleDownloadCsv}
+                  aria-label="Download CSV"
                 />
               }
             >
-              {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
+              <DownloadIcon className="size-3" />
             </TooltipTrigger>
-            <TooltipPopup side="top">{copyLabel}</TooltipPopup>
+            <TooltipPopup side="top">Download CSV</TooltipPopup>
           </Tooltip>
-          <MenuPopup align="end">
-            <MenuItem onClick={() => handleCopy("markdown")}>Copy as Markdown</MenuItem>
-            <MenuItem onClick={() => handleCopy("csv")}>Copy as CSV</MenuItem>
-          </MenuPopup>
-        </Menu>
+          <Menu>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <MenuTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost-muted"
+                        size="icon-xs"
+                        aria-label={copyLabel}
+                      />
+                    }
+                  />
+                }
+              >
+                {copied ? <CheckIcon className="size-3" /> : <CopyIcon className="size-3" />}
+              </TooltipTrigger>
+              <TooltipPopup side="top">{copyLabel}</TooltipPopup>
+            </Tooltip>
+            <MenuPopup align="end">
+              <MenuItem onClick={() => handleCopy("markdown")}>Copy as Markdown</MenuItem>
+              <MenuItem onClick={() => handleCopy("csv")}>Copy as CSV</MenuItem>
+            </MenuPopup>
+          </Menu>
+        </div>
       </div>
     </div>
   );

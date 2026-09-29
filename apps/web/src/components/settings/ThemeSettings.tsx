@@ -53,6 +53,7 @@ import {
   type ThemeMode,
 } from "./ThemePreviewCircles";
 import { ThemeWireframe } from "./ThemeWireframe";
+import { downloadTextFile } from "../../lib/downloadTextFile";
 
 const MAINTAINER_THEMES: ReadonlyArray<ThemeDefinition> = [
   T3_CHAT_THEME,
@@ -78,14 +79,7 @@ function collectionVariantLabels(themes: ReadonlyArray<ThemeDefinition>): Readon
 }
 
 function downloadThemeFile(filename: string, contents: string): void {
-  const url = URL.createObjectURL(new Blob([contents], { type: "application/json" }));
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  // Revoking synchronously can abort the download in some browsers; give the
-  // browser time to open the stream first.
-  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  downloadTextFile(filename, contents, "application/json");
 }
 
 function ThemeVariantTooltip({ label, children }: { label: string; children: ReactElement }) {

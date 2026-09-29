@@ -364,6 +364,17 @@ export function serializeTableElementToCsv(table: Element): string {
   return lines.join("\n");
 }
 
+/** Names a downloaded table after its header row, e.g. `service-status-owner.csv`. */
+export function tableCsvFilename(headers: ReadonlyArray<string>): string {
+  const slug = headers
+    .join(" ")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .slice(0, 48)
+    .replace(/^-+|-+$/g, "");
+  return `${slug || "table"}.csv`;
+}
+
 function sanitizedHtmlFrom(container: Element): string {
   for (const node of container.querySelectorAll(SANITIZED_HTML_SELECTOR)) {
     if (
