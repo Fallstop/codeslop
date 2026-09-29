@@ -15,6 +15,7 @@ build/
 .logs/
 release/
 release-mock/
+release-cli/
 .t3
 .slop
 .idea/

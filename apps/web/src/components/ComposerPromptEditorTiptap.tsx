@@ -215,6 +215,31 @@ const ComposerMentionExtension = Node.create({
   addNodeView() {
     return ReactNodeViewRenderer(ComposerMentionNodeView);
   },
+  addKeyboardShortcuts() {
+    return {
+      // A mention chip backtracks instead of vanishing: it reopens as the
+      // editable `@path` text it came from, caret at the end, which re-arms
+      // the path trigger so the suggestion menu picks up where the chip left
+      // off. Deleting outright is still one more backspace away, matching
+      // what deleting a plain word costs.
+      Backspace: () => {
+        const { state } = this.editor;
+        const { empty, $from } = state.selection;
+        const before = $from.nodeBefore;
+        if (!empty || before === null || before.type.name !== this.name) return false;
+        const text = `@${serializeComposerMentionPath((before.attrs.path as string) ?? "")}`;
+        const start = $from.pos - before.nodeSize;
+        return this.editor
+          .chain()
+          .command(({ tr }) => {
+            tr.replaceWith(start, $from.pos, state.schema.text(text));
+            return true;
+          })
+          .setTextSelection(start + text.length)
+          .run();
+      },
+    };
+  },
 });
 
 function ComposerMentionNodeView({ node }: NodeViewProps) {

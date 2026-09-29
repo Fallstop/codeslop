@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { EnvironmentId } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
+import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -100,6 +101,7 @@ const failingSessionLookupRepositoryLayer = Layer.succeed(AuthSessions.AuthSessi
   revokeAllExcept: () => Effect.fail(repositoryFailure),
   setLastConnectedAt: () => Effect.void,
   setClientConnection: () => Effect.void,
+  extendExpiry: () => Effect.fail(repositoryFailure),
 });
 
 const failingSessionLookupCredentialLayer = Layer.effect(
@@ -234,7 +236,7 @@ it.layer(NodeServices.layer)("SessionStore.layer", (it) => {
       const token = "reusable-dev-auth-token-that-is-long-enough";
       const normal = yield* sessions.issue({ subject: "normal-session" });
 
-      yield* TestClock.adjust(Duration.days(31));
+      yield* TestClock.adjust(Duration.days(91));
 
       expect((yield* sessions.verify(token)).subject).toBe("reusable-dev-token");
       expect((yield* Effect.flip(sessions.verify(normal.token)))._tag).toBe(
@@ -579,6 +581,85 @@ it.layer(NodeServices.layer)("SessionStore.layer", (it) => {
       expect(afterReconnect[0]?.connected).toBe(true);
       expect(afterReconnect[0]?.lastConnectedAt).not.toBeNull();
       expect(afterReconnect[0]?.lastConnectedAt?.toString()).not.toBe(firstConnectedAt?.toString());
+    }).pipe(Effect.provide(Layer.merge(makeSessionStoreLayer(), TestClock.layer()))),
+  );
+
+  it.effect("leaves a session alone until it is into the last third of its window", () =>
+    Effect.gen(function* () {
+      const sessions = yield* SessionStore.SessionStore;
+      const issued = yield* sessions.issue({ subject: "sliding-session" });
+
+      expect(yield* sessions.refresh(issued)).toEqual(Option.none());
+
+      // 60 of 90 days used leaves exactly a third, which is not yet past it.
+      yield* TestClock.adjust(Duration.days(59));
+      expect(yield* sessions.refresh(issued)).toEqual(Option.none());
+      expect((yield* sessions.verify(issued.token)).sessionId).toBe(issued.sessionId);
+    }).pipe(Effect.provide(Layer.merge(makeSessionStoreLayer(), TestClock.layer()))),
+  );
+
+  it.effect("slides a due session forward under its original id", () =>
+    Effect.gen(function* () {
+      const sessions = yield* SessionStore.SessionStore;
+      const issued = yield* sessions.issue({
+        subject: "sliding-session",
+        scopes: ["orchestration:read", "access:write"],
+      });
+
+      yield* TestClock.adjust(Duration.days(61));
+      const refreshed = yield* sessions.refresh(issued);
+
+      expect(Option.isSome(refreshed)).toBe(true);
+      const replacement = Option.getOrThrow(refreshed);
+      expect(replacement.token).not.toBe(issued.token);
+      // A full window from now, rather than an extension of the old deadline.
+      expect(replacement.expiresAt.epochMilliseconds).toBeGreaterThan(
+        issued.expiresAt.epochMilliseconds,
+      );
+
+      const verified = yield* sessions.verify(replacement.token);
+      expect(verified.sessionId).toBe(issued.sessionId);
+      expect(verified.subject).toBe("sliding-session");
+      expect(verified.scopes).toEqual(["orchestration:read", "access:write"]);
+
+      // The old token dies with the window it was minted for, while the new one
+      // outlives it. Both are the same session, so revocation still covers both.
+      yield* TestClock.adjust(Duration.days(30));
+      expect((yield* Effect.flip(sessions.verify(issued.token)))._tag).toBe(
+        "SessionTokenExpiredError",
+      );
+      expect((yield* sessions.verify(replacement.token)).sessionId).toBe(issued.sessionId);
+    }).pipe(Effect.provide(Layer.merge(makeSessionStoreLayer(), TestClock.layer()))),
+  );
+
+  it.effect("refreshes a short-lived session on its own window, not the default", () =>
+    Effect.gen(function* () {
+      const sessions = yield* SessionStore.SessionStore;
+      const issued = yield* sessions.issue(relaySessionInput);
+
+      yield* TestClock.adjust(Duration.minutes(45));
+      const refreshed = Option.getOrThrow(yield* sessions.refresh(issued));
+
+      // An hour from the refresh, not ninety days: a DPoP credential must not be
+      // promoted to a long-lived one by being renewed.
+      const windowMillis =
+        refreshed.expiresAt.epochMilliseconds - (yield* DateTime.now).epochMilliseconds;
+      expect(windowMillis).toBe(Duration.toMillis(Duration.hours(1)));
+    }).pipe(Effect.provide(Layer.merge(makeSessionStoreLayer(), TestClock.layer()))),
+  );
+
+  it.effect("refuses to refresh a revoked or expired session", () =>
+    Effect.gen(function* () {
+      const sessions = yield* SessionStore.SessionStore;
+      const revoked = yield* sessions.issue({ subject: "revoked-session" });
+      const lapsed = yield* sessions.issue({ subject: "lapsed-session" });
+
+      yield* TestClock.adjust(Duration.days(61));
+      yield* sessions.revoke(revoked.sessionId);
+      expect(yield* sessions.refresh(revoked)).toEqual(Option.none());
+
+      yield* TestClock.adjust(Duration.days(30));
+      expect(yield* sessions.refresh(lapsed)).toEqual(Option.none());
     }).pipe(Effect.provide(Layer.merge(makeSessionStoreLayer(), TestClock.layer()))),
   );
 

@@ -2,9 +2,12 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { AuthAdministrativeScopes } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Duration from "effect/Duration";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
+import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import * as ServerConfig from "../config.ts";
@@ -385,6 +388,26 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
 
       expect(token.scope).toBe("orchestration:read");
     }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
+  );
+
+  it.effect("renews a session only once it is into the last third of its window", () =>
+    Effect.gen(function* () {
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+      const sessions = yield* SessionStore.SessionStore;
+      const phone = yield* sessions.issue({ subject: "phone", method: "bearer-access-token" });
+
+      expect(yield* serverAuth.refreshSessionCredential(phone)).toEqual(Option.none());
+
+      yield* TestClock.adjust(Duration.days(61));
+      const renewed = Option.getOrThrow(yield* serverAuth.refreshSessionCredential(phone));
+
+      expect(renewed.token).not.toBe(phone.token);
+      // Same session: revoking it from Settings still cuts off both tokens.
+      expect((yield* sessions.verify(renewed.token)).sessionId).toBe(phone.sessionId);
+
+      // The window slid, so asking again right away has nothing new to give.
+      expect(yield* serverAuth.refreshSessionCredential(phone)).toEqual(Option.none());
+    }).pipe(Effect.provide(Layer.merge(makeEnvironmentAuthLayer(), TestClock.layer()))),
   );
 
   it.effect("rotates desktop bearer sessions without accumulating authorized clients", () =>

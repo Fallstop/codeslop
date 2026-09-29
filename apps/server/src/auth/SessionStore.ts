@@ -49,6 +49,11 @@ export interface IssuedSession {
   readonly proofKeyThumbprint?: string;
 }
 
+export interface RefreshedSession {
+  readonly token: string;
+  readonly expiresAt: DateTime.DateTime;
+}
+
 export interface VerifiedSession {
   readonly sessionId: AuthSessionId;
   readonly token: string;
@@ -381,6 +386,16 @@ export class SessionStore extends Context.Service<
       readonly replaceActiveForSubjectAndMethod?: boolean;
     }) => Effect.Effect<IssuedSession, SessionCredentialInternalError>;
     readonly verify: (token: string) => Effect.Effect<VerifiedSession, SessionCredentialError>;
+    /**
+     * Re-mint a live session's token with a fresh window, keeping its id so
+     * WebSocket tickets, revocation and the Connections list stay pointed at
+     * one session. `Option.none()` means the session is not due yet, or is no
+     * longer refreshable (revoked, expired, or issued by the dev credential).
+     */
+    readonly refresh: (session: {
+      readonly sessionId: AuthSessionId;
+      readonly proofKeyThumbprint?: string | undefined;
+    }) => Effect.Effect<Option.Option<RefreshedSession>, SessionCredentialInternalError>;
     readonly issueWebSocketToken: (
       sessionId: AuthSessionId,
       input?: {
@@ -420,8 +435,16 @@ export class SessionStore extends Context.Service<
 >()("t3/auth/SessionStore") {}
 
 const SIGNING_SECRET_NAME = "server-signing-key";
-const DEFAULT_SESSION_TTL = Duration.days(30);
+const DEFAULT_SESSION_TTL = Duration.days(90);
 const DEFAULT_WEBSOCKET_TOKEN_TTL = Duration.minutes(5);
+/**
+ * Refresh once a session is into the last third of its life. Rotating on every
+ * request would churn tokens and cookies for no gain; waiting for the final
+ * moments would strand a client that goes quiet for a week. At the 90-day
+ * default this means a client seen at least once a month never has to pair
+ * again, while one left idle for a full quarter still expires.
+ */
+const SESSION_REFRESH_FRACTION = 1 / 3;
 const SessionClaims = Schema.Struct({
   v: Schema.Literal(1),
   kind: Schema.Literal("session"),
@@ -646,6 +669,26 @@ export const make = Effect.gen(function* () {
     );
 
   const encodeClaims = Schema.encodeEffect(Schema.fromJsonString(SessionClaims));
+
+  const signSessionClaims = (claims: SessionClaims) =>
+    encodeClaims(claims).pipe(
+      Effect.map(base64UrlEncode),
+      Effect.map(
+        (encodedPayload) => `${encodedPayload}.${signPayload(encodedPayload, signingSecret)}`,
+      ),
+      Effect.mapError(
+        (cause) =>
+          new SessionCredentialIssueError({
+            sessionId: claims.sid,
+            cause: new SessionClaimsEncodingError({
+              sessionId: claims.sid,
+              operation: "encode_session_claims",
+              cause,
+            }),
+          }),
+      ),
+    );
+
   const issue: SessionStore["Service"]["issue"] = Effect.fn("SessionStore.issue")(
     function* (input) {
       const sessionId = AuthSessionId.make(
@@ -669,21 +712,7 @@ export const make = Effect.gen(function* () {
         exp: expiresAt.epochMilliseconds,
       };
 
-      const encodedPayload = yield* encodeClaims(claims).pipe(
-        Effect.map(base64UrlEncode),
-        Effect.mapError(
-          (cause) =>
-            new SessionCredentialIssueError({
-              sessionId,
-              cause: new SessionClaimsEncodingError({
-                sessionId,
-                operation: "encode_session_claims",
-                cause,
-              }),
-            }),
-        ),
-      );
-      const signature = signPayload(encodedPayload, signingSecret);
+      const token = yield* signSessionClaims(claims);
       const client = input?.client ?? createDefaultClientMetadata();
       const sessionRecord = {
         sessionId,
@@ -735,7 +764,7 @@ export const make = Effect.gen(function* () {
 
       return {
         sessionId,
-        token: `${encodedPayload}.${signature}`,
+        token,
         method: claims.method,
         client,
         expiresAt: expiresAt,
@@ -840,6 +869,80 @@ export const make = Effect.gen(function* () {
         scopes: claims.scopes,
         ...(claims.jkt ? { proofKeyThumbprint: claims.jkt } : {}),
       } satisfies VerifiedSession;
+    },
+  );
+
+  const refresh: SessionStore["Service"]["refresh"] = Effect.fn("SessionStore.refresh")(
+    function* (session) {
+      // The dev credential is a fixed string with a sentinel expiry, so there is
+      // no token to rotate and nothing that would ever come due.
+      if (devAuth?.sessionId === session.sessionId) {
+        return Option.none();
+      }
+      const row = yield* authSessions
+        .getById({ sessionId: session.sessionId })
+        .pipe(
+          Effect.mapError(
+            (cause) => new SessionCredentialIssueError({ sessionId: session.sessionId, cause }),
+          ),
+        );
+      if (Option.isNone(row) || row.value.revokedAt !== null) {
+        return Option.none();
+      }
+      const now = yield* DateTime.now;
+      const { issuedAt, expiresAt } = row.value;
+      // Re-use the window this session was issued with rather than the current
+      // default: DPoP access tokens are deliberately short-lived, and a refresh
+      // must not quietly promote one to a 90-day credential.
+      const ttlMillis = Math.max(0, expiresAt.epochMilliseconds - issuedAt.epochMilliseconds);
+      const remainingMillis = expiresAt.epochMilliseconds - now.epochMilliseconds;
+      if (remainingMillis <= 0 || remainingMillis > ttlMillis * SESSION_REFRESH_FRACTION) {
+        return Option.none();
+      }
+      const nextExpiresAt = DateTime.add(now, { milliseconds: ttlMillis });
+      const extended = yield* authSessions
+        .extendExpiry({
+          sessionId: session.sessionId,
+          expiresAt: nextExpiresAt,
+          notBefore: now,
+        })
+        .pipe(
+          Effect.mapError(
+            (cause) => new SessionCredentialIssueError({ sessionId: session.sessionId, cause }),
+          ),
+        );
+      // Another request refreshed first, or the session died between the read
+      // and the write. Either way this caller has nothing new to hand back.
+      if (!extended) {
+        return Option.none();
+      }
+      const token = yield* signSessionClaims({
+        v: 1,
+        kind: "session",
+        sid: session.sessionId,
+        sub: row.value.subject,
+        scopes: row.value.scopes,
+        method: row.value.method,
+        ...(session.proofKeyThumbprint ? { jkt: session.proofKeyThumbprint } : {}),
+        iat: now.epochMilliseconds,
+        exp: nextExpiresAt.epochMilliseconds,
+      });
+      yield* emitUpsert(
+        toAuthClientSession({
+          sessionId: session.sessionId,
+          subject: row.value.subject,
+          scopes: row.value.scopes,
+          method: row.value.method,
+          client: toClientMetadata(row.value.client),
+          issuedAt: row.value.issuedAt,
+          expiresAt: nextExpiresAt,
+          lastConnectedAt: row.value.lastConnectedAt,
+          connected: yield* Ref.get(connectedSessionsRef).pipe(
+            Effect.map((connected) => connected.has(session.sessionId)),
+          ),
+        }),
+      );
+      return Option.some({ token, expiresAt: nextExpiresAt } satisfies RefreshedSession);
     },
   );
 
@@ -1036,6 +1139,7 @@ export const make = Effect.gen(function* () {
     legacyCookieName,
     issue,
     verify,
+    refresh,
     issueWebSocketToken,
     verifyWebSocketToken,
     listActive,

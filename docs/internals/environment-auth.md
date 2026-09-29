@@ -54,7 +54,29 @@ and restarting invalidates the old credential and its WebSocket tickets.
 Normal credentials keep precedence. A rejected normal credential never falls
 back to the reusable credential. OAuth exchanges create ordinary local bearer
 or DPoP children with normal expiry and revocation. The reusable cookie expires
-after 30 days.
+on the default session window.
+
+## Sessions slide rather than lapse
+
+A session is issued for 90 days and renews itself once it is into the last
+third of that window. Renewal happens on the WebSocket ticket request, because
+that is the one authenticated call every surface makes on a regular cadence, so
+no client runs a refresh timer and no endpoint exists purely to refresh. The
+practical effect is that a client seen at least once a month stays paired
+indefinitely, while one left idle for a full quarter has to pair again.
+
+Renewal keeps the session id, so a renewed credential is still the same row in
+Settings → Connections and one revocation still cuts off every token minted for
+it. It also reuses the window the session was originally issued with rather than
+the current default, which is what keeps a one-hour DPoP access token from being
+promoted to a long-lived credential by being renewed.
+
+How the replacement reaches the client depends on who holds it. A browser's
+credential lives in an httpOnly cookie it cannot read, so its renewal is a
+`Set-Cookie` and the response body carries nothing. Clients that store the token
+themselves get it as `refreshedCredential` on the ticket response and are
+expected to persist it; the field is optional, so an older client simply keeps
+using what it has until that lapses.
 
 ## The environment is the filesystem boundary
 

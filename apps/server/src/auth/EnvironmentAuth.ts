@@ -496,6 +496,10 @@ export class EnvironmentAuth extends Context.Service<
     readonly authenticateWebSocketUpgrade: (
       request: HttpServerRequest.HttpServerRequest,
     ) => Effect.Effect<AuthenticatedSession, ServerAuthCredentialError | ServerAuthInternalError>;
+    readonly refreshSessionCredential: (session: {
+      readonly sessionId: AuthSessionId;
+      readonly proofKeyThumbprint?: string | undefined;
+    }) => Effect.Effect<Option.Option<SessionStore.RefreshedSession>, ServerAuthInternalError>;
     readonly issueWebSocketTicket: (
       session: Pick<AuthenticatedSession, "sessionId">,
     ) => Effect.Effect<AuthWebSocketTicketResult, ServerAuthInternalError>;
@@ -1054,6 +1058,20 @@ export const make = Effect.gen(function* () {
       Effect.withSpan("EnvironmentAuth.issueStartupPairingUrl"),
     );
 
+  /**
+   * Slide a live session's expiry forward once it is far enough through its
+   * window, yielding the replacement credential. `Option.none()` covers both
+   * "not due yet" and "no longer refreshable", which callers treat the same:
+   * keep using what the client already presented.
+   */
+  const refreshSessionCredential: EnvironmentAuth["Service"]["refreshSessionCredential"] = (
+    session,
+  ) =>
+    sessions.refresh(session).pipe(
+      Effect.mapError((cause) => new ServerAuthAuthenticatedAccessTokenIssueError({ cause })),
+      Effect.withSpan("EnvironmentAuth.refreshSessionCredential"),
+    );
+
   const issueWebSocketTicket: EnvironmentAuth["Service"]["issueWebSocketTicket"] = (session) =>
     sessions.issueWebSocketToken(session.sessionId).pipe(
       Effect.mapError((cause) => new ServerAuthWebSocketTokenIssueError({ cause })),
@@ -1114,6 +1132,7 @@ export const make = Effect.gen(function* () {
     revokeOtherClientSessions,
     authenticateHttpRequest,
     authenticateWebSocketUpgrade,
+    refreshSessionCredential,
     issueWebSocketTicket,
     issueStartupPairingUrl,
   });

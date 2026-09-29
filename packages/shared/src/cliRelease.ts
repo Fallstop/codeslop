@@ -5,6 +5,9 @@
  * platform key, so a rename here is a release-breaking change.
  */
 
+// This fork publishes its own archives. Upstream tags the same version numbers,
+// so pointing at pingdotgg/t3code would resolve and install their build under
+// our version string — a remote environment would silently run upstream code.
 const CLI_RELEASE_REPOSITORY = "Fallstop/codeslop";
 export const CLI_RELEASE_CHECKSUMS_FILE = "SHA256SUMS";
 /** Overrides the download origin for mirrors and air-gapped installs. */

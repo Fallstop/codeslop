@@ -91,6 +91,14 @@ export const SetAuthSessionLastConnectedAtInput = Schema.Struct({
 });
 export type SetAuthSessionLastConnectedAtInput = typeof SetAuthSessionLastConnectedAtInput.Type;
 
+export const ExtendAuthSessionExpiryInput = Schema.Struct({
+  sessionId: AuthSessionId,
+  expiresAt: Schema.DateTimeUtcFromString,
+  /** Guards against an older concurrent refresh pulling the expiry backwards. */
+  notBefore: Schema.DateTimeUtcFromString,
+});
+export type ExtendAuthSessionExpiryInput = typeof ExtendAuthSessionExpiryInput.Type;
+
 export const SetAuthSessionClientConnectionInput = Schema.Struct({
   sessionId: AuthSessionId,
   surface: Schema.NullOr(ClientSurface),
@@ -128,6 +136,14 @@ export class AuthSessionRepository extends Context.Service<
     readonly setClientConnection: (
       input: SetAuthSessionClientConnectionInput,
     ) => Effect.Effect<void, AuthSessionRepositoryError>;
+    /**
+     * Push a live session's expiry out. Returns false when the row is gone,
+     * revoked, or already expired, which is what stops a refresh from reviving
+     * a credential the user just cut off.
+     */
+    readonly extendExpiry: (
+      input: ExtendAuthSessionExpiryInput,
+    ) => Effect.Effect<boolean, AuthSessionRepositoryError>;
   }
 >()("t3/persistence/AuthSessions/AuthSessionRepository") {}
 
@@ -326,6 +342,24 @@ export const make = Effect.gen(function* () {
       `,
   });
 
+  // `expires_at > notBefore` is the liveness check and the monotonicity guard in
+  // one: an already-expired row is not refreshable, and a refresh racing a later
+  // one cannot shorten the window.
+  const extendExpiryRows = SqlSchema.findAll({
+    Request: ExtendAuthSessionExpiryInput,
+    Result: Schema.Struct({ sessionId: AuthSessionId }),
+    execute: ({ sessionId, expiresAt, notBefore }) =>
+      sql`
+        UPDATE auth_sessions
+        SET expires_at = ${expiresAt}
+        WHERE session_id = ${sessionId}
+          AND revoked_at IS NULL
+          AND expires_at > ${notBefore}
+          AND expires_at < ${expiresAt}
+        RETURNING session_id AS "sessionId"
+      `,
+  });
+
   // COALESCE keeps the previous value when a client reports only one field, so
   // a partial report never nulls out data a fuller client stored earlier.
   const setClientConnectionRow = SqlSchema.void({
@@ -497,6 +531,18 @@ export const make = Effect.gen(function* () {
       ),
     );
 
+  const extendExpiry: AuthSessionRepository["Service"]["extendExpiry"] = (input) =>
+    extendExpiryRows(input).pipe(
+      Effect.mapError(
+        toPersistenceSqlOrDecodeError(
+          "AuthSessionRepository.extendExpiry:query",
+          "AuthSessionRepository.extendExpiry:decodeRows",
+          { sessionId: input.sessionId },
+        ),
+      ),
+      Effect.map((rows) => rows.length > 0),
+    );
+
   const setClientConnection: AuthSessionRepository["Service"]["setClientConnection"] = (input) =>
     setClientConnectionRow(input).pipe(
       Effect.mapError(
@@ -518,6 +564,7 @@ export const make = Effect.gen(function* () {
     revokeAllExcept,
     setLastConnectedAt,
     setClientConnection,
+    extendExpiry,
   } satisfies AuthSessionRepository["Service"];
 });
 

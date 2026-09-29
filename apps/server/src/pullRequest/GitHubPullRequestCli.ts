@@ -48,7 +48,6 @@ import {
   buildReviewerRequestJson,
   buildSetFilesViewedGraphQlMutation,
   decodeActorAvatarsJson,
-  decodeRepositoryAccessJson,
   decodePullRequestActivityJson,
   decodePullRequestDetailJson,
   decodePullRequestCoreJson,
@@ -103,7 +102,9 @@ import {
   UPDATE_ISSUE_COMMENT_GRAPHQL_MUTATION,
   UPDATE_PULL_REQUEST_GRAPHQL_MUTATION,
   UPDATE_REVIEW_COMMENT_GRAPHQL_MUTATION,
+  REPOSITORY_ACCESS_JSON_FIELDS,
   VIEWER_PERMISSIONS_GRAPHQL_QUERY,
+  decodeRepositoryAccessJson,
   decodeViewerPermissionsJson,
   decodeWorkflowRunApprovalsJson,
   type GitHubBaseComparison,
@@ -118,7 +119,6 @@ import {
   type GitHubReviewThreadEntry,
   type GitHubReviewThreadPage,
   type GitHubViewerAccess,
-  REPOSITORY_ACCESS_JSON_FIELDS,
 } from "./gitHubPullRequestJson.ts";
 import type { ProviderChangeRequestSummary, ProviderListCursor } from "./PullRequestProvider.ts";
 

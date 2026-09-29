@@ -169,7 +169,7 @@ export const make = Effect.gen(function* () {
           return next;
         });
       }
-      const socketUrl = yield* resolveRemoteWebSocketConnectionUrl({
+      const resolved = yield* resolveRemoteWebSocketConnectionUrl({
         wsBaseUrl: input.wsBaseUrl,
         httpBaseUrl: input.httpBaseUrl,
         bearerToken: input.bearerToken,
@@ -179,14 +179,17 @@ export const make = Effect.gen(function* () {
         Effect.mapError(mapRemoteEnvironmentError),
         Effect.provideService(HttpClient.HttpClient, httpClient),
       );
+      // Surfacing the renewed credential as this connection's authorization is
+      // what lets callers that own a credential store notice the rollover: the
+      // token they passed in and the one they get back no longer match.
       return {
         environmentId: descriptor.environmentId,
         label: descriptor.label,
         httpBaseUrl: input.httpBaseUrl,
-        socketUrl,
+        socketUrl: resolved.url,
         httpAuthorization: {
           _tag: "Bearer" as const,
-          token: input.bearerToken,
+          token: resolved.refreshedCredential?.token ?? input.bearerToken,
         },
       };
     },

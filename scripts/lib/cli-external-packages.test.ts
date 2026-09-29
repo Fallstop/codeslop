@@ -88,7 +88,14 @@ describe("selectCliRuntimeExternalDependencies", () => {
   it("selects every external root declared by the server", () => {
     assert.deepStrictEqual(
       Object.keys(selectCliRuntimeExternalDependencies(serverPackageJson.dependencies)).sort(),
-      ["@ff-labs/fff-node", "@napi-rs/keyring", "node-pty", "onnxruntime-node", "sharp"],
+      [
+        "@ff-labs/fff-node",
+        "@huggingface/transformers",
+        "@napi-rs/keyring",
+        "node-pty",
+        "onnxruntime-node",
+        "sharp",
+      ],
     );
   });
 });
@@ -167,7 +174,8 @@ it.layer(NodeServices.layer)("external package dependency closure", (it) => {
         // Without this the closure check below can pass vacuously: if nothing is
         // read, nothing is checked. node-pty is the one native root every
         // platform ships, node-addon-api is its transitive runtime dependency,
-        // and onnxruntime-node carries semantic search, so require them by name.
+        // and onnxruntime-node is the embedding root whose closure broke WSL,
+        // so require them by name.
         for (const required of ["node-pty", "node-addon-api", "onnxruntime-node"]) {
           assert.ok(
             found.includes(required),
