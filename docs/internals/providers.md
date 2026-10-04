@@ -154,19 +154,11 @@ handling is documented under [citations](./assistant-citations.md).
 
 ### Session transfer
 
-Adapters declare `capabilities.sessionTransfer`, which decides whether a thread on that provider can
-be handed off to another environment.
-
-| Driver kind   | `sessionTransfer`          | Why                                                                |
-| ------------- | -------------------------- | ------------------------------------------------------------------ |
-| `claudeAgent` | `"file"`                   | One transcript per session, addressed by `<slug(cwd)>/<id>.jsonl`  |
-| `codex`       | `"file"`                   | One rollout per conversation, found by the id in its filename      |
-| `cursor`      | `"unsupported"`            | No single-file session on disk to carry                            |
-| `grok`        | `"unsupported"`            | No single-file session on disk to carry                            |
-| `opencode`    | `"unsupported"`            | Sessions live in one shared SQLite database, not per-session files |
-| `antigravity` | Not declared (unsupported) | No session transfer implementation                                 |
-
-The per-provider move logic lives beside each driver in `Drivers/ClaudeSessionTransfer.ts` and
-`Drivers/CodexSessionTransfer.ts`; `handoff/HandoffSessionTransfer.ts` dispatches between them so
-nothing above the adapter boundary knows how a provider stores a session. Adding a driver means
-answering this question for it, even if the answer is `"unsupported"`.
+A machine handoff carries the provider's own session when the adapter implements the optional
+`nativeSessionTransfer` (export and install of the session file, no running process needed). Claude
+(`<configDir>/projects/<slug(realpath(cwd))>/<id>.jsonl`) and Codex (the rollout found by the id in
+its filename under the shared home) implement it, delegating to `Drivers/ClaudeSessionTransfer.ts`
+and `Drivers/CodexSessionTransfer.ts`. Every other adapter omits it, and the handoff is portable:
+the conversation travels as text and the adopted thread's first run replays it as a context
+handoff. A missing session file degrades to portable rather than refusing. Adding a driver means
+deciding whether it can move a session; omitting the method is a complete answer.

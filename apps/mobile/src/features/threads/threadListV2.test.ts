@@ -16,6 +16,7 @@ import { resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settl
 import {
   CommandId,
   EnvironmentId,
+  MachineHandoffId,
   MessageId,
   ProjectId,
   ProviderInstanceId,
@@ -111,6 +112,22 @@ describe("resolveThreadListV2SnoozeMenuSelection", () => {
 });
 
 describe("resolveThreadListV2Status", () => {
+  it("shows where the work went above an approval it was waiting on", () => {
+    const thread = makeThread({ id: ThreadId.make("moved"), title: "Moved" });
+    const handoff = (state: "ready" | "completed") => ({
+      ...thread,
+      hasPendingApprovals: true,
+      machineHandoff: {
+        id: MachineHandoffId.make("handoff"),
+        target: { environmentId: EnvironmentId.make("desktop"), threadId: ThreadId.make("t") },
+        state,
+        startedAt: NOW,
+      },
+    });
+    expect(resolveThreadListV2Status(handoff("ready"))).toBe("moving");
+    expect(resolveThreadListV2Status(handoff("completed"))).toBe("elsewhere");
+  });
+
   it("distinguishes usage limits from ordinary failures and clears the label after recovery", () => {
     const thread = makeThread({
       id: ThreadId.make("limited"),

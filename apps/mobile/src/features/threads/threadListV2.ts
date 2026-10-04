@@ -1,3 +1,4 @@
+import { machineHandoffStatus } from "@t3tools/client-runtime/machine-handoff";
 import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
 import {
   canSnooze,
@@ -77,6 +78,8 @@ export function resolveThreadListV2ProviderDrivers(
  * monitors); commands left running, such as a dev server, read as ready.
  */
 export type ThreadListV2Status =
+  | "elsewhere"
+  | "moving"
   | "approval"
   | "input"
   | "working"
@@ -183,8 +186,12 @@ export function threadHasUnseenCompletion(
 }
 
 export function resolveThreadListV2Status(
-  thread: Pick<EnvironmentThreadShell, "hasPendingApprovals" | "hasPendingUserInput" | "runtime">,
+  thread: Pick<EnvironmentThreadShell, "hasPendingApprovals" | "hasPendingUserInput" | "runtime"> &
+    Partial<Pick<EnvironmentThreadShell, "machineHandoff">>,
 ): ThreadListV2Status {
+  // Nothing runs here while the work is on its way or lives elsewhere.
+  const handoff = machineHandoffStatus(thread);
+  if (handoff !== null) return handoff;
   if (thread.hasPendingApprovals) {
     return "approval";
   }

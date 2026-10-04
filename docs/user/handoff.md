@@ -1,63 +1,61 @@
 # Handing a thread to another machine
 
 Some work outlives the machine you started it on. You are closing the laptop, the agent has half an
-hour left, and there is a desktop at home that never sleeps. A **handoff** moves a running thread to
-another environment so the same agent, with the same conversation, keeps going there.
+hour left, and there is a desktop at home that never sleeps. **Hand off to \<machine\>** moves a thread
+to another connected environment so the work keeps going there.
 
 You do not have to wait for the agent to finish. Handing off mid-work is the point.
 
-## What happens when you hand off
+## How to start
 
-1. The thread stops here. The agent is interrupted wherever it is, any approval it was waiting on is
-   cancelled, and whatever it had already written is kept.
-2. Your uncommitted work is published to `origin` as a commit on a hidden branch, so the other
-   machine gets exactly what the agent had — including files you never staged.
-3. The provider's own session file travels with it. That is what lets the agent pick up knowing what
-   it already did, rather than re-reading everything.
-4. The other machine checks out the work, installs the session, and continues.
+Open the thread's menu (right-click it in the sidebar, or the menu in the chat header) and choose
+**Hand off to \<machine\>**, or search for it in the command palette. The mobile app offers the same
+action in a thread's menu. A machine is listed when it is connected, runs a codeslop version that
+supports handoffs, and has the same repository open as a project. When one cannot take the thread,
+the menu says why.
 
-## What travels, and what stays
+## What happens
 
-**Travels:** the conversation, the agent's real memory of it, every tracked and untracked file in
-the worktree, and any turns you had queued.
+1. The thread stops here. The agent is interrupted, an approval it was waiting on is cancelled, and
+   queued messages stay held on this machine.
+2. Your uncommitted work, including files you never staged, is pushed to the project's git remote
+   under a hidden ref, so it never appears as a branch.
+3. The device that started the handoff copies the conversation across, and the other machine checks
+   the work out in a new worktree with the same uncommitted changes, runs the project's setup
+   script, and starts the thread. If the agent was working, it is told to continue where it left
+   off.
 
-**Stays behind:** files git ignores — `.env`, `node_modules`, build output. The other machine
-rebuilds those with the project's setup script. Terminals and dev servers keep running here and are
-not moved. The tool the agent was in the middle of running is cancelled, and the agent re-runs it on
-the other side.
+The banner above the composer follows each step. If that device goes away while the work is packed
+up, any other device can finish the move with **Continue**.
 
-## Which providers support it
+## What travels
 
-Claude Code and Codex. Both keep a session on disk that can move.
+**Claude Code and Codex** carry the agent's own session, so it resumes knowing everything it did.
+**Other providers** continue from the conversation instead: the agent receives your messages and its
+replies as context on its first turn. The new thread tells you when that happened.
 
-For OpenCode, Cursor and Grok the action is shown but disabled, naming the provider. Their sessions
-either live in a shared database or have no movable file, so there is nothing to carry — a handoff
-would silently start a fresh conversation, which is worse than not offering it.
+**Stays behind:** files git ignores (`.env`, `node_modules`, build output), which the setup script
+rebuilds; attachments; terminals and dev servers; and queued messages, which you get back if you
+take the thread back.
 
-## Getting the thread back
+## Getting it back
 
 A handoff is never one-way.
 
-- **While it is in flight**, cancel it. The thread was already stopped here, so you are offered
-  **Resume here** to pick it back up.
-- **After it lands**, the origin thread shows **Continued on \<machine\>** with **Take back**. The
-  other machine may have made changes since; your worktree here is exactly as you left it, so take
-  the work back and pull if you want theirs.
-- **Handing back** is the same feature run in reverse, and works for the same reason: the session
-  that arrived is a real local session on that machine, not a copy pretending to be one.
+- **While it is moving**, choose **Cancel handoff**. The thread stays here, stopped. Resume its held
+  queue or send a message to carry on.
+- **If it failed**, the banner shows why, with **Retry** and **Cancel**.
+- **After it landed**, this thread shows **Continued on \<machine\>** and keeps its history as a
+  record. **Hand back** moves the work from the other machine back here as a new thread, with
+  everything that machine did since. **Take back here** makes this thread active again as you left
+  it; the other machine may still be running its copy, and its changes stay there.
 
-Only one machine owns a thread at a time. While a handoff is in flight or has landed, this machine
-refuses to start a new turn on that thread — that is what stops two agents working the same
-conversation into conflicting states.
+Only one machine works a thread at a time. While a handoff is moving or has landed, this machine
+does not start new turns on the thread.
 
 ## When it will not work
 
-- **No shared remote.** The work travels through git, so both machines need a remote they can both
-  reach. A project without one cannot hand off.
-- **The provider is not set up on the other machine.** The target needs the same provider installed
-  and signed in.
-- **The session file is missing.** codeslop checks before it stops anything, so a handoff that
-  cannot carry the context refuses up front rather than stranding you.
-
-If a transfer fails part way, the thread stays frozen here with the error shown, and you choose:
-retry, cancel, or take it back. It never silently continues in a place you did not send it.
+- **No shared remote.** Both machines need a git remote they can reach for the project.
+- **The repository is not open there.** Add the project on the other machine first.
+- **The provider is not set up there.** The thread continues on the same provider when the other
+  machine has it, and on that machine's default otherwise, from the conversation.

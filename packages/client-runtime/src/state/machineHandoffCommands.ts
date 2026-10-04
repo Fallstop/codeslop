@@ -8,9 +8,10 @@
  * another.
  */
 import {
+  MachineHandoffId,
   ORCHESTRATION_V2_WS_METHODS,
+  ThreadId as ThreadIdSchema,
   type EnvironmentId,
-  type MachineHandoffId,
   type OrchestrationV2MachineHandoff,
   type ProjectId,
   type ThreadId,
@@ -20,7 +21,15 @@ import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
 
+import type { EnvironmentPresentation } from "../connection/presentation.ts";
 import * as EnvironmentRegistry from "../connection/registry.ts";
+import {
+  planMachineHandoffRun,
+  planMachineHandoffTargets,
+  type MachineHandoffAction,
+  type MachineHandoffEnvironment,
+  type MachineHandoffTarget,
+} from "../machineHandoff.ts";
 import type { EnvironmentSupervisor } from "../connection/supervisor.ts";
 import {
   completeMachineHandoff,
@@ -34,7 +43,14 @@ import {
   type MachineHandoffProgress,
 } from "../operations/machineHandoff.ts";
 import { request } from "../rpc/client.ts";
-import { createAtomCommandScheduler, createRuntimeCommand } from "./runtime.ts";
+import type { EnvironmentProject } from "./models.ts";
+import {
+  createAtomCommandScheduler,
+  createRuntimeCommand,
+  isAtomCommandInterrupted,
+  runAtomCommand,
+  squashAtomCommandFailure,
+} from "./runtime.ts";
 
 /** One readable failure for the banner; the causes span several RPC error types. */
 export class MachineHandoffTransferError extends Data.TaggedError("MachineHandoffTransferError")<{
@@ -214,4 +230,96 @@ export function createMachineHandoffCommandAtoms<R, E>(
       }),
   });
   return { run, progressAtom };
+}
+
+/**
+ * Everything a client needs to hand threads off: the transfer command, the
+ * machines a thread could move to, and running an action to completion.
+ * Shared by web and mobile, which only supply their own atoms.
+ */
+export function createMachineHandoffClient<R, E>(
+  runtime: Atom.AtomRuntime<EnvironmentRegistry.EnvironmentRegistry | Crypto.Crypto | R, E>,
+  options: {
+    readonly registry: AtomRegistry.AtomRegistry;
+    readonly threadShellAtom: (ref: {
+      readonly environmentId: EnvironmentId;
+      readonly threadId: ThreadId;
+    }) => Atom.Atom<HandoffShell>;
+    readonly presentationsAtom: Atom.Atom<ReadonlyMap<EnvironmentId, EnvironmentPresentation>>;
+    readonly projectsAtom: Atom.Atom<ReadonlyArray<EnvironmentProject>>;
+    readonly randomUuid: () => string;
+  },
+) {
+  const atoms = createMachineHandoffCommandAtoms(runtime, options);
+  // Thread rows read this, so it only changes when something it reports does,
+  // not on every provider or settings refresh in the server config.
+  let previous: { readonly key: string; readonly value: ReadonlyArray<MachineHandoffEnvironment> } =
+    { key: "", value: [] };
+  const environmentsAtom = Atom.make((get): ReadonlyArray<MachineHandoffEnvironment> => {
+    const projects = get(options.projectsAtom);
+    const next = [...get(options.presentationsAtom)].map(([environmentId, presentation]) => ({
+      environmentId,
+      label: presentation.entry.target.label,
+      connected: presentation.connection.phase === "connected",
+      supportsHandoff:
+        presentation.serverConfig?.environment.capabilities.threadMachineHandoff === true,
+      projects: projects.filter((project) => project.environmentId === environmentId),
+    }));
+    const key = next
+      .map((environment) =>
+        [
+          environment.environmentId,
+          environment.label,
+          environment.connected,
+          environment.supportsHandoff,
+          ...environment.projects.map(
+            (project) => `${project.id}=${project.repositoryIdentity?.canonicalKey ?? ""}`,
+          ),
+        ].join("\u0000"),
+      )
+      .join("\u0001");
+    if (key !== previous.key) previous = { key, value: next };
+    return previous.value;
+  }).pipe(Atom.withLabel("machine-handoff-environments"));
+
+  /** Machines the thread could move to; empty where its own server cannot hand off. */
+  const targetsFor = (
+    thread: { readonly environmentId: EnvironmentId; readonly projectId: ProjectId },
+    environments: ReadonlyArray<MachineHandoffEnvironment>,
+  ): ReadonlyArray<MachineHandoffTarget> => {
+    const own = environments.find(
+      (environment) => environment.environmentId === thread.environmentId,
+    );
+    if (own?.supportsHandoff !== true) return [];
+    return planMachineHandoffTargets({
+      originEnvironmentId: thread.environmentId,
+      originProject: own.projects.find((project) => project.id === thread.projectId) ?? null,
+      environments,
+    });
+  };
+
+  /** Runs an action to completion. Resolves with a failure message, or null. */
+  const runAction = async (
+    thread: Parameters<typeof planMachineHandoffRun>[0]["thread"],
+    action: MachineHandoffAction,
+  ): Promise<string | null> => {
+    const planned = planMachineHandoffRun({
+      thread,
+      action,
+      environments: options.registry.get(environmentsAtom),
+      ids: {
+        handoffId: MachineHandoffId.make(options.randomUuid()),
+        threadId: ThreadIdSchema.make(options.randomUuid()),
+      },
+    });
+    if ("unavailable" in planned) return planned.unavailable;
+    const result = await runAtomCommand(options.registry, atoms.run, planned.run, {
+      reportFailure: false,
+    });
+    if (result._tag === "Success" || isAtomCommandInterrupted(result)) return null;
+    const failure = squashAtomCommandFailure(result);
+    return failure instanceof Error ? failure.message : "The handoff failed.";
+  };
+
+  return { ...atoms, environmentsAtom, targetsFor, runAction };
 }

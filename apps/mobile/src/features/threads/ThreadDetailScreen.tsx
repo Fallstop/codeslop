@@ -129,6 +129,8 @@ import {
 import { ThreadFeed, type ThreadFeedHistoryControls } from "./ThreadFeed";
 import { useThreadTurnSubagents } from "./ThreadAgentsSheet";
 import { ComposerQueuedEditBanner } from "./ComposerQueuedEdit";
+import { MachineHandoffBanner } from "./MachineHandoffBanner";
+import { machineHandoffSendBlockReason } from "@t3tools/client-runtime/machine-handoff";
 import { useThreadQueuedCount } from "./ThreadQueueControl";
 import type { ThreadContentPresentation } from "./threadContentPresentation";
 import { resolveThreadFeedSubmissionAnchor } from "./thread-feed-live-follow";
@@ -1178,6 +1180,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                     />
                   </Animated.View>
                 ) : null}
+                <MachineHandoffBanner thread={props.selectedThread} />
                 <UsageLimitRecoveryCard
                   key={props.selectedThread.latestRun?.runId}
                   thread={props.selectedThread}
@@ -1325,7 +1328,8 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                       // them against a thread id the server may still reject
                       // would strand them in the outbox.
                       sendBlockedReason={
-                        props.creationState?.kind === "preparing" ? "Starting the task…" : null
+                        machineHandoffSendBlockReason(props.selectedThread) ??
+                        (props.creationState?.kind === "preparing" ? "Starting the task…" : null)
                       }
                       draftKey={props.composerDraftKey ?? undefined}
                       followUpBehavior={props.followUpBehavior}

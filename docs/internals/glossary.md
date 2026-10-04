@@ -44,24 +44,28 @@ Terms whose meaning matters across codeslop. Architecture and lifecycle constrai
 | Checkpoint baseline | The workspace state captured before the work being compared.                                                 |
 | Turn diff           | The workspace changes attributed to one turn.                                                                |
 
-#### Handoff (thread)
+#### Machine handoff
 
-Moving a running thread from one environment to another so the same provider session continues
-there. The origin freezes the thread, publishes its worktree as a commit, and stages a bundle; the
-target adopts it. Distinct from the server-update handoff in `cloud/http.ts`, which is about one
-server process replacing another. See `apps/server/src/handoff/`.
+Moving a thread's work to another environment. Named `MachineHandoff*` in code to stay distinct
+from provider context handoffs (switching providers within one thread) and the server-update
+handoff in `cloud/http.ts`. The origin thread records it in `machineHandoff` (exporting, ready,
+failed, completed); the adopted thread records `continuedFrom`. A thread with a `machineHandoff`
+admits no runs. See [MachineHandoff.ts](../../apps/server/src/orchestration-v2/MachineHandoff.ts).
 
 #### Handoff bundle
 
-What crosses between machines: a manifest plus the provider's own session bytes, staged under
-`<stateDir>/handoff/<handoffId>/`. Moved in offset-addressed chunks by the client, because no
-server-to-server channel exists. See `HandoffStagingStore.ts`.
+What crosses between machines: a manifest plus one checksummed payload (the provider's own session
+bytes, if its adapter can move them, followed by the conversation as JSON), staged under
+`<stateDir>/handoff/<handoffId>/`. The work itself travels separately as a commit under
+`refs/slop/handoff/<id>` on the shared remote. The client carries the bundle in offset-addressed
+chunks because servers never talk to each other.
 
 #### Adopt
 
-The target half of a handoff: verify a received bundle's checksum and completeness, install the
-session where this machine's provider will find it, then continue the thread. Refuses unless the
-bundle records the origin having stopped. See `HandoffBundleService.ts`.
+The target half of a handoff: verify the bundle (stop proof, size, checksum) before touching git,
+check the work out with its changes uncommitted, install the provider session, and launch the
+thread through `ThreadLaunchService`. Idempotent per handoff. See
+[MachineHandoffAdoptService.ts](../../apps/server/src/orchestration-v2/MachineHandoffAdoptService.ts).
 
 ### State home
 

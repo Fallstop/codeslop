@@ -59,6 +59,7 @@ import {
   MonitorIcon,
   MoonIcon,
   PaletteIcon,
+  ArrowRightLeftIcon,
   RotateCcwIcon,
   SettingsIcon,
   SquarePenIcon,
@@ -96,6 +97,11 @@ import {
   getThemeCardDefinition,
   ThemePreviewCircle,
 } from "./settings/ThemePreviewCircles";
+import { machineHandoffPaletteItems } from "./threadActionMenu.logic";
+import {
+  readThreadActionMenuHandoffState,
+  useMachineHandoffActions,
+} from "../hooks/useMachineHandoffActions";
 import { readLocalApi } from "../localApi";
 import { desktopLocalBackendId } from "../connection/desktopLocal";
 import { filesystemEnvironment } from "../state/filesystem";
@@ -727,6 +733,7 @@ function OpenCommandPaletteDialog(props: {
   const startProjectClone = useAtomCommand(sourceControlEnvironment.startProjectClone, {
     reportFailure: false,
   });
+  const handleMachineHandoff = useMachineHandoffActions();
   const stopThreadSession = useAtomCommand(threadEnvironment.stopSession, {
     reportFailure: false,
   });
@@ -1978,6 +1985,19 @@ function OpenCommandPaletteDialog(props: {
 
   if (activeThread !== null) {
     const thread = activeThread;
+    // Same choices as the thread menu, so moving a thread has a keyboard path.
+    for (const item of machineHandoffPaletteItems(readThreadActionMenuHandoffState(thread))) {
+      actionItems.push({
+        kind: "action",
+        value: `action:${item.id}`,
+        searchTerms: ["hand off", "handoff", "move", "machine", "take back", "hand back"],
+        title: item.title,
+        icon: <ArrowRightLeftIcon className={ITEM_ICON_CLASS} />,
+        run: async () => {
+          await handleMachineHandoff(item.id, thread);
+        },
+      });
+    }
     actionItems.push({
       kind: "action",
       value: "action:restart-agent-session",

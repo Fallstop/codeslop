@@ -100,6 +100,19 @@ function machineHandoffMenuItems(
   ];
 }
 
+/** The same handoff choices as flat command palette entries; unavailable machines are left out. */
+export function machineHandoffPaletteItems(
+  handoff: ThreadActionMenuHandoffState | null,
+): ReadonlyArray<{ readonly id: ThreadActionMenuId; readonly title: string }> {
+  return machineHandoffMenuItems(handoff).flatMap((item) =>
+    item.children === undefined
+      ? [{ id: item.id, title: item.label }]
+      : item.children
+          .filter((child) => child.disabled !== true)
+          .map((child) => ({ id: child.id, title: `Hand off to ${child.label}` })),
+  );
+}
+
 export type DraftActionMenuId =
   | "copy"
   | "copy-path"

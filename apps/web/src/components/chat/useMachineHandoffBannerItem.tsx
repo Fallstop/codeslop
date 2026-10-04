@@ -33,7 +33,9 @@ export function useMachineHandoffBannerItem(
   const run = useCallback(
     (action: MachineHandoffBannerAction) => {
       if (thread === null) return;
-      setBusy(true);
+      // A transfer reports through its progress and must stay cancellable.
+      const transfers = action === "continue" || action === "retry";
+      if (!transfers) setBusy(true);
       void (async () => {
         if (action === "continue" || action === "retry") {
           const failure = await runMachineHandoffAction(thread, { type: action });
@@ -52,7 +54,9 @@ export function useMachineHandoffBannerItem(
             thread,
           );
         }
-      })().finally(() => setBusy(false));
+      })().finally(() => {
+        if (!transfers) setBusy(false);
+      });
     },
     [handleMenuAction, thread],
   );
