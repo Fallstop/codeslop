@@ -26,6 +26,7 @@ import { layerFromStores as eventSinkLayer } from "./EventSink.ts";
 import { layerFromOrchestrationEventStore as eventStoreLayer } from "./EventStore.ts";
 import { layer as idAllocatorLayer } from "./IdAllocator.ts";
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
+import * as MachineHandoffAdoptService from "./MachineHandoffAdoptService.ts";
 import * as MachineHandoffService from "./MachineHandoffService.ts";
 import { layer as orchestratorLayer } from "./Orchestrator.ts";
 import { layer as projectionStoreLayer } from "./ProjectionStore.ts";
@@ -311,6 +312,7 @@ const providerRuntimeRecoveryProvided = providerRuntimeRecoveryLayer.pipe(
 
 export const OrchestrationV2LayerLive = Layer.mergeAll(
   orchestratorProvided,
+  machineHandoffProvided,
   threadManagementProvided,
   effectWorkerProvided,
   providerSessionManagerProvided,
@@ -325,6 +327,18 @@ export const OrchestrationV2ProductionLayerLive = Layer.mergeAll(
   ProjectServiceLayerLive,
   managedProjectFoldersProvided,
   threadLaunchProvided,
+  MachineHandoffAdoptService.layer.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        machineHandoffProvided,
+        threadLaunchProvided,
+        threadManagementProvided,
+        commandReceiptStoreProvided,
+        providerAdapterRegistryProvided,
+        ProjectServiceLayerLive,
+      ),
+    ),
+  ),
   threadLifecycleProvided,
   scheduledTaskProvided,
   UsageLimitRecoveryWorker.workerLive.pipe(

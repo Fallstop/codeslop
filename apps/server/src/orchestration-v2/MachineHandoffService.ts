@@ -249,11 +249,13 @@ const make = Effect.gen(function* () {
       ),
     );
 
+    const origin = yield* environment.getDescriptor;
     yield* staging.writePayload(input.handoffId, payload);
     yield* staging.writeManifest({
       version: 1,
       handoffId: input.handoffId,
-      originEnvironmentId: yield* environment.getEnvironmentId,
+      originEnvironmentId: origin.environmentId,
+      originEnvironmentLabel: origin.label,
       originThreadId: input.threadId,
       targetThreadId: handoff.target.threadId,
       thread: {

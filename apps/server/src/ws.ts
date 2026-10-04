@@ -59,6 +59,8 @@ import {
   OrchestrationV2GetShellSnapshotError,
   OrchestrationV2GetThreadProjectionError,
   OrchestrationV2ThreadLaunchError,
+  OrchestrationV2MachineHandoffError,
+  type MachineHandoffId,
   type OrchestrationProjectShell,
   type OrchestrationV2ShellSnapshot,
   type ProjectEntriesFailure,
@@ -117,6 +119,8 @@ import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as ThreadManagementService from "./orchestration-v2/ThreadManagementService.ts";
 import * as ProviderSessionManager from "./orchestration-v2/ProviderSessionManager.ts";
 import * as ThreadLaunchService from "./orchestration-v2/ThreadLaunchService.ts";
+import * as MachineHandoffAdoptService from "./orchestration-v2/MachineHandoffAdoptService.ts";
+import * as MachineHandoffService from "./orchestration-v2/MachineHandoffService.ts";
 import * as ThreadMessageIntake from "./orchestration-v2/ThreadMessageIntake.ts";
 import * as IdAllocator from "./orchestration-v2/IdAllocator.ts";
 import * as ScheduledTasks from "./scheduledTasks/ScheduledTaskService.ts";
@@ -1215,6 +1219,11 @@ const makeWsRpcLayer = (
         }
       };
       const threadLaunch = yield* ThreadLaunchService.ThreadLaunchService;
+      const machineHandoff = yield* MachineHandoffService.MachineHandoffService;
+      const machineHandoffAdopt = yield* MachineHandoffAdoptService.MachineHandoffAdoptService;
+      const toMachineHandoffRpcError =
+        (handoffId: MachineHandoffId) => (cause: { readonly message: string }) =>
+          new OrchestrationV2MachineHandoffError({ handoffId, message: cause.message, cause });
       const providerSessionManager = yield* ProviderSessionManager.ProviderSessionManagerV2;
       const scheduledTasks = yield* ScheduledTasks.ScheduledTaskService;
       const pullRequests = yield* PullRequestService.PullRequestService;
@@ -2028,6 +2037,30 @@ const makeWsRpcLayer = (
               "orchestration_v2.command_id": input.commandId,
               "orchestration_v2.project_id": input.projectId,
             },
+          ),
+        [ORCHESTRATION_V2_WS_METHODS.readMachineHandoffBundle]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_V2_WS_METHODS.readMachineHandoffBundle,
+            machineHandoff
+              .readBundle(input)
+              .pipe(Effect.mapError(toMachineHandoffRpcError(input.handoffId))),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_V2_WS_METHODS.writeMachineHandoffBundle]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_V2_WS_METHODS.writeMachineHandoffBundle,
+            machineHandoff
+              .writeBundle(input)
+              .pipe(Effect.mapError(toMachineHandoffRpcError(input.handoffId))),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [ORCHESTRATION_V2_WS_METHODS.adoptMachineHandoff]: (input) =>
+          observeRpcEffect(
+            ORCHESTRATION_V2_WS_METHODS.adoptMachineHandoff,
+            startup
+              .enqueueCommand(machineHandoffAdopt.adopt(input))
+              .pipe(Effect.mapError(toMachineHandoffRpcError(input.handoffId))),
+            { "rpc.aggregate": "orchestration" },
           ),
         [ORCHESTRATION_V2_WS_METHODS.subscribeArchivedShell]: (_input) =>
           observeRpcStreamEffect(

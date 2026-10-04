@@ -194,6 +194,7 @@ import {
   OrchestrationV2GetThreadProjectionError,
   OrchestrationV2RpcSchemas,
   OrchestrationV2ThreadLaunchError,
+  OrchestrationV2MachineHandoffError,
 } from "./orchestrationV2.ts";
 import {
   ProjectCreateNewInput,
@@ -1572,6 +1573,33 @@ const WsOrchestrationV2LaunchThreadRpc = Rpc.make(ORCHESTRATION_V2_WS_METHODS.la
   error: Schema.Union([OrchestrationV2ThreadLaunchError, EnvironmentAuthorizationError]),
 });
 
+const WsOrchestrationV2ReadMachineHandoffBundleRpc = Rpc.make(
+  ORCHESTRATION_V2_WS_METHODS.readMachineHandoffBundle,
+  {
+    payload: OrchestrationV2RpcSchemas.readMachineHandoffBundle.input,
+    success: OrchestrationV2RpcSchemas.readMachineHandoffBundle.output,
+    error: Schema.Union([OrchestrationV2MachineHandoffError, EnvironmentAuthorizationError]),
+  },
+);
+
+const WsOrchestrationV2WriteMachineHandoffBundleRpc = Rpc.make(
+  ORCHESTRATION_V2_WS_METHODS.writeMachineHandoffBundle,
+  {
+    payload: OrchestrationV2RpcSchemas.writeMachineHandoffBundle.input,
+    success: OrchestrationV2RpcSchemas.writeMachineHandoffBundle.output,
+    error: Schema.Union([OrchestrationV2MachineHandoffError, EnvironmentAuthorizationError]),
+  },
+);
+
+const WsOrchestrationV2AdoptMachineHandoffRpc = Rpc.make(
+  ORCHESTRATION_V2_WS_METHODS.adoptMachineHandoff,
+  {
+    payload: OrchestrationV2RpcSchemas.adoptMachineHandoff.input,
+    success: OrchestrationV2RpcSchemas.adoptMachineHandoff.output,
+    error: Schema.Union([OrchestrationV2MachineHandoffError, EnvironmentAuthorizationError]),
+  },
+);
+
 const WsOrchestrationV2SubscribeArchivedShellRpc = Rpc.make(
   ORCHESTRATION_V2_WS_METHODS.subscribeArchivedShell,
   {
@@ -1883,6 +1911,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationV2GetArchivedShellSnapshotRpc,
   WsOrchestrationV2GetThreadProjectionRpc,
   WsOrchestrationV2LaunchThreadRpc,
+  WsOrchestrationV2ReadMachineHandoffBundleRpc,
+  WsOrchestrationV2WriteMachineHandoffBundleRpc,
+  WsOrchestrationV2AdoptMachineHandoffRpc,
   WsOrchestrationV2SubscribeArchivedShellRpc,
   WsOrchestrationV2SubscribeShellRpc,
   WsOrchestrationV2SubscribeThreadRpc,

@@ -9,6 +9,7 @@ import {
   ContextTransferId,
   CommandId,
   EventId,
+  MachineHandoffId,
   MessageId,
   NodeId,
   NonNegativeInt,
@@ -1246,5 +1247,27 @@ describe("limit recovery choice updates", () => {
     { autoResume: true, snooze: false },
   ])("accepts an explicit independent choice %j", (choice) => {
     expect(decode({ ...identity, ...choice })).toEqual({ ...identity, ...choice });
+  });
+});
+
+describe("machine handoff ids and commands", () => {
+  it("accepts only ids that are safe as a git ref and directory name", () => {
+    const decode = Schema.decodeUnknownSync(MachineHandoffId);
+    expect(decode("3f2a9c1e-0b7d-4c55-9a51-0f6f1d2e7b10")).toBe(
+      "3f2a9c1e-0b7d-4c55-9a51-0f6f1d2e7b10",
+    );
+    for (const unsafe of ["../escape", "a/b", "refs:heads", "-leading", ""]) {
+      expect(() => decode(unsafe)).toThrow();
+    }
+  });
+
+  it("keeps the adopt command out of what clients can dispatch", () => {
+    expect(() =>
+      decodeOrchestrationV2Command({
+        type: "thread.machine-handoff.adopt",
+        commandId: "command:adopt",
+        threadId: "thread:adopt",
+      }),
+    ).toThrow();
   });
 });

@@ -65,6 +65,7 @@ export function existingThreadIdsForCommand(
 ): ReadonlyArray<ThreadId> {
   switch (command.type) {
     case "thread.create":
+    case "thread.machine-handoff.adopt":
       return [];
     // Read-state commands only rewrite the thread payload's visited/unread
     // watermark; they never touch messages, so they do not need the imported

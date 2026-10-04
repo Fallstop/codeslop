@@ -206,6 +206,10 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       desktop servers whose app predates the remote trigger, where clients
       must keep telling the user to update the app on that machine. */
   desktopAppUpdate: Schema.optionalKey(Schema.Boolean),
+  /** Server can hand a thread to another machine and adopt one handed to it
+      (`thread.machine-handoff.*` and the bundle RPCs). Clients offer
+      "Hand off to" only between servers that both advertise it. */
+  threadMachineHandoff: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

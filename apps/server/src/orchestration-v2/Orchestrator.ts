@@ -122,6 +122,7 @@ import {
   ThreadForkServiceV2,
 } from "./ThreadForkService.ts";
 import { planThreadDeletion } from "./ThreadDeletion.ts";
+import { importedHistoryRecords } from "./ImportedHistory.ts";
 import {
   isAutomaticMessageDelivery,
   machineHandoffRunRefusal,
@@ -436,6 +437,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "thread.machine-handoff.retry":
     case "thread.machine-handoff.cancel":
     case "thread.machine-handoff.ready":
+    case "thread.machine-handoff.adopt":
       return command.threadId;
     case "delegated_task.request":
     case "delegated_task.wake-policy":
@@ -705,9 +707,14 @@ export function shouldPrepareLegacyImportHandoff(input: {
   readonly hasCompletedRun: boolean;
   readonly historyOrigin: OrchestrationV2AppThread["historyOrigin"];
   readonly legacyImportItemCount: number;
+  /** A machine handoff that carried the provider's own session already has this history. */
+  readonly continuedFrom?: OrchestrationV2AppThread["continuedFrom"];
 }): boolean {
   return (
-    input.historyOrigin === "v1_import" && !input.hasCompletedRun && input.legacyImportItemCount > 0
+    input.historyOrigin === "v1_import" &&
+    !input.hasCompletedRun &&
+    input.legacyImportItemCount > 0 &&
+    input.continuedFrom?.context !== "native"
   );
 }
 
@@ -2145,6 +2152,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   const dispatchThreadCreate = Effect.fn("orchestrationV2.dispatch.threadCreate")(function* (
     command: Extract<OrchestrationV2Command, { readonly type: "thread.create" }>,
     events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+    adopted?: Pick<OrchestrationV2AppThread, "continuedFrom" | "historyOrigin">,
   ) {
     yield* Effect.annotateCurrentSpan({
       "orchestration_v2.command_id": command.commandId,
@@ -2183,6 +2191,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       snoozedAt: null,
       lastVisitedAt: null,
       deletedAt: null,
+      ...adopted,
     };
 
     yield* emitEvent({
@@ -5349,6 +5358,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           });
         const legacyImportHandoff = shouldPrepareLegacyImportHandoff({
           historyOrigin: projection.thread.historyOrigin,
+          continuedFrom: projection.thread.continuedFrom,
           hasCompletedRun: latestCompletedRun !== undefined,
           legacyImportItemCount: legacyImportItems.length,
         })
@@ -9993,6 +10003,39 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.machine-handoff.start":
         cancelUnsettledEffects = yield* dispatchMachineHandoffStart(command, events, effects);
         break;
+      case "thread.machine-handoff.adopt": {
+        const { type: _type, continuedFrom, history, ...create } = command;
+        // Both contexts keep the conversation as runless history so the
+        // timeline shows it; only a portable one replays it to the provider.
+        yield* dispatchThreadCreate({ ...create, type: "thread.create" }, events, {
+          continuedFrom,
+          historyOrigin: "v1_import",
+        });
+        const emitEvent = emit(events, command);
+        // Recorded now so the thread sorts as just adopted; payloads keep their own times.
+        const now = yield* DateTime.now;
+        for (const [index, entry] of history.entries()) {
+          const records = importedHistoryRecords({
+            threadId: command.threadId,
+            index,
+            message: entry,
+            idPrefix: `machine-handoff:${continuedFrom.handoffId}`,
+          });
+          yield* emitEvent({
+            type: "message.updated",
+            threadId: command.threadId,
+            occurredAt: now,
+            payload: records.message,
+          });
+          yield* emitEvent({
+            type: "turn-item.updated",
+            threadId: command.threadId,
+            occurredAt: now,
+            payload: records.turnItem,
+          });
+        }
+        break;
+      }
       case "thread.machine-handoff.complete":
       case "thread.machine-handoff.fail":
       case "thread.machine-handoff.retry":

@@ -396,6 +396,15 @@ export type OrchestrationV2MachineHandoff = typeof OrchestrationV2MachineHandoff
 export const OrchestrationV2MachineHandoffContext = Schema.Literals(["native", "portable"]);
 export type OrchestrationV2MachineHandoffContext = typeof OrchestrationV2MachineHandoffContext.Type;
 
+/** One message of conversation carried for a provider whose session cannot move. */
+export const OrchestrationV2MachineHandoffHistoryEntry = Schema.Struct({
+  role: Schema.Literals(["user", "assistant"]),
+  text: Schema.String,
+  createdAt: IsoDateTime,
+});
+export type OrchestrationV2MachineHandoffHistoryEntry =
+  typeof OrchestrationV2MachineHandoffHistoryEntry.Type;
+
 /** Where an adopted thread came from, recorded on the target thread. */
 export const OrchestrationV2MachineHandoffOrigin = Schema.Struct({
   ...OrchestrationV2MachineHandoffEndpoint.fields,
@@ -2541,29 +2550,33 @@ export const OrchestrationV2StoredEventJson = Schema.Struct({
 });
 export type OrchestrationV2StoredEventJson = typeof OrchestrationV2StoredEventJson.Type;
 
+const OrchestrationV2ThreadCreateFields = {
+  ...OrchestrationV2CreationFields,
+  commandId: CommandId,
+  threadId: ThreadId,
+  projectId: ProjectId,
+  title: TrimmedNonEmptyString,
+  modelSelection: ModelSelection,
+  runtimeMode: RuntimeMode,
+  interactionMode: ProviderInteractionMode,
+  branch: Schema.NullOr(TrimmedNonEmptyString),
+  worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  importedNativeThread: Schema.optional(
+    Schema.Struct({
+      ref: Schema.Struct({
+        driver: ProviderDriverKind,
+        nativeId: TrimmedNonEmptyString,
+        strength: Schema.Literal("strong"),
+      }),
+      metadata: Schema.optional(OrchestrationV2ProviderThreadNativeMetadata),
+    }),
+  ),
+} as const;
+
 export const OrchestrationV2Command = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("thread.create"),
-    ...OrchestrationV2CreationFields,
-    commandId: CommandId,
-    threadId: ThreadId,
-    projectId: ProjectId,
-    title: TrimmedNonEmptyString,
-    modelSelection: ModelSelection,
-    runtimeMode: RuntimeMode,
-    interactionMode: ProviderInteractionMode,
-    branch: Schema.NullOr(TrimmedNonEmptyString),
-    worktreePath: Schema.NullOr(TrimmedNonEmptyString),
-    importedNativeThread: Schema.optional(
-      Schema.Struct({
-        ref: Schema.Struct({
-          driver: ProviderDriverKind,
-          nativeId: TrimmedNonEmptyString,
-          strength: Schema.Literal("strong"),
-        }),
-        metadata: Schema.optional(OrchestrationV2ProviderThreadNativeMetadata),
-      }),
-    ),
+    ...OrchestrationV2ThreadCreateFields,
   }),
   Schema.Struct({
     type: Schema.Literal("thread.archive"),
@@ -3070,6 +3083,17 @@ const OrchestrationV2InternalCommand = Schema.Union([
     providerThreadId: ProviderThreadId,
     providerTurnId: ProviderTurnId,
   }),
+  /**
+   * Creates a thread adopted from another machine, with its provenance and the
+   * conversation it brings. Only the server's adopt flow sends it, after
+   * verifying the bundle, so a client cannot forge either.
+   */
+  Schema.Struct({
+    type: Schema.Literal("thread.machine-handoff.adopt"),
+    ...OrchestrationV2ThreadCreateFields,
+    continuedFrom: OrchestrationV2MachineHandoffOrigin,
+    history: Schema.Array(OrchestrationV2MachineHandoffHistoryEntry),
+  }),
   /** The export effect staged the bundle; a client can now carry it. */
   Schema.Struct({
     type: Schema.Literal("thread.machine-handoff.ready"),
@@ -3093,6 +3117,9 @@ export const ORCHESTRATION_V2_WS_METHODS = {
   getWorkflowScript: "orchestration.getWorkflowScript",
   getTurnItem: "orchestration.getTurnItem",
   launchThread: "orchestration.launchThread",
+  readMachineHandoffBundle: "orchestration.readMachineHandoffBundle",
+  writeMachineHandoffBundle: "orchestration.writeMachineHandoffBundle",
+  adoptMachineHandoff: "orchestration.adoptMachineHandoff",
   subscribeArchivedShell: "orchestration.subscribeArchivedShell",
   subscribeShell: "orchestration.subscribeShell",
   subscribeThread: "orchestration.subscribeThread",
@@ -3430,15 +3457,6 @@ export const MACHINE_HANDOFF_MAX_PAYLOAD_BYTES = 64 * 1024 * 1024;
 /** Largest slice one bundle RPC frame carries. */
 export const MACHINE_HANDOFF_CHUNK_BYTES = 256 * 1024;
 
-/** One message of conversation carried for a provider whose session cannot move. */
-export const OrchestrationV2MachineHandoffHistoryEntry = Schema.Struct({
-  role: Schema.Literals(["user", "assistant"]),
-  text: Schema.String,
-  createdAt: IsoDateTime,
-});
-export type OrchestrationV2MachineHandoffHistoryEntry =
-  typeof OrchestrationV2MachineHandoffHistoryEntry.Type;
-
 /**
  * Describes a staged handoff. The payload is the native session bytes (if
  * any) followed by the history as JSON, covered by one checksum.
@@ -3447,6 +3465,7 @@ export const OrchestrationV2MachineHandoffManifest = Schema.Struct({
   version: Schema.Literal(1),
   handoffId: MachineHandoffId,
   originEnvironmentId: EnvironmentId,
+  originEnvironmentLabel: Schema.optional(TrimmedNonEmptyString),
   originThreadId: ThreadId,
   targetThreadId: ThreadId,
   thread: Schema.Struct({
@@ -3572,6 +3591,18 @@ export const OrchestrationV2RpcSchemas = {
   launchThread: {
     input: OrchestrationV2ThreadLaunchInput,
     output: OrchestrationV2ThreadLaunchResult,
+  },
+  readMachineHandoffBundle: {
+    input: OrchestrationV2ReadMachineHandoffBundleInput,
+    output: OrchestrationV2ReadMachineHandoffBundleResult,
+  },
+  writeMachineHandoffBundle: {
+    input: OrchestrationV2WriteMachineHandoffBundleInput,
+    output: OrchestrationV2WriteMachineHandoffBundleResult,
+  },
+  adoptMachineHandoff: {
+    input: OrchestrationV2AdoptMachineHandoffInput,
+    output: OrchestrationV2AdoptMachineHandoffResult,
   },
   subscribeArchivedShell: {
     input: Schema.Struct({}),

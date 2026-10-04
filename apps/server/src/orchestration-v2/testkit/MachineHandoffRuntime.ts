@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { EnvironmentId, type OrchestrationV2DomainEvent } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
@@ -26,12 +27,12 @@ export const git = (cwd: string, args: ReadonlyArray<string>) =>
 /** A repository with a shared bare remote, the way two machines meet. */
 export const workspaceWithRemote = Effect.gen(function* () {
   const cwd = yield* checkpointWorkspace("machine-handoff-export");
-  const remote = yield* checkpointWorkspace("machine-handoff-remote");
-  yield* git(remote, ["config", "--bool", "core.bare", "true"]);
+  const remote = yield* (yield* FileSystem.FileSystem).makeTempDirectoryScoped();
+  yield* git(remote, ["init", "--bare"]);
   yield* git(cwd, ["remote", "add", "origin", remote]);
   yield* git(cwd, ["push", "origin", "HEAD:refs/heads/main"]);
   return { cwd, remote };
-});
+}).pipe(Effect.provide(NodeServices.layer));
 
 /** The orchestration runtime with the real handoff service over real git. */
 export const machineHandoffRuntime = (adapter: ProviderAdapterV2Shape, name: string) => {
@@ -49,7 +50,13 @@ export const machineHandoffRuntime = (adapter: ProviderAdapterV2Shape, name: str
         Layer.provide(gitLayer),
         Layer.provide(
           Layer.mock(ServerEnvironment.ServerEnvironment)({
-            getEnvironmentId: Effect.succeed(EnvironmentId.make(`environment:${name}`)),
+            getDescriptor: Effect.succeed({
+              environmentId: EnvironmentId.make(`environment:${name}`),
+              label: name,
+              platform: { os: "darwin", arch: "arm64" },
+              serverVersion: "0.0.0-test",
+              capabilities: { repositoryIdentity: true },
+            }),
           }),
         ),
       ),

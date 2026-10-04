@@ -9,6 +9,8 @@ import {
   type ModelSelection,
   type OrchestrationV2Actor,
   type OrchestrationV2CreationSource,
+  type OrchestrationV2MachineHandoffHistoryEntry,
+  type OrchestrationV2MachineHandoffOrigin,
   type OrchestrationV2ProviderThreadNativeMetadata,
   type OrchestrationV2ThreadProjection,
   type ProviderDriverKind,
@@ -65,6 +67,11 @@ export interface ThreadLaunchInitialMessage {
   readonly text: string;
   readonly attachments: ReadonlyArray<ChatAttachment>;
   readonly context?: import("@t3tools/contracts").OrchestrationMessageContext | undefined;
+  /** Who sent it, when not whoever launched the thread (a server-written continuation). */
+  readonly provenance?: {
+    readonly createdBy: OrchestrationV2Actor;
+    readonly creationSource: OrchestrationV2CreationSource;
+  };
 }
 
 export interface ThreadLaunchInput {
@@ -86,6 +93,11 @@ export interface ThreadLaunchInput {
       readonly strength: "strong";
     };
     readonly metadata?: OrchestrationV2ProviderThreadNativeMetadata;
+  };
+  /** Set when adopting a thread handed over from another machine. */
+  readonly machineHandoff?: {
+    readonly continuedFrom: OrchestrationV2MachineHandoffOrigin;
+    readonly history: ReadonlyArray<OrchestrationV2MachineHandoffHistoryEntry>;
   };
   readonly createdBy: OrchestrationV2Actor;
   readonly creationSource: OrchestrationV2CreationSource;
@@ -756,7 +768,13 @@ const make = Effect.gen(function* () {
                 expectedEmpty: true,
               })
             : threads.dispatch({
-                type: "thread.create",
+                ...(input.machineHandoff === undefined
+                  ? { type: "thread.create" as const }
+                  : {
+                      type: "thread.machine-handoff.adopt" as const,
+                      continuedFrom: input.machineHandoff.continuedFrom,
+                      history: input.machineHandoff.history,
+                    }),
                 commandId: input.commandId,
                 threadId: candidateThreadId,
                 projectId: input.projectId,
@@ -817,8 +835,9 @@ const make = Effect.gen(function* () {
               ...(input.generateTitle === true ? { titleSeed: input.title } : {}),
               modelSelection: input.modelSelection,
               dispatchMode: { type: "defer_start", workspaceStrategy },
-              createdBy: input.createdBy,
-              creationSource: input.creationSource,
+              createdBy: input.initialMessage.provenance?.createdBy ?? input.createdBy,
+              creationSource:
+                input.initialMessage.provenance?.creationSource ?? input.creationSource,
             })
             .pipe(Effect.mapError(mapError(input, "dispatch-message", threadId)));
           const runCreated = dispatched.storedEvents.find(
