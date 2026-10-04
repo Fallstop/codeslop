@@ -1099,7 +1099,7 @@ it.effect("names the worktree itself when the client provides no branch", () =>
       yield* waitUntil(() => Effect.sync(() => harness.createWorktree.mock.calls.length === 1));
       assert.match(
         harness.createWorktree.mock.calls[0]?.[0]?.newRefName ?? "",
-        /^t3code\/[0-9a-f]{8}$/u,
+        /^slop\/[0-9a-f]{8}$/u,
       );
       yield* waitUntil(() =>
         threads
