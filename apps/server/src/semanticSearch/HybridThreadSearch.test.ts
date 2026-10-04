@@ -1,19 +1,24 @@
 import {
+  EventId,
   MessageId,
   ProjectId,
+  ProviderInstanceId,
   ThreadId,
   type OrchestrationThreadSearchMatch,
+  type OrchestrationV2DomainEvent,
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import { MessageEmbeddingRepositoryLive } from "../persistence/Layers/MessageEmbeddings.ts";
 import { MessageEmbeddingRepository } from "../persistence/Services/MessageEmbeddings.ts";
-import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
+import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
+import * as ThreadSearch from "../orchestration-v2/ThreadSearch.ts";
 import { EmbeddingModel, EmbeddingModelUnavailableError } from "./EmbeddingModel.ts";
 import { HybridThreadSearch, HybridThreadSearchLive } from "./HybridThreadSearch.ts";
 import { MessageEmbeddingIndexLive } from "./MessageEmbeddingIndex.ts";
@@ -62,66 +67,127 @@ const makeTestLayer = (options: {
     Layer.provideMerge(MessageEmbeddingIndexLive),
     Layer.provideMerge(makeFakeModelLayer({ enabled: options.modelEnabled ?? true })),
     Layer.provideMerge(MessageEmbeddingRepositoryLive),
+    Layer.provideMerge(ProjectionStore.layer),
+    Layer.provideMerge(ProjectStore.layer),
     Layer.provideMerge(
-      Layer.mock(ProjectionSnapshotQuery)({
-        searchThreads: () => Effect.succeed({ matches: options.lexicalMatches }),
+      Layer.mock(ThreadSearch.ThreadSearch)({
+        search: () => Effect.succeed({ matches: options.lexicalMatches }),
       }),
     ),
     Layer.provideMerge(SqlitePersistenceMemory),
     Layer.provideMerge(NodeServices.layer),
   );
 
+const providerInstanceId = ProviderInstanceId.make("codex");
+const PROJECT_ID = ProjectId.make("project-1");
+const at = (second: number) => DateTime.makeUnsafe(Date.UTC(2026, 4, 1, 0, 0, second));
+
+const createProject = Effect.flatMap(ProjectStore.ProjectStoreV2, (projects) =>
+  projects.apply({
+    sequence: 0,
+    eventId: EventId.make("created:project-1"),
+    aggregateKind: "project",
+    aggregateId: PROJECT_ID,
+    occurredAt: DateTime.formatIso(at(0)),
+    commandId: null,
+    causationEventId: null,
+    correlationId: null,
+    metadata: {},
+    type: "project.created",
+    payload: {
+      projectId: PROJECT_ID,
+      title: "Project",
+      workspaceRoot: "/tmp/project-1",
+      defaultModelSelection: null,
+      scripts: [],
+      createdAt: DateTime.formatIso(at(0)),
+      updatedAt: DateTime.formatIso(at(1)),
+    },
+  }),
+);
+
+const thread = (id: string, title: string, second: number): OrchestrationV2DomainEvent => {
+  const threadId = ThreadId.make(id);
+  return {
+    id: EventId.make(`created:${id}`),
+    type: "thread.created",
+    threadId,
+    providerInstanceId,
+    occurredAt: at(second),
+    payload: {
+      createdBy: "user",
+      creationSource: "web",
+      id: threadId,
+      projectId: PROJECT_ID,
+      title,
+      providerInstanceId,
+      modelSelection: { instanceId: providerInstanceId, model: "gpt-5" },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      activeProviderThreadId: null,
+      lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+      forkedFrom: null,
+      createdAt: at(second),
+      updatedAt: at(second + 1),
+      archivedAt: null,
+      settledOverride: null,
+      settledAt: null,
+      lastVisitedAt: null,
+      deletedAt: null,
+    },
+  };
+};
+
+const message = (
+  threadId: string,
+  id: string,
+  role: "user" | "assistant",
+  text: string,
+  second: number,
+): OrchestrationV2DomainEvent => ({
+  id: EventId.make(`message:${id}`),
+  type: "message.updated",
+  threadId: ThreadId.make(threadId),
+  providerInstanceId,
+  occurredAt: at(second),
+  payload: {
+    createdBy: role === "user" ? "user" : "agent",
+    creationSource: role === "user" ? "web" : "provider",
+    id: MessageId.make(id),
+    threadId: ThreadId.make(threadId),
+    runId: null,
+    nodeId: null,
+    role,
+    text,
+    attachments: [],
+    streaming: false,
+    createdAt: at(second),
+    updatedAt: at(second),
+  },
+});
+
 const seedSemanticCorpus = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
+  const projections = yield* ProjectionStore.ProjectionStoreV2;
   const repository = yield* MessageEmbeddingRepository;
 
-  yield* sql`
-    INSERT INTO projection_projects (
-      project_id, title, workspace_root, default_model_selection_json,
-      scripts_json, created_at, updated_at, deleted_at
-    )
-    VALUES (
-      'project-1', 'Project', '/tmp/project-1',
-      '{"provider":"codex","model":"gpt-5-codex"}', '[]',
-      '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:01.000Z', NULL
-    )
-  `;
-  yield* sql`
-    INSERT INTO projection_threads (
-      thread_id, project_id, title, model_selection_json, runtime_mode,
-      interaction_mode, branch, worktree_path, latest_turn_id,
-      latest_user_message_at, pending_approval_count, pending_user_input_count,
-      has_actionable_proposed_plan, created_at, updated_at, archived_at, deleted_at
-    )
-    VALUES
-      (
-        'thread-semantic', 'project-1', 'Untitled', '{"provider":"codex","model":"gpt-5-codex"}',
-        'full-access', 'default', NULL, NULL, NULL, NULL, 0, 0, 0,
-        '2026-05-01T00:00:02.000Z', '2026-05-01T00:00:03.000Z', NULL, NULL
-      ),
-      (
-        'thread-other', 'project-1', 'Recipes', '{"provider":"codex","model":"gpt-5-codex"}',
-        'full-access', 'default', NULL, NULL, NULL, NULL, 0, 0, 0,
-        '2026-05-01T00:00:04.000Z', '2026-05-01T00:00:05.000Z', NULL, NULL
-      ),
-      (
-        'thread-faint', 'project-1', 'Faint', '{"provider":"codex","model":"gpt-5-codex"}',
-        'full-access', 'default', NULL, NULL, NULL, NULL, 0, 0, 0,
-        '2026-05-01T00:00:06.000Z', '2026-05-01T00:00:07.000Z', NULL, NULL
-      )
-  `;
-  yield* sql`
-    INSERT INTO projection_thread_messages (
-      message_id, thread_id, turn_id, role, text, is_streaming, created_at, updated_at
-    )
-    VALUES
-      ('msg-semantic', 'thread-semantic', NULL, 'assistant', 'Rotate them in the settings page.', 0,
-        '2026-05-01T00:00:10.000Z', '2026-05-01T00:00:10.000Z'),
-      ('msg-other', 'thread-other', NULL, 'user', 'Completely unrelated cooking recipe.', 0,
-        '2026-05-01T00:00:11.000Z', '2026-05-01T00:00:11.000Z'),
-      ('msg-faint', 'thread-faint', NULL, 'user', 'Only a faint echo of the query topic.', 0,
-        '2026-05-01T00:00:12.000Z', '2026-05-01T00:00:12.000Z')
-  `;
+  yield* createProject;
+  const events: ReadonlyArray<OrchestrationV2DomainEvent> = [
+    thread("thread-semantic", "Untitled", 2),
+    thread("thread-other", "Recipes", 4),
+    thread("thread-faint", "Faint", 6),
+    message(
+      "thread-semantic",
+      "msg-semantic",
+      "assistant",
+      "Rotate them in the settings page.",
+      10,
+    ),
+    message("thread-other", "msg-other", "user", "Completely unrelated cooking recipe.", 11),
+    message("thread-faint", "msg-faint", "user", "Only a faint echo of the query topic.", 12),
+  ];
+  yield* Effect.forEach(events, projections.apply, { discard: true });
 
   for (const [messageId, threadId, text, messageUpdatedAt] of [
     [

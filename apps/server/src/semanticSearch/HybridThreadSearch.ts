@@ -21,9 +21,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import type { ProjectionRepositoryError } from "../persistence/Errors.ts";
 import { MessageEmbeddingRepository } from "../persistence/Services/MessageEmbeddings.ts";
-import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ThreadSearch, type ThreadSearchError } from "../orchestration-v2/ThreadSearch.ts";
 import { EmbeddingModel } from "./EmbeddingModel.ts";
 import { MessageEmbeddingIndex } from "./MessageEmbeddingIndex.ts";
 import { buildSemanticSnippet } from "./embeddingText.ts";
@@ -54,14 +53,14 @@ export class HybridThreadSearch extends Context.Service<
   {
     readonly searchThreads: (
       input: OrchestrationSearchThreadsInput,
-    ) => Effect.Effect<OrchestrationSearchThreadsResult, ProjectionRepositoryError>;
+    ) => Effect.Effect<OrchestrationSearchThreadsResult, ThreadSearchError>;
     /** Feature status for the settings page; never fails. */
     readonly getStatus: Effect.Effect<SemanticSearchStatus>;
   }
 >()("t3/semanticSearch/HybridThreadSearch") {}
 
 export const make = Effect.fn("semanticSearch.hybridThreadSearch.make")(function* () {
-  const snapshotQuery = yield* ProjectionSnapshotQuery;
+  const lexicalSearch = yield* ThreadSearch;
   const model = yield* EmbeddingModel;
   const index = yield* MessageEmbeddingIndex;
   const repository = yield* MessageEmbeddingRepository;
@@ -141,7 +140,7 @@ export const make = Effect.fn("semanticSearch.hybridThreadSearch.make")(function
     "HybridThreadSearch.searchThreads",
   )(function* (input) {
     const [lexical, semantic] = yield* Effect.all(
-      [snapshotQuery.searchThreads(input), semanticMatches(input)],
+      [lexicalSearch.search(input), semanticMatches(input)],
       { concurrency: 2 },
     );
     if (semantic.length === 0) {
@@ -225,13 +224,13 @@ export const make = Effect.fn("semanticSearch.hybridThreadSearch.make")(function
 
 export const HybridThreadSearchLive = Layer.effect(HybridThreadSearch, make());
 
-/** Lexical-only pass-through for tests that mock ProjectionSnapshotQuery. */
+/** Lexical-only pass-through for tests that mock ThreadSearch. */
 export const HybridThreadSearchLexicalOnly = Layer.effect(
   HybridThreadSearch,
   Effect.gen(function* () {
-    const snapshotQuery = yield* ProjectionSnapshotQuery;
+    const lexicalSearch = yield* ThreadSearch;
     return HybridThreadSearch.of({
-      searchThreads: snapshotQuery.searchThreads,
+      searchThreads: lexicalSearch.search,
       getStatus: Effect.succeed({
         state: "disabled",
         modelId: "",

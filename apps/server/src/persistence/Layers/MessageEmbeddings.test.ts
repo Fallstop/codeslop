@@ -1,6 +1,14 @@
-import { MessageId, ThreadId } from "@t3tools/contracts";
+import {
+  EventId,
+  MessageId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+  type OrchestrationV2DomainEvent,
+} from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
@@ -8,96 +16,136 @@ import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { SqlitePersistenceMemory } from "./Sqlite.ts";
 import { MessageEmbeddingRepositoryLive } from "./MessageEmbeddings.ts";
 import { MessageEmbeddingRepository } from "../Services/MessageEmbeddings.ts";
+import * as ProjectionStore from "../../orchestration-v2/ProjectionStore.ts";
+import * as ProjectStore from "../../orchestration-v2/ProjectStore.ts";
 import { packEmbedding } from "../../semanticSearch/embeddingText.ts";
 
 const MODEL = "test-model";
 
 const repositoryLayer = it.layer(
-  MessageEmbeddingRepositoryLive.pipe(
+  Layer.mergeAll(MessageEmbeddingRepositoryLive, ProjectionStore.layer, ProjectStore.layer).pipe(
     Layer.provideMerge(SqlitePersistenceMemory),
     Layer.provideMerge(NodeServices.layer),
   ),
 );
 
+const providerInstanceId = ProviderInstanceId.make("codex");
+const PROJECT_ID = ProjectId.make("project-1");
+const at = (second: number) => DateTime.makeUnsafe(Date.UTC(2026, 4, 1, 0, 0, second));
+
+const createProject = Effect.flatMap(ProjectStore.ProjectStoreV2, (projects) =>
+  projects.apply({
+    sequence: 0,
+    eventId: EventId.make("created:project-1"),
+    aggregateKind: "project",
+    aggregateId: PROJECT_ID,
+    occurredAt: DateTime.formatIso(at(0)),
+    commandId: null,
+    causationEventId: null,
+    correlationId: null,
+    metadata: {},
+    type: "project.created",
+    payload: {
+      projectId: PROJECT_ID,
+      title: "Project",
+      workspaceRoot: "/tmp/project-1",
+      defaultModelSelection: null,
+      scripts: [],
+      createdAt: DateTime.formatIso(at(0)),
+      updatedAt: DateTime.formatIso(at(1)),
+    },
+  }),
+);
+
+const thread = (
+  id: string,
+  second: number,
+  overrides: { readonly archivedAt?: DateTime.Utc; readonly deletedAt?: DateTime.Utc } = {},
+): OrchestrationV2DomainEvent => {
+  const threadId = ThreadId.make(id);
+  return {
+    id: EventId.make(`created:${id}`),
+    type: "thread.created",
+    threadId,
+    providerInstanceId,
+    occurredAt: at(second),
+    payload: {
+      createdBy: "user",
+      creationSource: "web",
+      id: threadId,
+      projectId: PROJECT_ID,
+      title: id,
+      providerInstanceId,
+      modelSelection: { instanceId: providerInstanceId, model: "gpt-5" },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      activeProviderThreadId: null,
+      lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+      forkedFrom: null,
+      createdAt: at(second),
+      updatedAt: at(second + 1),
+      archivedAt: overrides.archivedAt ?? null,
+      settledOverride: null,
+      settledAt: null,
+      lastVisitedAt: null,
+      deletedAt: overrides.deletedAt ?? null,
+    },
+  };
+};
+
+const message = (
+  threadId: string,
+  id: string,
+  role: "user" | "assistant" | "system",
+  text: string,
+  second: number,
+  streaming = false,
+): OrchestrationV2DomainEvent => ({
+  id: EventId.make(`message:${id}`),
+  type: "message.updated",
+  threadId: ThreadId.make(threadId),
+  providerInstanceId,
+  occurredAt: at(second),
+  payload: {
+    createdBy: role === "user" ? "user" : "agent",
+    creationSource: role === "user" ? "web" : "provider",
+    id: MessageId.make(id),
+    threadId: ThreadId.make(threadId),
+    runId: null,
+    nodeId: null,
+    role,
+    text,
+    attachments: [],
+    streaming,
+    createdAt: at(second),
+    updatedAt: at(second),
+  },
+});
+
 const seedProjections = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
+  const projections = yield* ProjectionStore.ProjectionStoreV2;
   yield* sql`DELETE FROM message_embeddings`;
-  yield* sql`DELETE FROM projection_thread_messages`;
-  yield* sql`DELETE FROM projection_turns`;
-  yield* sql`DELETE FROM projection_threads`;
+  yield* sql`DELETE FROM orchestration_v2_projection_messages`;
+  yield* sql`DELETE FROM orchestration_v2_projection_threads`;
   yield* sql`DELETE FROM projection_projects`;
 
-  yield* sql`
-    INSERT INTO projection_projects (
-      project_id, title, workspace_root, default_model_selection_json,
-      scripts_json, created_at, updated_at, deleted_at
-    )
-    VALUES (
-      'project-1', 'Project', '/tmp/project-1',
-      '{"provider":"codex","model":"gpt-5-codex"}', '[]',
-      '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:01.000Z', NULL
-    )
-  `;
-
-  yield* sql`
-    INSERT INTO projection_threads (
-      thread_id, project_id, title, model_selection_json, runtime_mode,
-      interaction_mode, branch, worktree_path, latest_turn_id,
-      latest_user_message_at, pending_approval_count, pending_user_input_count,
-      has_actionable_proposed_plan, created_at, updated_at, archived_at, deleted_at
-    )
-    VALUES
-      (
-        'thread-active', 'project-1', 'Active', '{"provider":"codex","model":"gpt-5-codex"}',
-        'full-access', 'default', NULL, NULL, 'turn-1', NULL, 0, 0, 0,
-        '2026-05-01T00:00:02.000Z', '2026-05-01T00:00:03.000Z', NULL, NULL
-      ),
-      (
-        'thread-archived', 'project-1', 'Archived', '{"provider":"codex","model":"gpt-5-codex"}',
-        'full-access', 'default', NULL, NULL, NULL, NULL, 0, 0, 0,
-        '2026-05-01T00:00:04.000Z', '2026-05-01T00:00:05.000Z',
-        '2026-05-01T00:00:06.000Z', NULL
-      ),
-      (
-        'thread-deleted', 'project-1', 'Deleted', '{"provider":"codex","model":"gpt-5-codex"}',
-        'full-access', 'default', NULL, NULL, NULL, NULL, 0, 0, 0,
-        '2026-05-01T00:00:07.000Z', '2026-05-01T00:00:08.000Z', NULL,
-        '2026-05-01T00:00:09.000Z'
-      )
-  `;
-
-  yield* sql`
-    INSERT INTO projection_thread_messages (
-      message_id, thread_id, turn_id, role, text, is_streaming, created_at, updated_at
-    )
-    VALUES
-      ('msg-user', 'thread-active', 'turn-1', 'user', 'How do I rotate the API keys?', 0,
-        '2026-05-01T00:00:10.000Z', '2026-05-01T00:00:10.000Z'),
-      ('msg-assistant', 'thread-active', 'turn-1', 'assistant', 'Rotate them in the settings page.', 0,
-        '2026-05-01T00:00:11.000Z', '2026-05-01T00:00:11.000Z'),
-      ('msg-interim', 'thread-active', 'turn-1', 'assistant', 'Interim reasoning text.', 0,
-        '2026-05-01T00:00:12.000Z', '2026-05-01T00:00:12.000Z'),
-      ('msg-streaming', 'thread-active', NULL, 'user', 'still typing', 1,
-        '2026-05-01T00:00:13.000Z', '2026-05-01T00:00:13.000Z'),
-      ('msg-system', 'thread-active', NULL, 'system', 'system prompt', 0,
-        '2026-05-01T00:00:14.000Z', '2026-05-01T00:00:14.000Z'),
-      ('msg-archived', 'thread-archived', NULL, 'user', 'archived question', 0,
-        '2026-05-01T00:00:15.000Z', '2026-05-01T00:00:15.000Z'),
-      ('msg-deleted', 'thread-deleted', NULL, 'user', 'deleted question', 0,
-        '2026-05-01T00:00:16.000Z', '2026-05-01T00:00:16.000Z')
-  `;
-
-  yield* sql`
-    INSERT INTO projection_turns (
-      thread_id, turn_id, pending_message_id, assistant_message_id, state,
-      requested_at, started_at, completed_at, checkpoint_files_json
-    )
-    VALUES (
-      'thread-active', 'turn-1', 'msg-user', 'msg-assistant', 'completed',
-      '2026-05-01T00:00:10.000Z', '2026-05-01T00:00:10.000Z',
-      '2026-05-01T00:00:11.000Z', '[]'
-    )
-  `;
+  yield* createProject;
+  const events: ReadonlyArray<OrchestrationV2DomainEvent> = [
+    thread("thread-active", 2),
+    thread("thread-archived", 4, { archivedAt: at(6) }),
+    thread("thread-deleted", 7, { deletedAt: at(9) }),
+    message("thread-active", "msg-user", "user", "How do I rotate the API keys?", 10),
+    message("thread-active", "msg-assistant", "assistant", "Rotate them in the settings page.", 11),
+    message("thread-active", "msg-followup", "assistant", "Interim reasoning text.", 12),
+    message("thread-active", "msg-streaming", "user", "still typing", 13, true),
+    message("thread-active", "msg-system", "system", "system prompt", 14),
+    message("thread-archived", "msg-archived", "user", "archived question", 15),
+    message("thread-deleted", "msg-deleted", "user", "deleted question", 16),
+  ];
+  yield* Effect.forEach(events, projections.apply, { discard: true });
 });
 
 const vectorOf = (values: ReadonlyArray<number>) => packEmbedding(Float32Array.from(values));
@@ -110,9 +158,14 @@ repositoryLayer("MessageEmbeddingRepository", (it) => {
 
       const stale = yield* repository.listStaleMessages({ model: MODEL, limit: 50 });
       const staleIds = stale.map((message) => message.messageId).toSorted();
-      // user + canonical assistant of active and archived threads; interim
-      // assistant output, streaming, system, and deleted threads excluded.
-      assert.deepStrictEqual(staleIds, ["msg-archived", "msg-assistant", "msg-user"]);
+      // Every finished user/assistant message of active and archived threads;
+      // streaming, system, and deleted threads excluded.
+      assert.deepStrictEqual(staleIds, [
+        "msg-archived",
+        "msg-assistant",
+        "msg-followup",
+        "msg-user",
+      ]);
     }),
   );
 
@@ -144,13 +197,13 @@ repositoryLayer("MessageEmbeddingRepository", (it) => {
       const stale = yield* repository.listStaleMessages({ model: MODEL, limit: 50 });
       assert.deepStrictEqual(
         stale.map((message) => message.messageId),
-        [MessageId.make("msg-archived")],
+        [MessageId.make("msg-archived"), MessageId.make("msg-followup")],
       );
 
       // A message edit (updated_at change) makes it stale again.
       const sql = yield* SqlClient.SqlClient;
       yield* sql`
-        UPDATE projection_thread_messages
+        UPDATE orchestration_v2_projection_messages
         SET updated_at = '2026-05-01T00:02:00.000Z'
         WHERE message_id = 'msg-user'
       `;

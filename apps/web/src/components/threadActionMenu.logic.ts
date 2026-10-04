@@ -20,9 +20,6 @@ export type ThreadActionMenuId =
   | "snooze"
   | `snooze:${string}`
   | "unsnooze"
-  | "handoff"
-  | `handoff:${string}`
-  | "handoff-take-back"
   | "rename"
   | "regenerate-title"
   | "mark-unread"
@@ -32,6 +29,45 @@ export type ThreadActionMenuId =
   | "copy-thread-id"
   | "archive"
   | "delete";
+
+export type DraftActionMenuId =
+  | "copy"
+  | "copy-path"
+  | "copy-branch"
+  | "project-settings"
+  | "discard";
+
+/** Right-click menu for an unsent draft row in the sidebar. */
+export function buildDraftActionMenuItems(options: {
+  readonly hasPath: boolean;
+  readonly hasBranch: boolean;
+  readonly hasProject: boolean;
+}): ReadonlyArray<ContextMenuItem<DraftActionMenuId>> {
+  return [
+    {
+      id: "copy",
+      label: "Copy",
+      icon: "copy",
+      disabled: !options.hasPath && !options.hasBranch,
+      children: [
+        ...(options.hasPath ? [{ id: "copy-path" as const, label: "Path", icon: "folder" }] : []),
+        ...(options.hasBranch
+          ? [{ id: "copy-branch" as const, label: "Branch", icon: "git-branch" }]
+          : []),
+      ],
+    },
+    ...(options.hasProject
+      ? [{ id: "project-settings" as const, label: "Project settings", icon: "settings" }]
+      : []),
+    {
+      id: "discard",
+      label: "Discard draft",
+      icon: "trash",
+      destructive: true,
+      separatorBefore: true,
+    },
+  ];
+}
 
 export interface ThreadActionMenuState {
   readonly branch: string | null;
@@ -51,7 +87,7 @@ export interface ThreadActionMenuState {
   readonly isSnoozed: boolean;
   readonly canSnoozeNow: boolean;
   readonly isRegeneratingTitle: boolean;
-  /** Archive rejects a thread with an active turn, so disable it here rather than let the action fail. */
+  /** Archive rejects a thread with an attached provider, so disable it here rather than let the action fail. */
   readonly isRunning: boolean;
   readonly supports: {
     readonly settlement: boolean;
@@ -60,19 +96,8 @@ export interface ThreadActionMenuState {
     readonly snooze: boolean;
     readonly pinning: boolean;
     readonly titleRegeneration: boolean;
-    readonly handoff: boolean;
   };
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
-  /** Set once the work has moved; the only action left is taking it back. */
-  readonly handedOffToLabel: string | null;
-  /**
-   * Provider name when this thread is on one whose session cannot move. The
-   * item stays visible and names the provider rather than disappearing, so the
-   * absence is legible instead of looking like a missing feature.
-   */
-  readonly handoffUnsupportedProvider: string | null;
-  /** Environments this thread could move to, already filtered by the caller. */
-  readonly handoffTargets: ReadonlyArray<{ readonly id: string; readonly label: string }>;
 }
 
 /**
@@ -127,36 +152,6 @@ export function buildThreadActionMenuItems(
                   { id: "snooze:custom" as const, label: "Custom…", separatorBefore: true },
                 ],
               },
-        ]
-      : []),
-    ...(state.supports.handoff
-      ? [
-          state.handedOffToLabel !== null
-            ? {
-                id: "handoff-take-back" as const,
-                label: `Take back from ${state.handedOffToLabel}`,
-                icon: "laptop-minimal",
-              }
-            : state.handoffUnsupportedProvider !== null
-              ? {
-                  // Named, not hidden: a silently absent action reads as a bug.
-                  id: "handoff" as const,
-                  label: `Hand off (not supported on ${state.handoffUnsupportedProvider})`,
-                  icon: "laptop-minimal",
-                  disabled: true,
-                }
-              : {
-                  id: "handoff" as const,
-                  label: "Hand off to",
-                  icon: "laptop-minimal",
-                  // Deliberately NOT disabled while running: handing off
-                  // mid-work is the entire point of the feature.
-                  disabled: state.handoffTargets.length === 0,
-                  children: state.handoffTargets.map((target) => ({
-                    id: `handoff:${target.id}` as const,
-                    label: target.label,
-                  })),
-                },
         ]
       : []),
     { id: "rename", label: "Rename thread", icon: "pencil", separatorBefore: true },

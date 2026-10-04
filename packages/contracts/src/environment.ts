@@ -3,8 +3,6 @@ import * as Schema from "effect/Schema";
 
 import {
   EnvironmentId,
-  HandoffId,
-  IsoDateTime,
   ForwardCompatibleOptional,
   ProjectId,
   ThreadId,
@@ -12,8 +10,10 @@ import {
 } from "./baseSchemas.ts";
 
 /** Wire version for orchestration snapshots, streams, commands, and RPC payloads. */
-export const ORCHESTRATION_PROTOCOL_VERSION = 1;
+export const ORCHESTRATION_PROTOCOL_VERSION = 2;
+export const ORCHESTRATION_PROTOCOL_VERSION_TEXT = "2";
 export const ORCHESTRATION_PROTOCOL_QUERY_PARAM = "orchestrationProtocol";
+export const ORCHESTRATION_PROTOCOL_HEADER = "x-t3-orchestration-protocol";
 
 export const ExecutionEnvironmentPlatformOs = Schema.Literals([
   "darwin",
@@ -77,6 +77,13 @@ export type ExecutionEnvironmentPlatform = typeof ExecutionEnvironmentPlatform.T
 export const ServerSelfUpdateMethod = Schema.Literals(["boot-service", "respawn", "desktop-app"]);
 export type ServerSelfUpdateMethod = typeof ServerSelfUpdateMethod.Type;
 
+/** Proven ownership for a manual update; unknown installs omit this descriptor. */
+export const ServerInstallation = Schema.Union([
+  Schema.Struct({ kind: Schema.Literals(["npx", "pnpm-dlx", "bunx"]) }),
+  Schema.Struct({ kind: Schema.Literal("npm-global"), prefix: TrimmedNonEmptyString }),
+]);
+export type ServerInstallation = typeof ServerInstallation.Type;
+
 /** What update path a client should offer for a server: one of the RPC
     self-update methods above, or "desktop-managed" when the backend's
     version belongs to the codeslop desktop app supervising it — updating the
@@ -104,6 +111,7 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   /** Server exposes the pull-request list, detail, activity, diff, and mutation APIs. Absent on
       servers from before the pull-request workspace shipped, so clients must not probe them. */
   pullRequests: Schema.optionalKey(Schema.Boolean),
+  pullRequestChecks: Schema.optionalKey(Schema.Boolean),
   /** Server understands canonical inline context links plus their message context records.
       Absent on servers from before inline context shipped, which drop the records and forward
       the links as literal text -- so a client must serialize context the legacy way for them. */
@@ -135,6 +143,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   usageLimitSources: Schema.optionalKey(Schema.Boolean),
   /** Server persists custom model rates and applies them to usage summaries. */
   usagePriceOverrides: Schema.optionalKey(Schema.Boolean),
+  /** Server persists model mappings and folds mapped usage into the target model. */
+  usageModelAliases: Schema.optionalKey(Schema.Boolean),
   /** Server understands thread.pin / thread.unpin commands. Same
       version-skew contract as threadSettlement. */
   threadPinning: Schema.optionalKey(Schema.Boolean),
@@ -149,26 +159,27 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   /** Server understands regenerateTitle on thread.meta.update. Absent on
       older servers, so clients hide the action instead of sending it. */
   threadTitleRegeneration: Schema.optionalKey(Schema.Boolean),
-  /** Server can hand a running thread off to another environment: it accepts
-      thread.handoff.complete / thread.handoff.clear and freezes the source
-      thread. Same version-skew contract as threadSettlement. */
-  threadHandoffSource: Schema.optionalKey(Schema.Boolean),
-  /** Server can adopt a handoff: it understands continuedFrom on
-      thread.create. Absent servers silently drop the field and create a
-      thread with no provenance, so clients must not send it blind. */
-  threadHandoffTarget: Schema.optionalKey(Schema.Boolean),
-  /** Server supports legacy linkedPullRequest updates through thread.meta.update.
-      Independent of threadPullRequests; servers supporting both advertise both. */
+  /** Server understands thread.visit / thread.mark-unread commands and
+      projects lastVisitedAt on thread shells. Same version-skew contract as
+      threadSettlement: clients keep their local visited state against
+      servers that lack this. */
+  threadVisitedTracking: Schema.optionalKey(Schema.Boolean),
+  /** Server persists a pull request reference on thread.meta.update. */
   threadPullRequestLinking: Schema.optionalKey(Schema.Boolean),
-  /** Server understands thread.pull-request.link / .unlink, exposes `pullRequests` on
-      threads, and routes PullRequestRef.host across projects on the same host. Same
-      version-skew contract as threadSettlement. */
+  /** Server resolves message delivery and model-selection context and validates
+      identified rollback readiness. Clients retain projection-based command
+      shaping and validation when this is absent. */
+  serverResolvedCommandContext: Schema.optionalKey(Schema.Boolean),
   threadPullRequests: Schema.optionalKey(Schema.Boolean),
+  /** Server understands thread.pull-request.watch and wakes agents on pull request changes. */
+  threadPullRequestWatch: Schema.optionalKey(Schema.Boolean),
   pullRequestStackActions: Schema.optionalKey(Schema.Boolean),
   /** The update path clients should offer for this server. Absent on
       servers that must be relaunched manually (dev checkouts, Windows
       foreground runs, pre-update servers). */
   serverSelfUpdate: Schema.optionalKey(ServerSelfUpdateCapability),
+  /** Manual commands must update this install, not the host's default global prefix. */
+  serverInstallation: ForwardCompatibleOptional(ServerInstallation),
   /** Server can stream self-update progress before acknowledging the
       restart. Clients fall back to server.updateServer when absent. */
   serverSelfUpdateProgress: Schema.optionalKey(Schema.Boolean),
@@ -203,7 +214,7 @@ export const ExecutionEnvironmentDescriptor = Schema.Struct({
   label: TrimmedNonEmptyString,
   platform: ExecutionEnvironmentPlatform,
   serverVersion: TrimmedNonEmptyString,
-  /** Missing metadata denotes protocol 1. Bump this for breaking wire changes. */
+  /** Absent on hosts from before explicit orchestration protocol negotiation. */
   orchestrationProtocolVersion: Schema.optionalKey(Schema.Int),
   capabilities: ExecutionEnvironmentCapabilities,
 });
@@ -240,48 +251,3 @@ export const ScopedThreadRef = Schema.Struct({
   threadId: ThreadId,
 });
 export type ScopedThreadRef = typeof ScopedThreadRef.Type;
-
-/**
- * One end of a thread handoff: the thread on the other environment, plus
- * display-only snapshots of that environment's label and the thread's title.
- * Carried whole so a client can render the link with no connection to the
- * other environment; the snapshots are taken once at handoff time and are
- * never refreshed.
- */
-export const ThreadHandoffLink = Schema.Struct({
-  environmentId: EnvironmentId,
-  threadId: ThreadId,
-  // Supplied by the command issuer rather than stamped by the decider the way
-  // settledAt and snoozedAt are: the meaningful moment is when the TARGET
-  // adopted the work, and the source environment's clock does not own it.
-  at: IsoDateTime,
-  environmentLabel: Schema.optionalKey(TrimmedNonEmptyString),
-  threadTitle: Schema.optionalKey(TrimmedNonEmptyString),
-});
-export type ThreadHandoffLink = typeof ThreadHandoffLink.Type;
-
-/**
- * Stages of an in-flight handoff, in order. Treat the list as closed: it is
- * decoded with Schema.Literals, so a stage added later fails the whole thread
- * payload on a client that predates it.
- */
-export const ThreadHandoffStage = Schema.Literals([
-  "freezing",
-  "publishing",
-  "exporting",
-  "staged",
-  "transferring",
-  "adopting",
-]);
-export type ThreadHandoffStage = typeof ThreadHandoffStage.Type;
-
-export const ThreadHandoffPending = Schema.Struct({
-  handoffId: HandoffId,
-  target: ThreadHandoffLink,
-  stage: ThreadHandoffStage,
-  startedAt: IsoDateTime,
-  /** Set when a stage failed and the handoff is parked awaiting retry or
-      cancel. Absent while the handoff is progressing normally. */
-  error: Schema.optionalKey(TrimmedNonEmptyString),
-});
-export type ThreadHandoffPending = typeof ThreadHandoffPending.Type;

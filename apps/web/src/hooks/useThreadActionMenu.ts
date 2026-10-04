@@ -1,5 +1,5 @@
+import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { requestCustomSnooze } from "../components/CustomSnoozeDialog";
-import { scopeProjectRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   type AtomCommandResult,
   isAtomCommandInterrupted,
@@ -7,7 +7,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { canSnooze, effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
-import { HandoffId, ThreadId, type EnvironmentId, type ScopedThreadRef } from "@t3tools/contracts";
+import type { ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
 
@@ -23,23 +23,20 @@ import {
   readEnvironmentSupportsAutoSettleOptOut,
   readEnvironmentSupportsPinning,
   readEnvironmentSupportsSettlement,
-  readEnvironmentSupportsHandoff,
   readEnvironmentSupportsSnooze,
-  readHandoffTargetEnvironments,
   readEnvironmentSupportsTitleRegeneration,
   readThreadShell,
   useProjects,
 } from "../state/entities";
 import { usePrimaryEnvironmentId } from "../state/environments";
 import { readLocalApi } from "../localApi";
-import { randomHex } from "~/lib/utils";
 import {
   deriveLogicalProjectKeyFromSettings,
   derivePhysicalProjectKey,
   selectProjectGroupingSettings,
 } from "../logicalProject";
 import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
-import { useUiStateStore } from "../uiStateStore";
+import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
@@ -95,18 +92,12 @@ export function useThreadActionMenu(input: {
     setThreadAutoSettle,
     archiveThread,
     deleteThread,
+    markThreadUnread,
   } = useThreadActions();
-  const startHandoffMutation = useAtomCommand(threadEnvironment.startHandoff, {
-    label: "thread-action-menu:handoff-start",
-  });
-  const clearHandoffMutation = useAtomCommand(threadEnvironment.clearHandoff, {
-    label: "thread-action-menu:handoff-clear",
-  });
   const updateThreadMetadata = useAtomCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
   const handleNewThread = useNewThreadHandler();
-  const markThreadUnread = useUiStateStore((s) => s.markThreadUnread);
   const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
@@ -147,22 +138,11 @@ export function useThreadActionMenu(input: {
           snooze: readEnvironmentSupportsSnooze(threadRef.environmentId),
           pinning: readEnvironmentSupportsPinning(threadRef.environmentId),
           titleRegeneration: readEnvironmentSupportsTitleRegeneration(threadRef.environmentId),
-          handoff: readEnvironmentSupportsHandoff(threadRef.environmentId),
         };
-        // Only these two providers keep a session that can move; anything else
-        // shows the action disabled and named rather than hiding it.
-        const handoffTargets = readHandoffTargetEnvironments(threadRef.environmentId);
-        const providerName = thread.session?.providerName ?? null;
-        const handoffUnsupportedProvider =
-          providerName !== null && providerName !== "claudeAgent" && providerName !== "codex"
-            ? providerName
-            : null;
         const isRegeneratingTitle = thread.titleRegeneration != null;
         const snoozePresets = resolveSnoozePresets(now, timestampFormat);
         const items = buildThreadActionMenuItems({
           branch: thread.branch ?? null,
-          // The chat header has no project-scoped thread list behind the
-          // menu, so the "Filter by project" affordance is sidebar-only.
           projectFilter: null,
           isPinned: thread.pinnedAt != null,
           isSettled: supports.settlement && thread.settledOverride === "settled",
@@ -170,51 +150,13 @@ export function useThreadActionMenu(input: {
           isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
           canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
           isRegeneratingTitle,
-          isRunning: thread.session?.status === "running" && thread.session.activeTurnId != null,
+          isRunning: !threadRuntimeCanArchive(thread.runtime),
           supports,
           snoozePresets,
-          handedOffToLabel: thread.handedOffTo?.environmentLabel ?? null,
-          handoffUnsupportedProvider,
-          handoffTargets,
         });
         const clicked = await settlePromise(() => api.contextMenu.show(items, position));
         if (clicked._tag === "Failure" || clicked.value === null) return;
         const action: ThreadActionMenuId = clicked.value;
-        if (action === "handoff-take-back") {
-          const result = await clearHandoffMutation({
-            environmentId: threadRef.environmentId,
-            input: { threadId: threadRef.threadId, reason: "user" },
-          });
-          if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-            failureToast("Failed to take the thread back", squashAtomCommandFailure(result));
-          }
-          return;
-        }
-        if (action.startsWith("handoff:")) {
-          const environmentId = action.slice("handoff:".length);
-          const target = handoffTargets.find((candidate) => candidate.id === environmentId);
-          if (!target) return;
-          // The target thread id is minted here so both ends share it for the
-          // whole transfer: thread.create takes a client-supplied id.
-          const handoffId = HandoffId.make(randomHex(16));
-          const result = await startHandoffMutation({
-            environmentId: threadRef.environmentId,
-            input: {
-              threadId: threadRef.threadId,
-              handoffId,
-              target: {
-                environmentId: environmentId as EnvironmentId,
-                threadId: ThreadId.make(randomHex(16)),
-                at: new Date().toISOString(),
-                environmentLabel: target.label,
-              },
-            },
-          });
-          if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-            failureToast("Failed to start the handoff", squashAtomCommandFailure(result));
-          }
-          return;
-        }
         if (action.startsWith("snooze:")) {
           const preset =
             action === "snooze:custom"
@@ -304,7 +246,7 @@ export function useThreadActionMenu(input: {
             );
             return;
           case "mark-unread":
-            markThreadUnread(scopedThreadKey(threadRef), thread.latestTurn?.completedAt);
+            markThreadUnread(threadRef);
             return;
           case "copy-path": {
             const workspacePath = thread.worktreePath ?? projectCwd;

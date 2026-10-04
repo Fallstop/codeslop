@@ -32,22 +32,13 @@ const makeMessageEmbeddingRepository = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
 
   // Shared predicate for "messages that should have an embedding but don't":
-  // settled user messages and canonical assistant outputs of non-deleted
-  // threads, without an up-to-date row for this model.
+  // settled user and assistant messages of non-deleted threads, without an
+  // up-to-date row for this model. Text matches what ThreadSearch reads.
   const staleMessagesFilter = (model: string) => sql`
-    projection_threads.deleted_at IS NULL
-    AND messages.is_streaming = 0
-    AND (
-      messages.role = 'user'
-      OR (
-        messages.role = 'assistant'
-        AND messages.message_id IN (
-          SELECT turns.assistant_message_id
-          FROM projection_turns AS turns
-          WHERE turns.assistant_message_id IS NOT NULL
-        )
-      )
-    )
+    threads.deleted_at IS NULL
+    AND messages.streaming = 0
+    AND messages.role IN ('user', 'assistant')
+    AND json_extract(messages.payload_json, '$.text') IS NOT NULL
     AND NOT EXISTS (
       SELECT 1
       FROM message_embeddings AS embeddings
@@ -65,11 +56,11 @@ const makeMessageEmbeddingRepository = Effect.gen(function* () {
         SELECT
           messages.message_id AS "messageId",
           messages.thread_id AS "threadId",
-          messages.text,
+          json_extract(messages.payload_json, '$.text') AS text,
           messages.updated_at AS "updatedAt"
-        FROM projection_thread_messages AS messages
-        INNER JOIN projection_threads
-          ON projection_threads.thread_id = messages.thread_id
+        FROM orchestration_v2_projection_messages AS messages
+        INNER JOIN orchestration_v2_projection_threads AS threads
+          ON threads.thread_id = messages.thread_id
         WHERE ${staleMessagesFilter(model)}
         ORDER BY messages.created_at DESC
         LIMIT ${limit}
@@ -82,9 +73,9 @@ const makeMessageEmbeddingRepository = Effect.gen(function* () {
     execute: ({ model }) =>
       sql`
         SELECT COUNT(*) AS "staleCount"
-        FROM projection_thread_messages AS messages
-        INNER JOIN projection_threads
-          ON projection_threads.thread_id = messages.thread_id
+        FROM orchestration_v2_projection_messages AS messages
+        INNER JOIN orchestration_v2_projection_threads AS threads
+          ON threads.thread_id = messages.thread_id
         WHERE ${staleMessagesFilter(model)}
       `,
   });
@@ -122,9 +113,9 @@ const makeMessageEmbeddingRepository = Effect.gen(function* () {
           END AS source,
           messages.created_at AS "messageCreatedAt"
         FROM message_embeddings AS embeddings
-        INNER JOIN projection_thread_messages AS messages
+        INNER JOIN orchestration_v2_projection_messages AS messages
           ON messages.message_id = embeddings.message_id
-        INNER JOIN projection_threads AS threads
+        INNER JOIN orchestration_v2_projection_threads AS threads
           ON threads.thread_id = messages.thread_id
         INNER JOIN projection_projects AS projects
           ON projects.project_id = threads.project_id
@@ -148,10 +139,10 @@ const makeMessageEmbeddingRepository = Effect.gen(function* () {
         WHERE model = ${model}
           AND (
             message_id NOT IN (
-              SELECT message_id FROM projection_thread_messages
+              SELECT message_id FROM orchestration_v2_projection_messages
             )
             OR thread_id IN (
-              SELECT thread_id FROM projection_threads WHERE deleted_at IS NOT NULL
+              SELECT thread_id FROM orchestration_v2_projection_threads WHERE deleted_at IS NOT NULL
             )
           )
         RETURNING message_id AS "messageId"

@@ -1,16 +1,16 @@
-// @effect-diagnostics nodeBuiltinImport:off - the legacy-profile probe must stay synchronous; see resolveUserDataPath.
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
-import * as NodeFS from "node:fs";
 
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as DesktopAssets from "./DesktopAssets.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
+import * as DesktopUserData from "./DesktopUserData.ts";
 
 const COMMIT_HASH_PATTERN = /^[0-9a-f]{7,40}$/i;
 const COMMIT_HASH_DISPLAY_LENGTH = 12;
@@ -21,22 +21,13 @@ const AppPackageMetadata = Schema.Struct({
 });
 const decodeAppPackageMetadata = Schema.decodeEffect(Schema.fromJsonString(AppPackageMetadata));
 
-export class DesktopUserDataPathResolutionError extends Schema.TaggedError<DesktopUserDataPathResolutionError>()(
-  "DesktopUserDataPathResolutionError",
-  {
-    legacyPath: Schema.String,
-    cause: Schema.Defect(),
-  },
-) {
-  override get message(): string {
-    return `Failed to inspect legacy desktop user-data path at "${this.legacyPath}".`;
-  }
-}
-
 export class DesktopAppIdentity extends Context.Service<
   DesktopAppIdentity,
   {
-    readonly resolveUserDataPath: Effect.Effect<string, DesktopUserDataPathResolutionError>;
+    readonly resolveUserDataPath: Effect.Effect<
+      string,
+      DesktopUserData.DesktopUserDataInitializationError
+    >;
     readonly configure: Effect.Effect<void>;
   }
 >()("@t3tools/desktop/app/DesktopAppIdentity") {}
@@ -49,55 +40,43 @@ const normalizeCommitHash = (value: string): Option.Option<string> => {
 };
 
 /**
- * Probes the legacy profile marker without yielding the event loop. `statSync` rather than
- * `existsSync` so an unreadable legacy directory raises instead of reading as "missing" —
- * silently adopting the new path there would orphan the profile this probe exists to find.
- */
-const legacyProfileExistsSync = (path: string): boolean =>
-  NodeFS.statSync(path, { throwIfNoEntry: false }) !== undefined;
-
-/**
- * Resolves the Electron userData directory, given a synchronous existence probe.
+ * Resolves the Electron userData directory, keeping a pre-rebrand `t3code` profile in place.
  *
- * The probe must stay synchronous. `DesktopClerk` creates the Clerk bridge immediately after
- * this resolves, and the bridge registers privileged schemes, which Electron rejects once
- * `ready` has fired. Awaiting here hands the event loop back and lets `ready` win the race,
- * failing startup with `protocol.registerSchemesAsPrivileged should be called before app is
- * ready`. `fileExists` is injected rather than taken from the app's FileSystem service because
- * that service is async, and this runs before Electron is ready.
+ * Runs before Electron is ready: `DesktopClerk` creates the Clerk bridge right after this, and
+ * the bridge registers privileged schemes Electron rejects once `ready` fires. Startup provides
+ * the synchronous `DesktopPreReadyFileSystem` so resolving never yields to the event loop.
  */
-export const makeResolveUserDataPath = Effect.fn("desktop.appIdentity.resolveUserDataPath")(
-  function* (fileExists: (path: string) => boolean) {
-    const environment = yield* DesktopEnvironment.DesktopEnvironment;
-    const legacyPath = environment.path.join(
-      environment.appDataDirectory,
-      environment.legacyUserDataDirName,
+export const resolveUserDataPath = Effect.fn("desktop.appIdentity.resolveUserDataPath")(function* (
+  environment: Pick<
+    DesktopEnvironment.DesktopEnvironment["Service"],
+    "appDataDirectory" | "userDataDirName" | "legacyUserDataDirName"
+  >,
+) {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const legacyPath = path.join(environment.appDataDirectory, environment.legacyUserDataDirName);
+  // Chromium writes a bare `Local State` into the pre-`setPath` directory during early
+  // startup, so probe `Preferences` to tell a real legacy profile from that stub.
+  const marker = path.join(legacyPath, LEGACY_PROFILE_MARKER);
+  const legacyProfileExists = yield* fileSystem
+    .exists(marker)
+    .pipe(
+      Effect.mapError((cause) =>
+        DesktopUserData.DesktopUserDataInitializationError.fromFileSystem(cause, "inspect", marker),
+      ),
     );
-    // Chromium writes a bare `Local State` into the pre-`setPath` directory during early
-    // startup, so a legacy directory can exist while holding no profile at all. Probing for
-    // `Preferences` distinguishes a real pre-rebrand profile from that stub — adopting the
-    // stub would silently orphan the current profile.
-    const legacyProfileExists = yield* Effect.try({
-      try: () => fileExists(environment.path.join(legacyPath, LEGACY_PROFILE_MARKER)),
-      catch: (cause) =>
-        new DesktopUserDataPathResolutionError({
-          legacyPath,
-          cause,
-        }),
-    });
-    return legacyProfileExists
-      ? legacyPath
-      : environment.path.join(environment.appDataDirectory, environment.userDataDirName);
-  },
-);
+  return legacyProfileExists
+    ? legacyPath
+    : path.join(environment.appDataDirectory, environment.userDataDirName);
+});
 
-export const resolveUserDataPath = makeResolveUserDataPath(legacyProfileExistsSync);
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
   const assets = yield* DesktopAssets.DesktopAssets;
   const electronApp = yield* ElectronApp.ElectronApp;
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
   const fileSystem = yield* FileSystem.FileSystem;
+  const userDataContext = yield* Effect.context<FileSystem.FileSystem | Path.Path>();
   const commitHashCache = yield* Ref.make<Option.Option<Option.Option<string>>>(Option.none());
 
   const resolveEmbeddedCommitHash = Effect.gen(function* () {
@@ -138,9 +117,7 @@ export const make = Effect.gen(function* () {
     return commitHash;
   });
 
-  const userDataPath = resolveUserDataPath.pipe(
-    Effect.provide(yield* Effect.context<DesktopEnvironment.DesktopEnvironment>()),
-  );
+  const userDataPath = resolveUserDataPath(environment).pipe(Effect.provide(userDataContext));
 
   const configure = Effect.gen(function* () {
     const commitHash = yield* resolveAboutCommitHash;
