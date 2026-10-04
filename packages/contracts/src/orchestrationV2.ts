@@ -3425,6 +3425,121 @@ export class OrchestrationGetWorkflowScriptError extends Schema.TaggedError<Orch
   }
 }
 
+/** Largest staged payload a handoff carries; bigger sessions refuse up front. */
+export const MACHINE_HANDOFF_MAX_PAYLOAD_BYTES = 64 * 1024 * 1024;
+/** Largest slice one bundle RPC frame carries. */
+export const MACHINE_HANDOFF_CHUNK_BYTES = 256 * 1024;
+
+/** One message of conversation carried for a provider whose session cannot move. */
+export const OrchestrationV2MachineHandoffHistoryEntry = Schema.Struct({
+  role: Schema.Literals(["user", "assistant"]),
+  text: Schema.String,
+  createdAt: IsoDateTime,
+});
+export type OrchestrationV2MachineHandoffHistoryEntry =
+  typeof OrchestrationV2MachineHandoffHistoryEntry.Type;
+
+/**
+ * Describes a staged handoff. The payload is the native session bytes (if
+ * any) followed by the history as JSON, covered by one checksum.
+ */
+export const OrchestrationV2MachineHandoffManifest = Schema.Struct({
+  version: Schema.Literal(1),
+  handoffId: MachineHandoffId,
+  originEnvironmentId: EnvironmentId,
+  originThreadId: ThreadId,
+  targetThreadId: ThreadId,
+  thread: Schema.Struct({
+    title: TrimmedNonEmptyString,
+    modelSelection: ModelSelection,
+    runtimeMode: RuntimeMode,
+    interactionMode: ProviderInteractionMode,
+    originBranch: Schema.NullOr(TrimmedNonEmptyString),
+  }),
+  native: Schema.NullOr(
+    Schema.Struct({
+      driver: ProviderDriverKind,
+      nativeThreadId: TrimmedNonEmptyString,
+      fileName: Schema.NullOr(TrimmedNonEmptyString),
+      bytes: NonNegativeInt,
+    }),
+  ),
+  historyBytes: NonNegativeInt,
+  payloadBytes: NonNegativeInt,
+  payloadSha256: TrimmedNonEmptyString,
+  git: Schema.Struct({
+    remoteUrl: TrimmedNonEmptyString,
+    ref: TrimmedNonEmptyString,
+    commit: TrimmedNonEmptyString,
+    baseCommit: TrimmedNonEmptyString,
+  }),
+  /** Proof the origin stopped the thread before staging it. */
+  originStoppedAt: IsoDateTime,
+});
+export type OrchestrationV2MachineHandoffManifest =
+  typeof OrchestrationV2MachineHandoffManifest.Type;
+
+export const OrchestrationV2ReadMachineHandoffBundleInput = Schema.Struct({
+  handoffId: MachineHandoffId,
+  offset: NonNegativeInt,
+  length: PositiveInt.check(Schema.isLessThanOrEqualTo(MACHINE_HANDOFF_CHUNK_BYTES)),
+});
+export type OrchestrationV2ReadMachineHandoffBundleInput =
+  typeof OrchestrationV2ReadMachineHandoffBundleInput.Type;
+
+export const OrchestrationV2ReadMachineHandoffBundleResult = Schema.Struct({
+  manifest: OrchestrationV2MachineHandoffManifest,
+  /** Base64. */
+  chunk: Schema.String,
+  totalBytes: NonNegativeInt,
+});
+export type OrchestrationV2ReadMachineHandoffBundleResult =
+  typeof OrchestrationV2ReadMachineHandoffBundleResult.Type;
+
+export const OrchestrationV2WriteMachineHandoffBundleInput = Schema.Struct({
+  handoffId: MachineHandoffId,
+  offset: NonNegativeInt,
+  /** Base64. */
+  chunk: Schema.String,
+  /** Required with the first chunk; a resent first chunk restarts the transfer. */
+  manifest: Schema.optional(OrchestrationV2MachineHandoffManifest),
+});
+export type OrchestrationV2WriteMachineHandoffBundleInput =
+  typeof OrchestrationV2WriteMachineHandoffBundleInput.Type;
+
+export const OrchestrationV2WriteMachineHandoffBundleResult = Schema.Struct({
+  receivedBytes: NonNegativeInt,
+});
+export type OrchestrationV2WriteMachineHandoffBundleResult =
+  typeof OrchestrationV2WriteMachineHandoffBundleResult.Type;
+
+export const OrchestrationV2AdoptMachineHandoffInput = Schema.Struct({
+  handoffId: MachineHandoffId,
+  projectId: ProjectId,
+  /** Start a turn that picks the work back up once the workspace is ready. */
+  continueWork: Schema.Boolean,
+});
+export type OrchestrationV2AdoptMachineHandoffInput =
+  typeof OrchestrationV2AdoptMachineHandoffInput.Type;
+
+export const OrchestrationV2AdoptMachineHandoffResult = Schema.Struct({
+  threadId: ThreadId,
+  worktreePath: TrimmedNonEmptyString,
+  context: OrchestrationV2MachineHandoffContext,
+});
+export type OrchestrationV2AdoptMachineHandoffResult =
+  typeof OrchestrationV2AdoptMachineHandoffResult.Type;
+
+/** A bundle step refused; `message` is written for the user. */
+export class OrchestrationV2MachineHandoffError extends Schema.TaggedError<OrchestrationV2MachineHandoffError>()(
+  "OrchestrationV2MachineHandoffError",
+  {
+    handoffId: MachineHandoffId,
+    message: Schema.String,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
+
 export const OrchestrationV2RpcSchemas = {
   dispatchCommand: {
     input: OrchestrationV2Command,

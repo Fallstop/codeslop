@@ -133,6 +133,7 @@ export function makeReplayServerConfig(
       providerStatusCacheDir,
       worktreesDir,
       attachmentsDir,
+      handoffDir: path.join(stateDir, "handoff"),
       browserArtifactsDir: path.join(stateDir, "browser-artifacts"),
       environmentThemesDir,
       logsDir,
@@ -264,10 +265,26 @@ export function makeOrchestratorV2ReplayLayerWithRegistry<Error>(
     readonly recoverOnStartup?: boolean;
     readonly continueThreadsAfterServerUpdate?: boolean;
     // Export and cleanup are inert unless a test supplies the real service.
-    readonly machineHandoffLayer?: Layer.Layer<MachineHandoffService.MachineHandoffService>;
+    readonly machineHandoffLayer?: Layer.Layer<
+      MachineHandoffService.MachineHandoffService,
+      never,
+      | ThreadManagementService.ThreadManagementService
+      | ProjectionStore.ProjectionStoreV2
+      | EffectOutbox.EffectOutboxV2
+      | EventSink.EventSinkV2
+      | ProviderAdapterRegistry.ProviderAdapterRegistryV2
+      | RuntimePolicy.RuntimePolicyV2
+      | ServerConfig.ServerConfig
+      | CheckpointStore.CheckpointStore
+      | FileSystem.FileSystem
+      | Path.Path
+    >;
   } = {},
 ): Layer.Layer<
-  Orchestrator.OrchestratorV2 | EffectWorker.OrchestrationEffectWorkerV2 | EventSink.EventSinkV2,
+  | Orchestrator.OrchestratorV2
+  | EffectWorker.OrchestrationEffectWorkerV2
+  | EventSink.EventSinkV2
+  | MachineHandoffService.MachineHandoffService,
   Error | MigrationError | PlatformError.PlatformError | SqlError
 > {
   const serverConfigLayer = Layer.effect(
@@ -449,6 +466,26 @@ export function makeOrchestratorV2ReplayLayerWithRegistry<Error>(
           ),
         )
       : Layer.empty;
+  const machineHandoffProvided = (
+    options.machineHandoffLayer ??
+    Layer.mock(MachineHandoffService.MachineHandoffService)({
+      exportBundle: () => Effect.void,
+      cleanup: () => Effect.void,
+    })
+  ).pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        threadManagementProvided,
+        storesLayer,
+        eventSinkProvided,
+        providedRegistryLayer,
+        runtimeLayer,
+        serverConfigLayer,
+        checkpointStoreLayer,
+        NodeServices.layer,
+      ),
+    ),
+  );
   const effectExecutorProvided = EffectWorker.executorLayer.pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -461,11 +498,7 @@ export function makeOrchestratorV2ReplayLayerWithRegistry<Error>(
         threadTitleRegenerationTestLayer,
         serverSettingsLayer,
         threadManagementProvided,
-        options.machineHandoffLayer ??
-          Layer.mock(MachineHandoffService.MachineHandoffService)({
-            exportBundle: () => Effect.void,
-            cleanup: () => Effect.void,
-          }),
+        machineHandoffProvided,
       ),
     ),
   );
@@ -476,6 +509,7 @@ export function makeOrchestratorV2ReplayLayerWithRegistry<Error>(
     orchestratorProvided,
     effectWorkerProvided,
     eventSinkProvided,
+    machineHandoffProvided,
     continuationWorkerProvided,
   ).pipe(Layer.provide(worktreeRepairDependenciesTestLayer), Layer.provide(NodeServices.layer));
 

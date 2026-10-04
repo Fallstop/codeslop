@@ -88,6 +88,11 @@ import * as Stream from "effect/Stream";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { resolveClaudeSdkExecutablePath } from "../../provider/Drivers/ClaudeExecutable.ts";
+import { resolveClaudeHomePath } from "../../provider/Drivers/ClaudeHome.ts";
+import {
+  exportClaudeSession,
+  installClaudeSession,
+} from "../../provider/Drivers/ClaudeSessionTransfer.ts";
 import { planClaudeSkillDispatch } from "../../provider/Drivers/ClaudeSkillDispatch.ts";
 import { discoverClaudeSkills } from "../../provider/Drivers/ClaudeSkills.ts";
 import { compileClaudeModelSelection } from "../../claudeModelOptions.ts";
@@ -2989,11 +2994,52 @@ export function makeClaudeAdapterV2(
       Effect.provideService(Path.Path, path),
     );
 
+  // Claude files a session under its config dir and the session's cwd, so
+  // installing it under the target's worktree is the whole transplant.
+  const transferError =
+    (operation: "export" | "install", nativeThreadId: string) => (cause: unknown) =>
+      new ProviderAdapter.ProviderAdapterNativeSessionTransferError({
+        driver: CLAUDE_PROVIDER,
+        operation,
+        nativeThreadId,
+        cause,
+      });
+  const configDir = resolveClaudeHomePath(adapterOptions.settings, adapterOptions.environment);
+  const nativeSessionTransfer: ProviderAdapter.ProviderAdapterV2NativeSessionTransfer = {
+    export: ({ nativeThreadId, cwd }) =>
+      Effect.gen(function* () {
+        const exported = yield* exportClaudeSession({
+          configDir: yield* configDir,
+          cwd,
+          sessionId: nativeThreadId,
+        });
+        return exported === null ? null : { bytes: exported.bytes, fileName: null };
+      }).pipe(
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, path),
+        Effect.mapError(transferError("export", nativeThreadId)),
+      ),
+    install: ({ nativeThreadId, cwd, session }) =>
+      Effect.gen(function* () {
+        yield* installClaudeSession({
+          configDir: yield* configDir,
+          cwd,
+          sessionId: nativeThreadId,
+          bytes: session.bytes,
+        });
+      }).pipe(
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, path),
+        Effect.mapError(transferError("install", nativeThreadId)),
+      ),
+  };
+
   return ProviderAdapter.ProviderAdapterV2.of({
     instanceId: adapterOptions.instanceId,
     driver: CLAUDE_PROVIDER,
     getCapabilities: () => Effect.succeed(ClaudeProviderCapabilitiesV2),
     planSelectionTransition: () => Effect.succeed(turnScopedSelectionTransition()),
+    nativeSessionTransfer,
     openSession: Effect.fn("ClaudeAdapterV2.openSession")(
       function* (input: ProviderAdapter.ProviderAdapterV2OpenSessionInput) {
         const sessionScope = yield* Effect.scope;

@@ -17,6 +17,7 @@
  * stand-in one) and a turn cut off by a killed server. Each step waits up to
  * `OPENCODE2_STEP_WAIT` seconds (120 by default).
  */
+import { machineHandoffDependenciesTestLayer } from "./testkit/MachineHandoffDependencies.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -204,6 +205,8 @@ const providerInstanceRegistryLayer = ProviderInstanceRegistryHydrationLive.pipe
   ),
 );
 const orchestrationLayer = OrchestrationV2LayerLive.pipe(
+  Layer.provide(machineHandoffDependenciesTestLayer),
+).pipe(
   Layer.provide(worktreeRepairDependenciesTestLayer),
   Layer.provide(mcpRegistryLayer),
   Layer.provide(SqlitePersistenceMemory),

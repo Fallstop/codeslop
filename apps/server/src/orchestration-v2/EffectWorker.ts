@@ -447,31 +447,33 @@ export const executorLayer: Layer.Layer<
             );
           case "machine-handoff.export": {
             const handoffId = effect.request.handoffId;
-            return machineHandoff.exportBundle({ threadId: effect.threadId, handoffId }).pipe(
-              // A refusal parks the handoff with its reason at once; only a
-              // thread still stopping is worth the worker's retries.
-              Effect.catchIf(
-                (error) => !willRetry || error.retryable !== true,
-                (error) =>
-                  threads
-                    .dispatch({
-                      type: "thread.machine-handoff.fail",
-                      commandId: CommandId.make(`${effect.id}:failed`),
-                      threadId: effect.threadId,
-                      handoffId,
-                      error: error.message.trim() || "The handoff could not be staged.",
-                    })
-                    .pipe(Effect.asVoid),
-              ),
-              Effect.mapError(
-                (cause) =>
-                  new OrchestrationEffectExecutionError({
-                    effectId: effect.id,
-                    effectType: effect.request.type,
-                    cause,
-                  }),
-              ),
-            );
+            return machineHandoff
+              .exportBundle({ threadId: effect.threadId, handoffId, attemptKey: effect.id })
+              .pipe(
+                // A refusal parks the handoff with its reason at once; only a
+                // thread still stopping is worth the worker's retries.
+                Effect.catchIf(
+                  (error) => !willRetry || error.retryable !== true,
+                  (error) =>
+                    threads
+                      .dispatch({
+                        type: "thread.machine-handoff.fail",
+                        commandId: CommandId.make(`${effect.id}:failed`),
+                        threadId: effect.threadId,
+                        handoffId,
+                        error: error.message.trim() || "The handoff could not be staged.",
+                      })
+                      .pipe(Effect.asVoid),
+                ),
+                Effect.mapError(
+                  (cause) =>
+                    new OrchestrationEffectExecutionError({
+                      effectId: effect.id,
+                      effectType: effect.request.type,
+                      cause,
+                    }),
+                ),
+              );
           }
           case "machine-handoff.cleanup":
             return machineHandoff.cleanup({

@@ -354,6 +354,47 @@ export class ProviderAdapterProtocolError extends Schema.TaggedError<ProviderAda
   }
 }
 
+export class ProviderAdapterNativeSessionTransferError extends Schema.TaggedError<ProviderAdapterNativeSessionTransferError>()(
+  "ProviderAdapterNativeSessionTransferError",
+  {
+    driver: ProviderDriverKind,
+    operation: Schema.Literals(["export", "install"]),
+    nativeThreadId: Schema.String,
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {
+  override get message(): string {
+    return `Failed to ${this.operation} ${this.driver} session ${this.nativeThreadId}.`;
+  }
+}
+
+/** A provider's own on-disk session, carried to another machine as opaque bytes. */
+export interface ProviderAdapterV2NativeSession {
+  readonly bytes: Uint8Array;
+  /** The name the provider files it under, when lookup depends on it. */
+  readonly fileName: string | null;
+}
+
+/**
+ * Moves a native session between machines so the same conversation resumes
+ * there. Works from the provider's home on disk; no process needs to run.
+ */
+export interface ProviderAdapterV2NativeSessionTransfer {
+  /** Null when this machine holds no session for the id. */
+  readonly export: (input: {
+    readonly nativeThreadId: string;
+    readonly cwd: string;
+  }) => Effect.Effect<
+    ProviderAdapterV2NativeSession | null,
+    ProviderAdapterNativeSessionTransferError
+  >;
+  readonly install: (input: {
+    readonly nativeThreadId: string;
+    readonly cwd: string;
+    readonly session: ProviderAdapterV2NativeSession;
+  }) => Effect.Effect<void, ProviderAdapterNativeSessionTransferError>;
+}
+
 export const ProviderAdapterV2Error = Schema.Union([
   ProviderAdapterCapabilitiesError,
   ProviderAdapterOpenSessionError,
@@ -591,6 +632,8 @@ export interface ProviderAdapterV2Shape {
   readonly openSession: (
     input: ProviderAdapterV2OpenSessionInput,
   ) => Effect.Effect<ProviderAdapterV2SessionRuntime, ProviderAdapterV2Error, Scope.Scope>;
+  /** Absent when sessions cannot move; a handoff then carries the conversation as text. */
+  readonly nativeSessionTransfer?: ProviderAdapterV2NativeSessionTransfer;
 }
 
 export class ProviderAdapterV2 extends Context.Service<ProviderAdapterV2, ProviderAdapterV2Shape>()(

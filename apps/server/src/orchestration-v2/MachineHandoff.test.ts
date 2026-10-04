@@ -21,6 +21,7 @@ import * as Stream from "effect/Stream";
 
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as EffectWorker from "./EffectWorker.ts";
+import { machineHandoffStopProof } from "./MachineHandoff.ts";
 import * as MachineHandoffService from "./MachineHandoffService.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import type { ProviderAdapterV2Event, ProviderAdapterV2Shape } from "./ProviderAdapter.ts";
@@ -143,6 +144,10 @@ function makeHarness() {
               Effect.tap(() => Effect.sync(() => log.push("exported"))),
             ),
           cleanup: () => Effect.sync(() => log.push("cleaned-up")),
+          readBundle: () => Effect.die("unused"),
+          writeBundle: () => Effect.die("unused"),
+          readReceived: () => Effect.die("unused"),
+          discardReceived: () => Effect.die("unused"),
         }),
       },
     );
@@ -352,9 +357,10 @@ it.effect("cancel is accepted from every state and always gives the thread back"
           yield* cancel(`${state}:again`);
         }
         yield* worker.drain();
+        // Completing cleans up the published work too, before the take back does.
         assert.lengthOf(
           harness.log.filter((entry) => entry === "cleaned-up"),
-          4,
+          5,
         );
         // Taken back: the thread runs here again.
         yield* orchestrator.dispatch(message("after"));
@@ -418,3 +424,25 @@ it.effect("complete needs a staged bundle, and fail and retry follow the current
     }),
   ),
 );
+
+it("proves a stop only once every session has detached", () => {
+  const detach = (providerSessionId: string, status: string) => ({ providerSessionId, status });
+  assert.equal(machineHandoffStopProof([]), "stopped");
+  assert.equal(
+    machineHandoffStopProof([
+      detach("a", "failed"),
+      detach("a", "succeeded"),
+      detach("b", "succeeded"),
+    ]),
+    "stopped",
+  );
+  assert.equal(
+    machineHandoffStopProof([detach("a", "succeeded"), detach("b", "pending")]),
+    "stopping",
+  );
+  // A session whose every detach failed may still be running here.
+  assert.equal(
+    machineHandoffStopProof([detach("a", "failed"), detach("b", "pending")]),
+    "not_stopped",
+  );
+});

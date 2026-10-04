@@ -7,12 +7,26 @@ import {
   type OrchestrationV2MachineHandoff,
   type OrchestrationV2Run,
 } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 
 /**
  * State rules for moving a thread to another machine. The orchestrator owns
  * events and effects; this decides what each command means for the origin
  * thread's `machineHandoff` record.
  */
+
+/** A handoff step that could not finish; `message` is shown to the user. */
+export class MachineHandoffError extends Schema.TaggedError<MachineHandoffError>()(
+  "MachineHandoffError",
+  {
+    message: Schema.String,
+    /** Worth retrying as is, such as a thread that has not finished stopping. */
+    retryable: Schema.optional(Schema.Boolean),
+    cause: Schema.optional(Schema.Defect()),
+  },
+) {}
+
+export const isMachineHandoffError = Schema.is(MachineHandoffError);
 
 export function machineHandoffTargetLabel(handoff: Pick<OrchestrationV2MachineHandoff, "target">) {
   return handoff.target.environmentLabel ?? "another machine";
@@ -129,6 +143,8 @@ export function planMachineHandoffTransition(
           state: "completed",
           completedAt: now,
         },
+        // The target already fetched the work; the published ref has done its job.
+        enqueue: { type: "cleanup", handoffId: current.id },
       };
     }
   }
@@ -157,4 +173,30 @@ export function isAutomaticMessageDelivery(
     command.restartContinuationOfRunId !== undefined ||
     command.usageLimitContinuationOfRunId !== undefined
   );
+}
+
+/**
+ * Whether the detaches a handoff enqueued prove its thread stopped here: each
+ * session needs one successful detach. Unsettled ones are still stopping.
+ */
+export function machineHandoffStopProof(
+  detaches: ReadonlyArray<{ readonly providerSessionId: string; readonly status: string }>,
+): "stopped" | "stopping" | "not_stopped" {
+  const bySession = new Map<string, Array<string>>();
+  for (const detach of detaches) {
+    bySession.set(detach.providerSessionId, [
+      ...(bySession.get(detach.providerSessionId) ?? []),
+      detach.status,
+    ]);
+  }
+  let proof: "stopped" | "stopping" | "not_stopped" = "stopped";
+  for (const statuses of bySession.values()) {
+    if (statuses.includes("succeeded")) continue;
+    if (statuses.some((status) => status === "pending" || status === "running")) {
+      proof = "stopping";
+      continue;
+    }
+    return "not_stopped";
+  }
+  return proof;
 }

@@ -85,6 +85,10 @@ import { getCodexServiceTierOptionValue } from "../../codexModelOptions.ts";
 import { ServerConfig } from "../../config.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 import {
+  exportCodexSession,
+  installCodexSession,
+} from "../../provider/Drivers/CodexSessionTransfer.ts";
+import {
   buildCodexAdditionalContext,
   buildCodexDeveloperInstructions,
 } from "../../provider/CodexDeveloperInstructions.ts";
@@ -141,7 +145,9 @@ import {
   ProviderAdapterRuntimeRequestResponseError,
   ProviderAdapterSteerRunError,
   ProviderAdapterTurnStartError,
+  ProviderAdapterNativeSessionTransferError,
   ProviderAdapterV2,
+  type ProviderAdapterV2NativeSessionTransfer,
   type ProviderAdapterV2Shape,
   type ProviderAdapterV2Event,
   type ProviderAdapterV2ForkThreadInput,
@@ -1479,6 +1485,9 @@ export const createCodexAdapterV2 = (
       environment: mergeProviderInstanceEnvironment(environment, hostEnvironment),
       clientFactory,
       fileSystem,
+      // Sessions live in the shared home even behind a shadow home: the
+      // overlay isolates auth, not history.
+      nativeSessions: { homePath: homeLayout.sharedHomePath, path: yield* Path.Path },
       idAllocator,
       serverConfig,
       continuationRequests,
@@ -1533,6 +1542,8 @@ export interface CodexAdapterV2Options {
    */
   readonly resolveRuntime?: Effect.Effect<CodexEffectiveRuntime, ProviderSetupError, Scope.Scope>;
   readonly fileSystem: FileSystem.FileSystem;
+  /** Where rollouts live, for moving a session between machines. Omitted: sessions stay put. */
+  readonly nativeSessions?: { readonly homePath: string; readonly path: Path.Path };
   readonly idAllocator: IdAllocatorV2Shape;
   readonly serverConfig: ServerConfig["Service"];
   /**
@@ -1545,6 +1556,46 @@ export interface CodexAdapterV2Options {
   };
 }
 
+/**
+ * Codex finds a rollout by the thread id in its filename anywhere under the
+ * shared home's sessions tree, so moving one is a single file copy.
+ */
+function makeCodexNativeSessionTransfer(
+  fileSystem: FileSystem.FileSystem,
+  nativeSessions: NonNullable<CodexAdapterV2Options["nativeSessions"]>,
+): ProviderAdapterV2NativeSessionTransfer {
+  const transferError =
+    (operation: "export" | "install", nativeThreadId: string) => (cause: unknown) =>
+      new ProviderAdapterNativeSessionTransferError({
+        driver: CODEX_PROVIDER,
+        operation,
+        nativeThreadId,
+        cause,
+      });
+  return {
+    export: ({ nativeThreadId }) =>
+      exportCodexSession({ codexHome: nativeSessions.homePath, threadId: nativeThreadId }).pipe(
+        Effect.map((exported) =>
+          exported === null ? null : { bytes: exported.bytes, fileName: exported.fileName },
+        ),
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, nativeSessions.path),
+        Effect.mapError(transferError("export", nativeThreadId)),
+      ),
+    install: ({ nativeThreadId, session }) =>
+      installCodexSession({
+        codexHome: nativeSessions.homePath,
+        fileName: session.fileName ?? `rollout-${nativeThreadId}.jsonl`,
+        bytes: session.bytes,
+      }).pipe(
+        Effect.asVoid,
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, nativeSessions.path),
+        Effect.mapError(transferError("install", nativeThreadId)),
+      ),
+  };
+}
+
 export function makeCodexAdapterV2(adapterOptions: CodexAdapterV2Options): ProviderAdapterV2Shape {
   const { clientFactory, fileSystem, idAllocator, serverConfig } = adapterOptions;
   const continuationRequests = adapterOptions.continuationRequests;
@@ -1554,6 +1605,14 @@ export function makeCodexAdapterV2(adapterOptions: CodexAdapterV2Options): Provi
     driver: CODEX_PROVIDER,
     getCapabilities: () => Effect.succeed(CodexProviderCapabilitiesV2),
     planSelectionTransition: () => Effect.succeed(turnScopedSelectionTransition()),
+    ...(adapterOptions.nativeSessions === undefined
+      ? {}
+      : {
+          nativeSessionTransfer: makeCodexNativeSessionTransfer(
+            fileSystem,
+            adapterOptions.nativeSessions,
+          ),
+        }),
     openSession: (input) =>
       Effect.gen(function* () {
         const scope = yield* Scope.Scope;

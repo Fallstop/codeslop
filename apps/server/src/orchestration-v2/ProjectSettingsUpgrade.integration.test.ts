@@ -1,3 +1,4 @@
+import { machineHandoffDependenciesTestLayer } from "./testkit/MachineHandoffDependencies.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import { ProjectId } from "@t3tools/contracts";
@@ -136,7 +137,9 @@ const makeRuntimeLayer = (dbPath: string) => {
     ),
   );
   return Layer.mergeAll(
-    OrchestrationV2LayerLive.pipe(Layer.provide(ProjectServiceLayerLive)),
+    OrchestrationV2LayerLive.pipe(Layer.provide(machineHandoffDependenciesTestLayer)).pipe(
+      Layer.provide(ProjectServiceLayerLive),
+    ),
     ProjectServiceLayerLive,
   ).pipe(
     Layer.provide(

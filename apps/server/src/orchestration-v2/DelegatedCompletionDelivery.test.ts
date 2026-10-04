@@ -1,3 +1,4 @@
+import { machineHandoffDependenciesTestLayer } from "./testkit/MachineHandoffDependencies.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
@@ -105,7 +106,10 @@ const TestProviderInstanceRegistry = Layer.succeed(
   },
 );
 
-const TestLayer = Layer.mergeAll(OrchestrationV2LayerLive, OrchestrationV2EventSinkLayerLive).pipe(
+const TestLayer = Layer.mergeAll(
+  OrchestrationV2LayerLive.pipe(Layer.provide(machineHandoffDependenciesTestLayer)),
+  OrchestrationV2EventSinkLayerLive,
+).pipe(
   Layer.provideMerge(ProjectServiceLayerLive),
   Layer.provide(
     Layer.mock(WorkspacePaths.WorkspacePaths)({

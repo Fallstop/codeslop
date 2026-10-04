@@ -1,6 +1,5 @@
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
-import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as OrchestrationCommandReceipts from "../persistence/Layers/OrchestrationCommandReceipts.ts";
 import * as OrchestrationEventStore from "../persistence/Layers/OrchestrationEventStore.ts";
@@ -269,15 +268,17 @@ const providerContinuationWorkerProvided = providerContinuationWorkerLive.pipe(
 const threadTitleRegenerationProvided = threadTitleRegenerationServiceLayer.pipe(
   Layer.provide(Layer.mergeAll(threadManagementProvided, ProjectStore.layer, TextGeneration.layer)),
 );
-const machineHandoffProvided = Layer.succeed(MachineHandoffService.MachineHandoffService, {
-  exportBundle: () =>
-    Effect.fail(
-      new MachineHandoffService.MachineHandoffError({
-        message: "This server cannot hand threads off yet.",
-      }),
+const machineHandoffProvided = MachineHandoffService.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      threadManagementProvided,
+      storesLayer,
+      eventSinkProvided,
+      providerAdapterRegistryProvided,
+      runtimePolicyProvided,
     ),
-  cleanup: () => Effect.void,
-});
+  ),
+);
 const effectExecutorProvided = effectExecutorLayer.pipe(
   Layer.provide(
     Layer.mergeAll(
