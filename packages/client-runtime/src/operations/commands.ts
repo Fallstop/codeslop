@@ -8,10 +8,12 @@ import {
   OrchestrationV2CheckpointUnavailableError,
   WS_METHODS,
   type ChatAttachment,
+  type MachineHandoffId,
   type MessageId,
   type ModelSelection,
   type OrchestrationV2Command,
   type OrchestrationV2CreationSource,
+  type OrchestrationV2MachineHandoffEndpoint,
   type PlanId,
   type ProjectId,
   type ProjectIconOverride,
@@ -415,7 +417,8 @@ function simpleThreadCommand(
     | "thread.unarchive"
     | "thread.settle"
     | "thread.pin"
-    | "thread.unpin",
+    | "thread.unpin"
+    | "thread.machine-handoff.cancel",
   input: ThreadCommandInput,
 ) {
   return allocateCommandId(input).pipe(
@@ -1063,5 +1066,71 @@ export const unlinkThreadPullRequest = Effect.fn("EnvironmentCommands.unlinkThre
       type: "thread.pull-request.unlink",
       commandId: yield* allocateCommandId(input),
     });
+  },
+);
+
+export interface StartMachineHandoffInput extends ThreadCommandInput {
+  readonly handoffId: MachineHandoffId;
+  readonly target: OrchestrationV2MachineHandoffEndpoint;
+}
+export const startMachineHandoff = Effect.fn("EnvironmentCommands.startMachineHandoff")(function* (
+  input: StartMachineHandoffInput,
+) {
+  return yield* dispatch({
+    type: "thread.machine-handoff.start",
+    commandId: yield* allocateCommandId(input),
+    threadId: input.threadId,
+    handoffId: input.handoffId,
+    target: input.target,
+  });
+});
+
+export interface CompleteMachineHandoffInput extends StartMachineHandoffInput {}
+export const completeMachineHandoff = Effect.fn("EnvironmentCommands.completeMachineHandoff")(
+  function* (input: CompleteMachineHandoffInput) {
+    return yield* dispatch({
+      type: "thread.machine-handoff.complete",
+      commandId: yield* allocateCommandId(input),
+      threadId: input.threadId,
+      handoffId: input.handoffId,
+      target: input.target,
+    });
+  },
+);
+
+export interface FailMachineHandoffInput extends ThreadCommandInput {
+  readonly handoffId: MachineHandoffId;
+  readonly error: string;
+}
+export const failMachineHandoff = Effect.fn("EnvironmentCommands.failMachineHandoff")(function* (
+  input: FailMachineHandoffInput,
+) {
+  return yield* dispatch({
+    type: "thread.machine-handoff.fail",
+    commandId: yield* allocateCommandId(input),
+    threadId: input.threadId,
+    handoffId: input.handoffId,
+    error: input.error,
+  });
+});
+
+export interface RetryMachineHandoffInput extends ThreadCommandInput {
+  readonly handoffId: MachineHandoffId;
+}
+export const retryMachineHandoff = Effect.fn("EnvironmentCommands.retryMachineHandoff")(function* (
+  input: RetryMachineHandoffInput,
+) {
+  return yield* dispatch({
+    type: "thread.machine-handoff.retry",
+    commandId: yield* allocateCommandId(input),
+    threadId: input.threadId,
+    handoffId: input.handoffId,
+  });
+});
+
+/** Gives the thread back to this machine, whatever state its handoff is in. */
+export const cancelMachineHandoff = Effect.fn("EnvironmentCommands.cancelMachineHandoff")(
+  function* (input: ThreadCommandInput) {
+    return yield* simpleThreadCommand("thread.machine-handoff.cancel", input);
   },
 );

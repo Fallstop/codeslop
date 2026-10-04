@@ -471,6 +471,8 @@ import {
 } from "./chat/QueuedRunsControl";
 import { useLinkedThreadPullRequest } from "./ThreadStatusIndicators";
 import type { ComposerBannerStackItem } from "./chat/ComposerBannerStack";
+import { useMachineHandoffBannerItem } from "./chat/useMachineHandoffBannerItem";
+import { machineHandoffSendBlockReason } from "@t3tools/client-runtime/machine-handoff";
 import { ComposerSurface } from "./chat/ComposerSurface";
 import { resolveThreadSyncPhase } from "../threadSync";
 import {
@@ -7398,7 +7400,9 @@ export default function ChatView(props: ChatViewProps) {
           },
         })
       : null;
+  const machineHandoffBannerItem = useMachineHandoffBannerItem(activeThreadShell);
   const composerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
+    const machineHandoffItems = machineHandoffBannerItem === null ? [] : [machineHandoffBannerItem];
     const limitRecoveryItems = limitRecoveryBanner === null ? [] : [limitRecoveryBanner];
     const backgroundWorkItems = backgroundWorkBannerItem === null ? [] : [backgroundWorkBannerItem];
     const resumeCompactionItems =
@@ -7411,6 +7415,7 @@ export default function ChatView(props: ChatViewProps) {
     if (!localCheckoutBranchMismatch || !showBranchMismatchBanner || !activeBranchMismatchKey) {
       return [
         ...feedbackBannerItems,
+        ...machineHandoffItems,
         ...limitRecoveryItems,
         ...usageLimitsItems,
         ...projectCloneItems,
@@ -7423,6 +7428,7 @@ export default function ChatView(props: ChatViewProps) {
     }
     return [
       ...feedbackBannerItems,
+      ...machineHandoffItems,
       ...limitRecoveryItems,
       ...usageLimitsItems,
       ...projectCloneItems,
@@ -7479,6 +7485,7 @@ export default function ChatView(props: ChatViewProps) {
     handleRestoreThreadBranch,
     isRestoringThreadBranch,
     backgroundWorkBannerItem,
+    machineHandoffBannerItem,
     localCheckoutBranchMismatch,
     parkedThreadBannerItem,
     projectCloneBannerItem,
@@ -11203,17 +11210,19 @@ export default function ChatView(props: ChatViewProps) {
                               canResume={resumableRunId !== null || hasHeldQueuedRuns}
                               isRevertingCheckpoint={isRevertingCheckpoint}
                               sendDisabledReason={
-                                isEnvironmentChanging
-                                  ? "Preparing machine"
-                                  : isRevertingCheckpoint
-                                    ? "Rewinding conversation"
-                                    : feedbackUploading
-                                      ? "Sending feedback"
-                                      : threadDetailLoading
-                                        ? "Messages loading"
-                                        : worktreeSetupBlocksSend
-                                          ? "Preparing worktree"
-                                          : projectCloneSendBlockReason
+                                activeThreadShell?.machineHandoff != null
+                                  ? machineHandoffSendBlockReason(activeThreadShell)
+                                  : isEnvironmentChanging
+                                    ? "Preparing machine"
+                                    : isRevertingCheckpoint
+                                      ? "Rewinding conversation"
+                                      : feedbackUploading
+                                        ? "Sending feedback"
+                                        : threadDetailLoading
+                                          ? "Messages loading"
+                                          : worktreeSetupBlocksSend
+                                            ? "Preparing worktree"
+                                            : projectCloneSendBlockReason
                               }
                               isPreparingWorktree={isPreparingWorktree}
                               queuedRunsControl={

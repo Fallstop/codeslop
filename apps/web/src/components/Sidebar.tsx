@@ -172,6 +172,10 @@ import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
 import { buildDraftActionMenuItems, buildThreadActionMenuItems } from "./threadActionMenu.logic";
 import {
+  readThreadActionMenuHandoffState,
+  useMachineHandoffActions,
+} from "../hooks/useMachineHandoffActions";
+import {
   animateSidebarLayoutChanges,
   applySidebarThreadDrop,
   filterSidebarV2VisibleThreads,
@@ -1256,60 +1260,67 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // mobile Live Activity/widgets (amber approval, indigo input, sky working)
   // so a thread reads the same color everywhere it surfaces.
   const topStatus =
-    status === "working"
+    status === "elsewhere" || status === "moving"
       ? {
-          label: "Working",
-          icon: "working" as const,
-          // No shimmer: a label that animates forever is noise in a sidebar
-          // full of them (and repaints every vsync on high-refresh displays).
-          // Only the thread you have open gets the label at full strength.
-          className: cn("text-info", !props.isActive && "opacity-75"),
+          // Muted: where the work went is information, not something to act on.
+          label: status === "elsewhere" ? "Elsewhere" : "Handing off",
+          icon: null,
+          className: "text-muted-foreground",
         }
-      : status === "waiting"
+      : status === "working"
         ? {
-            // Waiting is calm background presence (post-settle background
-            // roster), not active progress, so the label keeps full strength.
-            label: "Waiting",
-            icon: null,
-            className: "text-muted-foreground",
+            label: "Working",
+            icon: "working" as const,
+            // No shimmer: a label that animates forever is noise in a sidebar
+            // full of them (and repaints every vsync on high-refresh displays).
+            // Only the thread you have open gets the label at full strength.
+            className: cn("text-info", !props.isActive && "opacity-75"),
           }
-        : status === "approval"
+        : status === "waiting"
           ? {
-              label: "Approval",
-              icon: "approval" as const,
-              className: "text-warning-foreground",
+              // Waiting is calm background presence (post-settle background
+              // roster), not active progress, so the label keeps full strength.
+              label: "Waiting",
+              icon: null,
+              className: "text-muted-foreground",
             }
-          : status === "input"
+          : status === "approval"
             ? {
-                label: "Input",
-                icon: "input" as const,
-                className: "text-indigo-600 dark:text-indigo-300",
+                label: "Approval",
+                icon: "approval" as const,
+                className: "text-warning-foreground",
               }
-            : status === "limited"
+            : status === "input"
               ? {
-                  label: "Limited",
-                  icon: "failed" as const,
-                  className: "text-warning",
+                  label: "Input",
+                  icon: "input" as const,
+                  className: "text-indigo-600 dark:text-indigo-300",
                 }
-              : status === "failed"
+              : status === "limited"
                 ? {
-                    label: "Failed",
+                    label: "Limited",
                     icon: "failed" as const,
-                    className: "text-error",
+                    className: "text-warning",
                   }
-                : isWoke
+                : status === "failed"
                   ? {
-                      label: "Woke",
-                      icon: "woke" as const,
-                      className: "text-warning",
+                      label: "Failed",
+                      icon: "failed" as const,
+                      className: "text-error",
                     }
-                  : isUnread
+                  : isWoke
                     ? {
-                        label: "Done",
-                        icon: "done" as const,
-                        className: "text-success",
+                        label: "Woke",
+                        icon: "woke" as const,
+                        className: "text-warning",
                       }
-                    : null;
+                    : isUnread
+                      ? {
+                          label: "Done",
+                          icon: "done" as const,
+                          className: "text-success",
+                        }
+                      : null;
   const isWokeStatus = topStatus?.icon === "woke";
 
   const branchMismatch = resolveLocalCheckoutBranchMismatch({
@@ -4419,6 +4430,7 @@ export default function Sidebar() {
     [copyBranchToClipboard, copyPathToClipboard, openProjectSettings, projectByKey],
   );
 
+  const handleMachineHandoff = useMachineHandoffActions();
   const handleThreadContextMenu = useCallback(
     (threadRef: ScopedThreadRef, position: { x: number; y: number }) => {
       void (async () => {
@@ -4491,6 +4503,7 @@ export default function Sidebar() {
                 titleRegeneration: supportsTitleRegeneration,
               },
               snoozePresets,
+              machineHandoff: readThreadActionMenuHandoffState(thread),
             }),
             position,
           ),
@@ -4676,6 +4689,7 @@ export default function Sidebar() {
             return;
           }
           default:
+            if (clicked.value !== null) await handleMachineHandoff(clicked.value, thread);
             return;
         }
       })();
@@ -4683,6 +4697,7 @@ export default function Sidebar() {
     [
       archiveThread,
       attemptPin,
+      handleMachineHandoff,
       attemptSettle,
       attemptSnooze,
       attemptUnpin,

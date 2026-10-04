@@ -38,6 +38,10 @@ import {
 import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
 import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import { useCopyToClipboard } from "./useCopyToClipboard";
+import {
+  readThreadActionMenuHandoffState,
+  useMachineHandoffActions,
+} from "./useMachineHandoffActions";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
 import { useThreadActions } from "./useThreadActions";
@@ -98,6 +102,7 @@ export function useThreadActionMenu(input: {
     reportFailure: false,
   });
   const handleNewThread = useNewThreadHandler();
+  const handleMachineHandoff = useMachineHandoffActions();
   const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
@@ -153,6 +158,7 @@ export function useThreadActionMenu(input: {
           isRunning: !threadRuntimeCanArchive(thread.runtime),
           supports,
           snoozePresets,
+          machineHandoff: readThreadActionMenuHandoffState(thread),
         });
         const clicked = await settlePromise(() => api.contextMenu.show(items, position));
         if (clicked._tag === "Failure" || clicked.value === null) return;
@@ -319,12 +325,14 @@ export function useThreadActionMenu(input: {
             return;
           }
           default:
+            await handleMachineHandoff(action, thread);
             return;
         }
       })();
     },
     [
       archiveThread,
+      handleMachineHandoff,
       confirmThreadArchive,
       confirmThreadDelete,
       confirmAndUnpinThread,

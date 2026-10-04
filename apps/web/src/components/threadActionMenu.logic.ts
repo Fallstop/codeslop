@@ -28,7 +28,77 @@ export type ThreadActionMenuId =
   | "copy-branch"
   | "copy-thread-id"
   | "archive"
-  | "delete";
+  | "delete"
+  | "hand-off"
+  | `hand-off:${string}`
+  | "cancel-handoff"
+  | "hand-back"
+  | "take-back";
+
+/** A machine the thread can move to, or why it cannot. */
+export interface ThreadActionMenuHandoffTarget {
+  readonly environmentId: string;
+  readonly label: string;
+  readonly unavailable?: string;
+}
+
+export interface ThreadActionMenuHandoffState {
+  readonly targets: ReadonlyArray<ThreadActionMenuHandoffTarget>;
+  /** moving: in flight or parked with an error. elsewhere: landed on `targetLabel`. */
+  readonly current: {
+    readonly status: "moving" | "elsewhere";
+    readonly targetLabel: string;
+  } | null;
+}
+
+/**
+ * The way in, the way out while it is in flight, and both ways back once it
+ * landed. Never disabled for a running thread: moving mid-work is the point.
+ */
+function machineHandoffMenuItems(
+  handoff: ThreadActionMenuHandoffState | null,
+): ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> {
+  if (handoff === null) return [];
+  if (handoff.current?.status === "moving") {
+    return [{ id: "cancel-handoff", label: "Cancel handoff", icon: "arrow-right-left" }];
+  }
+  if (handoff.current?.status === "elsewhere") {
+    return [
+      {
+        id: "hand-back",
+        label: `Hand back from ${handoff.current.targetLabel}`,
+        icon: "arrow-right-left",
+      },
+      { id: "take-back", label: "Take back here", icon: "undo-2" },
+    ];
+  }
+  const [only] = handoff.targets;
+  if (handoff.targets.length === 1 && only !== undefined && only.unavailable === undefined) {
+    return [
+      {
+        id: `hand-off:${only.environmentId}`,
+        label: `Hand off to ${only.label}`,
+        icon: "arrow-right-left",
+      },
+    ];
+  }
+  if (handoff.targets.length === 0) return [];
+  return [
+    {
+      id: "hand-off",
+      label: "Hand off to",
+      icon: "arrow-right-left",
+      children: handoff.targets.map((target) => ({
+        id: `hand-off:${target.environmentId}` as const,
+        label:
+          target.unavailable === undefined
+            ? target.label
+            : `${target.label} (${target.unavailable})`,
+        disabled: target.unavailable !== undefined,
+      })),
+    },
+  ];
+}
 
 export type DraftActionMenuId =
   | "copy"
@@ -98,6 +168,8 @@ export interface ThreadActionMenuState {
     readonly titleRegeneration: boolean;
   };
   readonly snoozePresets: ReadonlyArray<SnoozePreset>;
+  /** Null where the thread's server cannot hand threads off. */
+  readonly machineHandoff?: ThreadActionMenuHandoffState | null | undefined;
 }
 
 /**
@@ -154,6 +226,7 @@ export function buildThreadActionMenuItems(
               },
         ]
       : []),
+    ...machineHandoffMenuItems(state.machineHandoff ?? null),
     { id: "rename", label: "Rename thread", icon: "pencil", separatorBefore: true },
     ...(state.supports.titleRegeneration
       ? [

@@ -5,6 +5,8 @@ import type {
   EnvironmentId,
   MessageId,
   OrchestrationProjectShell,
+  OrchestrationV2MachineHandoff,
+  OrchestrationV2MachineHandoffOrigin,
   OrchestrationV2RunStatus,
   OrchestrationV2ProviderFailureClass,
   OrchestrationV2ThreadProjection,
@@ -140,6 +142,10 @@ export interface EnvironmentThreadShell {
   readonly lastVisitedAt?: string | null;
   /** Pending title regeneration marker; null when no request is in flight. */
   readonly titleRegeneration?: { readonly requestId: string; readonly startedAt: string } | null;
+  /** This thread's move to another machine, in flight or landed. */
+  readonly machineHandoff: OrchestrationV2MachineHandoff | null;
+  /** Where an adopted thread came from. */
+  readonly continuedFrom: OrchestrationV2MachineHandoffOrigin | null;
   readonly deletedAt: string | null;
   readonly source: OrchestrationV2ThreadShell;
 }
@@ -279,6 +285,8 @@ export function presentThreadShell(
             requestId: thread.titleRegeneration.requestId,
             startedAt: iso(thread.titleRegeneration.startedAt),
           },
+    machineHandoff: thread.machineHandoff ?? null,
+    continuedFrom: thread.continuedFrom ?? null,
     deletedAt: nullableIso(thread.deletedAt),
     source: thread,
   };

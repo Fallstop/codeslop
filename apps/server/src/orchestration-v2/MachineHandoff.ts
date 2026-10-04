@@ -121,7 +121,8 @@ export function planMachineHandoffTransition(
       const { error: _error, ...rest } = current;
       return {
         type: "update",
-        machineHandoff: { ...rest, state: "exporting" },
+        // A new start time tells waiting clients this attempt from the failed one.
+        machineHandoff: { ...rest, state: "exporting", startedAt: now },
         enqueue: { type: "export", handoffId: current.id },
       };
     }

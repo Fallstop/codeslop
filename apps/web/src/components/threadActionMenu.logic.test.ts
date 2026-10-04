@@ -172,6 +172,51 @@ describe("buildThreadActionMenuItems", () => {
   });
 });
 
+describe("machine handoff items", () => {
+  const desktop = { environmentId: "desktop", label: "Desktop" };
+  const handoff = (
+    machineHandoff: ThreadActionMenuState["machineHandoff"],
+  ): ReturnType<typeof buildThreadActionMenuItems> =>
+    buildThreadActionMenuItems({ ...baseState, isRunning: true, machineHandoff }).filter(
+      (item) =>
+        item.id.startsWith("hand") || item.id.endsWith("back") || item.id === "cancel-handoff",
+    );
+
+  it("offers a running thread straight to the only machine that can take it", () => {
+    expect(handoff({ targets: [desktop], current: null })).toEqual([
+      { id: "hand-off:desktop", label: "Hand off to Desktop", icon: "arrow-right-left" },
+    ]);
+  });
+
+  it("lists every machine, naming why one cannot take it", () => {
+    const [menu] = handoff({
+      targets: [desktop, { environmentId: "pi", label: "Pi", unavailable: "Not connected" }],
+      current: null,
+    });
+    expect(menu?.children?.map((item) => [item.label, item.disabled])).toEqual([
+      ["Desktop", false],
+      ["Pi (Not connected)", true],
+    ]);
+  });
+
+  it("replaces the way in with the ways back once the work moved", () => {
+    expect(
+      handoff({ targets: [desktop], current: { status: "moving", targetLabel: "Desktop" } }).map(
+        (item) => item.id,
+      ),
+    ).toEqual(["cancel-handoff"]);
+    expect(
+      handoff({ targets: [desktop], current: { status: "elsewhere", targetLabel: "Desktop" } }).map(
+        (item) => item.label,
+      ),
+    ).toEqual(["Hand back from Desktop", "Take back here"]);
+  });
+
+  it("shows nothing where the server cannot hand off", () => {
+    expect(handoff(null)).toEqual([]);
+  });
+});
+
 describe("buildDraftActionMenuItems", () => {
   it("offers only the copy values the draft has", () => {
     const items = buildDraftActionMenuItems({ hasPath: false, hasBranch: true, hasProject: true });

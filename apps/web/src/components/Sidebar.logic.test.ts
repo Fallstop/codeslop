@@ -62,7 +62,14 @@ import {
 } from "./Sidebar.logic";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
-import { EnvironmentId, ProjectId, ProviderInstanceId, RunId, ThreadId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  MachineHandoffId,
+  ProjectId,
+  ProviderInstanceId,
+  RunId,
+  ThreadId,
+} from "@t3tools/contracts";
 
 import {
   DEFAULT_INTERACTION_MODE,
@@ -898,6 +905,22 @@ describe("resolveSidebarThreadStatus", () => {
   };
 
   const idle = { hasPendingApprovals: false, hasPendingUserInput: false, runtime: null };
+
+  it("shows where the work went above anything it was doing", () => {
+    const handoff = (state: "exporting" | "completed") => ({
+      id: MachineHandoffId.make("handoff"),
+      target: { environmentId: EnvironmentId.make("desktop"), threadId: ThreadId.make("t") },
+      state,
+      startedAt: "2026-03-09T10:00:00.000Z",
+    });
+    const busy = { hasPendingApprovals: true, hasPendingUserInput: false, runtime };
+    expect(resolveSidebarThreadStatus({ ...busy, machineHandoff: handoff("exporting") })).toBe(
+      "moving",
+    );
+    expect(resolveSidebarThreadStatus({ ...busy, machineHandoff: handoff("completed") })).toBe(
+      "elsewhere",
+    );
+  });
 
   it("prioritizes approval over a running runtime", () => {
     expect(resolveSidebarThreadStatus({ ...idle, hasPendingApprovals: true, runtime })).toBe(

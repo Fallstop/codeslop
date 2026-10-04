@@ -1,3 +1,4 @@
+import { machineHandoffStatus } from "@t3tools/client-runtime/machine-handoff";
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
 import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
@@ -625,7 +626,9 @@ export interface ThreadStatusPill {
     | "Pending Approval"
     | "Awaiting Input"
     | "Waiting"
-    | "Plan Ready";
+    | "Plan Ready"
+    | "Handing off"
+    | "Elsewhere";
   colorClass: string;
   dotClass: string;
   pulse: boolean;
@@ -638,7 +641,10 @@ const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
   Connecting: 3,
   Waiting: 2.5,
   "Plan Ready": 2,
+  "Handing off": 1.5,
   Completed: 1,
+  // A thread whose work moved says nothing about this project's activity.
+  Elsewhere: 0.5,
 };
 
 type ThreadStatusInput = Pick<
@@ -652,6 +658,7 @@ type ThreadStatusInput = Pick<
 > & {
   lastVisitedAt?: string | null | undefined;
   pendingBackgroundTasks?: SidebarThreadSummary["pendingBackgroundTasks"] | undefined;
+  machineHandoff?: SidebarThreadSummary["machineHandoff"] | undefined;
 };
 
 export interface ThreadJumpHintVisibilityController {
@@ -946,6 +953,8 @@ export function resolveThreadRowClassName(input: {
 // Unread completion is tracked separately: it describes whether a ready
 // thread needs attention, not what the thread is currently doing.
 export type SidebarThreadStatus =
+  | "elsewhere"
+  | "moving"
   | "approval"
   | "input"
   | "working"
@@ -962,7 +971,9 @@ export function shouldRecedeSidebarThread(input: {
   isSelected: boolean;
 }): boolean {
   if (input.isActive || input.isSelected || input.status === "input") return false;
-  if (input.status === "working" || input.status === "waiting") return true;
+  if (input.status === "working" || input.status === "waiting" || input.status === "elsewhere") {
+    return true;
+  }
   if (input.status === "ready" || input.status === "approval") {
     return !input.isUnread && !input.isWoke;
   }
@@ -972,9 +983,13 @@ export function shouldRecedeSidebarThread(input: {
 type SidebarThreadStatusInput = Pick<
   SidebarThreadSummary,
   "hasPendingApprovals" | "hasPendingUserInput" | "runtime"
->;
+> &
+  Partial<Pick<SidebarThreadSummary, "machineHandoff">>;
 
 export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): SidebarThreadStatus {
+  // Nothing runs here while the work is on its way or lives elsewhere.
+  const handoff = machineHandoffStatus(thread);
+  if (handoff !== null) return handoff;
   if (thread.hasPendingApprovals) {
     return "approval";
   }
@@ -1159,6 +1174,16 @@ export function resolveThreadStatusPill(input: {
   thread: ThreadStatusInput;
 }): ThreadStatusPill | null {
   const { thread } = input;
+
+  const handoff = machineHandoffStatus(thread);
+  if (handoff !== null) {
+    return {
+      label: handoff === "elsewhere" ? "Elsewhere" : "Handing off",
+      colorClass: "text-muted-foreground",
+      dotClass: "bg-muted-foreground",
+      pulse: false,
+    };
+  }
 
   if (thread.hasPendingApprovals) {
     return {
