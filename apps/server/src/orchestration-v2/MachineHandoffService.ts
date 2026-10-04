@@ -70,6 +70,14 @@ export interface MachineHandoffServiceShape {
     MachineHandoffError
   >;
   readonly discardReceived: (handoffId: MachineHandoffId) => Effect.Effect<void>;
+  /** The worktree an interrupted adopt already made for this handoff, if any. */
+  readonly adoptedWorkspace: (
+    handoffId: MachineHandoffId,
+  ) => Effect.Effect<Option.Option<{ readonly worktreePath: string; readonly branch: string }>>;
+  readonly rememberAdoptedWorkspace: (
+    handoffId: MachineHandoffId,
+    workspace: { readonly worktreePath: string; readonly branch: string },
+  ) => Effect.Effect<void, MachineHandoffError>;
 }
 
 export class MachineHandoffService extends Context.Service<
@@ -205,8 +213,14 @@ const make = Effect.gen(function* () {
       .getThreadRecords(input.threadId, ["providerThreads"])
       .pipe(Effect.mapError((cause) => refuse("Could not read the thread.", cause)));
     const handoff = projection.thread.machineHandoff;
-    // A cancelled or superseded handoff has nothing left to export.
-    if (handoff?.id !== input.handoffId || handoff.state !== "exporting") return;
+    // A cancelled, superseded or deleted handoff has nothing left to export.
+    if (
+      handoff?.id !== input.handoffId ||
+      handoff.state !== "exporting" ||
+      projection.thread.deletedAt !== null
+    ) {
+      return;
+    }
 
     yield* proveStopped(input.threadId, input.handoffId);
     const originStoppedAt = DateTime.formatIso(yield* DateTime.now);
@@ -378,6 +392,8 @@ const make = Effect.gen(function* () {
     writeBundle,
     readReceived,
     discardReceived: staging.discard,
+    adoptedWorkspace: staging.readAdoptedWorkspace,
+    rememberAdoptedWorkspace: staging.writeAdoptedWorkspace,
   });
 });
 

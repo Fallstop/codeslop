@@ -148,6 +148,8 @@ function makeHarness() {
           writeBundle: () => Effect.die("unused"),
           readReceived: () => Effect.die("unused"),
           discardReceived: () => Effect.die("unused"),
+          adoptedWorkspace: () => Effect.die("unused"),
+          rememberAdoptedWorkspace: () => Effect.die("unused"),
         }),
       },
     );

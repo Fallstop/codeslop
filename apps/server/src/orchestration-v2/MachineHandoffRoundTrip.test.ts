@@ -7,6 +7,7 @@ import {
   MachineHandoffId,
   MessageId,
   ProjectId,
+  ProviderDriverKind,
   ThreadId,
   type OrchestrationV2MachineHandoffManifest,
   type ProviderInstanceId,
@@ -37,7 +38,10 @@ import * as IdAllocator from "./IdAllocator.ts";
 import * as MachineHandoffAdoptService from "./MachineHandoffAdoptService.ts";
 import * as MachineHandoffService from "./MachineHandoffService.ts";
 import * as Orchestrator from "./Orchestrator.ts";
-import type { ProviderAdapterV2NativeSession } from "./ProviderAdapter.ts";
+import {
+  ProviderAdapterNativeSessionTransferError,
+  type ProviderAdapterV2NativeSession,
+} from "./ProviderAdapter.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ThreadLaunch from "./ThreadLaunchService.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
@@ -250,13 +254,18 @@ const carry = (
     return manifest;
   });
 
-const setupMachines = (options: { readonly native: boolean }) =>
+const setupMachines = (options: {
+  readonly native: boolean;
+  /** The first install fails, as a provider home that is briefly unwritable would. */
+  readonly installFailsOnce?: boolean;
+}) =>
   Effect.gen(function* () {
     const repos = yield* repositories;
     const installed: Array<{
       readonly cwd: string;
       readonly session: ProviderAdapterV2NativeSession;
     }> = [];
+    const failedOnce = { value: false };
     const originFake = yield* makeMachineHandoffFakeAdapter({
       reply: "Done.",
       ...(options.native
@@ -275,7 +284,22 @@ const setupMachines = (options: { readonly native: boolean }) =>
         ? {
             nativeSessionTransfer: {
               export: () => Effect.succeed(null),
-              install: ({ cwd, session }) => Effect.sync(() => installed.push({ cwd, session })),
+              install: ({ cwd, session, nativeThreadId }) =>
+                options.installFailsOnce === true && installed.length === 0 && !failedOnce.value
+                  ? Effect.sync(() => {
+                      failedOnce.value = true;
+                    }).pipe(
+                      Effect.andThen(
+                        Effect.fail(
+                          new ProviderAdapterNativeSessionTransferError({
+                            driver: ProviderDriverKind.make("codex"),
+                            operation: "install",
+                            nativeThreadId,
+                          }),
+                        ),
+                      ),
+                    )
+                  : Effect.sync(() => installed.push({ cwd, session })),
             },
           }
         : {}),
@@ -464,6 +488,25 @@ it.effect("refuses a damaged bundle before touching git", () =>
       );
       assert.equal(yield* git(repos.target, ["for-each-ref", "refs/slop"]), "");
       assert.lengthOf((yield* git(repos.target, ["worktree", "list"])).split("\n"), 1);
+    }),
+  ),
+);
+
+it.effect("an adopt retried after a failed install reuses the worktree it made", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { repos, installed, target } = yield* setupMachines({
+        native: true,
+        installFailsOnce: true,
+      });
+      yield* Effect.gen(function* () {
+        const refused = yield* adopt(false).pipe(Effect.flip);
+        assert.include(refused.message, "install");
+        const adopted = yield* adopt(false);
+        assert.lengthOf(installed, 1);
+        assert.equal(installed[0]?.cwd, adopted.worktreePath);
+        assert.lengthOf((yield* git(repos.target, ["worktree", "list"])).split("\n"), 2);
+      }).pipe(Effect.provideContext(target));
     }),
   ),
 );

@@ -447,6 +447,16 @@ export const executorLayer: Layer.Layer<
             );
           case "machine-handoff.export": {
             const handoffId = effect.request.handoffId;
+            const park = (error: string) =>
+              threads
+                .dispatch({
+                  type: "thread.machine-handoff.fail",
+                  commandId: CommandId.make(`${effect.id}:failed`),
+                  threadId: effect.threadId,
+                  handoffId,
+                  error,
+                })
+                .pipe(Effect.asVoid);
             return machineHandoff
               .exportBundle({ threadId: effect.threadId, handoffId, attemptKey: effect.id })
               .pipe(
@@ -454,16 +464,13 @@ export const executorLayer: Layer.Layer<
                 // thread still stopping is worth the worker's retries.
                 Effect.catchIf(
                   (error) => !willRetry || error.retryable !== true,
-                  (error) =>
-                    threads
-                      .dispatch({
-                        type: "thread.machine-handoff.fail",
-                        commandId: CommandId.make(`${effect.id}:failed`),
-                        threadId: effect.threadId,
-                        handoffId,
-                        error: error.message.trim() || "The handoff could not be staged.",
-                      })
-                      .pipe(Effect.asVoid),
+                  (error) => park(error.message.trim() || "The handoff could not be staged."),
+                ),
+                // A defect on the last attempt must not leave it "exporting" forever.
+                Effect.tapCause((cause) =>
+                  willRetry || Cause.hasInterruptsOnly(cause)
+                    ? Effect.void
+                    : park("The handoff could not be staged.").pipe(Effect.ignore),
                 ),
                 Effect.mapError(
                   (cause) =>

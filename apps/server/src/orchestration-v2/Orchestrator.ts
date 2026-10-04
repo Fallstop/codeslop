@@ -10005,8 +10005,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         break;
       case "thread.machine-handoff.adopt": {
         const { type: _type, continuedFrom, history, ...create } = command;
-        // Both contexts keep the conversation as runless history so the
-        // timeline shows it; only a portable one replays it to the provider.
+        // "v1_import" is reused deliberately: runless items on such a thread
+        // show in the timeline and the first run replays them as a context
+        // handoff. A native adopt keeps the items for display but skips the
+        // replay (shouldPrepareLegacyImportHandoff), since its session has them.
         yield* dispatchThreadCreate({ ...create, type: "thread.create" }, events, {
           continuedFrom,
           historyOrigin: "v1_import",

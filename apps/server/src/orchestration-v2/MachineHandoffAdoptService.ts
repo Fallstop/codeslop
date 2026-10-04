@@ -90,7 +90,7 @@ const make = Effect.gen(function* () {
    */
   const chooseProvider = Effect.fn("MachineHandoffAdoptService.chooseProvider")(function* (
     manifest: OrchestrationV2MachineHandoffManifest,
-    fallback: ModelSelection,
+    fallback: ModelSelection | null,
   ) {
     const origin = manifest.thread.modelSelection;
     const enabled: Array<{ instanceId: ProviderInstanceId; adapter: ProviderAdapterV2Shape }> = [];
@@ -115,10 +115,16 @@ const make = Effect.gen(function* () {
           )) ??
       sameDriver[0];
     if (chosen === undefined) {
-      return {
-        modelSelection: fallback,
-        adapter: enabled.find((candidate) => candidate.instanceId === fallback.instanceId)?.adapter,
-      };
+      const adapter =
+        fallback === null
+          ? undefined
+          : enabled.find((candidate) => candidate.instanceId === fallback.instanceId)?.adapter;
+      if (fallback === null || adapter === undefined) {
+        return yield* new MachineHandoffError({
+          message: `This machine has no ${originDriver ?? "matching"} provider set up. Set one up, or choose a default model for the project.`,
+        });
+      }
+      return { modelSelection: fallback, adapter };
     }
     return {
       modelSelection: { ...origin, instanceId: chosen.instanceId },
@@ -135,42 +141,41 @@ const make = Effect.gen(function* () {
     manifest: OrchestrationV2MachineHandoffManifest,
     repositoryRoot: string,
   ) {
-    const remote = yield* findRemoteByUrl(git, repositoryRoot, manifest.git.remoteUrl);
-    if (remote === null) {
-      return yield* new MachineHandoffError({
-        message: `This machine's checkout has no remote for ${manifest.git.remoteUrl}.`,
-      });
-    }
     const adopted = machineHandoffAdoptedRef(manifest.handoffId);
-    yield* fetchRef(git, { cwd: repositoryRoot, remote, ref: manifest.git.ref, into: adopted });
-
-    const branches = new Set(yield* gitWorkflow.listLocalBranchNames(repositoryRoot));
-    const branch =
-      manifest.thread.originBranch !== null && !branches.has(manifest.thread.originBranch)
-        ? manifest.thread.originBranch
-        : manifest.thread.originBranch !== null
-          ? `${manifest.thread.originBranch}-${manifest.handoffId.slice(0, 8)}`
-          : `handoff-${manifest.handoffId.slice(0, 12)}`;
-    const listed = yield* git.execute({
-      operation: "MachineHandoff.listWorktrees",
-      cwd: repositoryRoot,
-      args: ["worktree", "list", "--porcelain"],
-    });
-    const existing = listed.stdout
-      .split("\n\n")
-      .map((entry) => ({
-        path: /^worktree (.+)$/m.exec(entry)?.[1],
-        branch: /^branch refs\/heads\/(.+)$/m.exec(entry)?.[1],
-      }))
-      .find((entry) => entry.branch === branch)?.path;
-    const worktreePath =
-      existing ??
-      (yield* gitWorkflow.createWorktree({
-        cwd: repositoryRoot,
-        refName: adopted,
-        newRefName: branch,
-        path: null,
-      })).worktree.path;
+    // A retry after a later step failed reuses the worktree it already made,
+    // even if the origin has since cleaned up the published ref.
+    const recorded = yield* bundles.adoptedWorkspace(manifest.handoffId);
+    const { worktreePath, branch } = Option.isSome(recorded)
+      ? recorded.value
+      : yield* Effect.gen(function* () {
+          const remote = yield* findRemoteByUrl(git, repositoryRoot, manifest.git.remoteUrl);
+          if (remote === null) {
+            return yield* new MachineHandoffError({
+              message: `This machine's checkout has no remote for ${manifest.git.remoteUrl}.`,
+            });
+          }
+          yield* fetchRef(git, {
+            cwd: repositoryRoot,
+            remote,
+            ref: manifest.git.ref,
+            into: adopted,
+          });
+          const origin = manifest.thread.originBranch;
+          const taken = new Set(yield* gitWorkflow.listLocalBranchNames(repositoryRoot));
+          const branch =
+            origin !== null && !taken.has(origin)
+              ? origin
+              : `${origin ?? "handoff"}-${manifest.handoffId.slice(0, 8)}`;
+          const created = yield* gitWorkflow.createWorktree({
+            cwd: repositoryRoot,
+            refName: adopted,
+            newRefName: branch,
+            path: null,
+          });
+          const workspace = { worktreePath: created.worktree.path, branch };
+          yield* bundles.rememberAdoptedWorkspace(manifest.handoffId, workspace);
+          return workspace;
+        });
     yield* git.execute({
       operation: "MachineHandoff.restoreUncommitted",
       cwd: worktreePath,
@@ -211,7 +216,7 @@ const make = Effect.gen(function* () {
     );
     const { modelSelection, adapter } = yield* chooseProvider(
       manifest,
-      project.defaultModelSelection ?? manifest.thread.modelSelection,
+      project.defaultModelSelection ?? null,
     );
     const native =
       manifest.native !== null &&

@@ -1,3 +1,9 @@
+/**
+ * State rules for moving a thread to another machine. The orchestrator owns
+ * events and effects; this decides what each command means for the origin
+ * thread's `machineHandoff` record.
+ */
+
 import {
   CommandId,
   isProviderNativeSubagentThread,
@@ -8,12 +14,6 @@ import {
   type OrchestrationV2Run,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-
-/**
- * State rules for moving a thread to another machine. The orchestrator owns
- * events and effects; this decides what each command means for the origin
- * thread's `machineHandoff` record.
- */
 
 /** A handoff step that could not finish; `message` is shown to the user. */
 export class MachineHandoffError extends Schema.TaggedError<MachineHandoffError>()(

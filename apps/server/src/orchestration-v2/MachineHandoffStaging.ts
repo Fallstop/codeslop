@@ -14,6 +14,11 @@ import * as Schema from "effect/Schema";
 import { isMachineHandoffError, MachineHandoffError } from "./MachineHandoff.ts";
 
 const ManifestJson = Schema.fromJsonString(OrchestrationV2MachineHandoffManifest);
+const AdoptedWorkspaceJson = Schema.fromJsonString(
+  Schema.Struct({ worktreePath: Schema.String, branch: Schema.String }),
+);
+const decodeAdoptedWorkspace = Schema.decodeUnknownEffect(AdoptedWorkspaceJson);
+const encodeAdoptedWorkspace = Schema.encodeEffect(AdoptedWorkspaceJson);
 const decodeManifest = Schema.decodeUnknownEffect(ManifestJson);
 const encodeManifest = Schema.encodeEffect(ManifestJson);
 
@@ -142,6 +147,23 @@ export function makeMachineHandoffStaging(input: {
       return bytes;
     });
 
+  const adoptedPath = (handoffId: MachineHandoffId) => path.join(dirOf(handoffId), "adopted.json");
+
+  /** Where a target checked the work out, so a retried adopt reuses it. */
+  const writeAdoptedWorkspace = (
+    handoffId: MachineHandoffId,
+    workspace: { readonly worktreePath: string; readonly branch: string },
+  ) =>
+    encodeAdoptedWorkspace(workspace).pipe(
+      Effect.flatMap((json) => fileSystem.writeFileString(adoptedPath(handoffId), json)),
+      Effect.mapError(stagingError("Could not record the adopted workspace.")),
+    );
+
+  const readAdoptedWorkspace = (handoffId: MachineHandoffId) =>
+    fileSystem
+      .readFileString(adoptedPath(handoffId))
+      .pipe(Effect.flatMap(decodeAdoptedWorkspace), Effect.option);
+
   const discard = (handoffId: MachineHandoffId) =>
     fileSystem.remove(dirOf(handoffId), { recursive: true, force: true }).pipe(Effect.ignore);
 
@@ -152,6 +174,8 @@ export function makeMachineHandoffStaging(input: {
     readChunk,
     writeChunk,
     readVerifiedPayload,
+    writeAdoptedWorkspace,
+    readAdoptedWorkspace,
     discard,
   };
 }
