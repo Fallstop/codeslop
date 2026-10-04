@@ -2,6 +2,7 @@ import {
   CheckpointId,
   CheckpointScopeId,
   CommandId,
+  MachineHandoffId,
   MessageId,
   ProviderSessionId,
   RunAttemptId,
@@ -95,6 +96,16 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
     type: Schema.Literal("attachment.cleanup"),
     attachmentIds: Schema.Array(Schema.String),
   }),
+  /** Stage a stopped thread's work for another machine. */
+  Schema.Struct({
+    type: Schema.Literal("machine-handoff.export"),
+    handoffId: MachineHandoffId,
+  }),
+  /** Remove a cancelled handoff's staged bundle and published refs. */
+  Schema.Struct({
+    type: Schema.Literal("machine-handoff.cleanup"),
+    handoffId: MachineHandoffId,
+  }),
   Schema.Struct({
     type: Schema.Literal("thread-title.generate"),
     kind: Schema.Union([
@@ -113,6 +124,8 @@ export const REPLAY_SAFE_EFFECT_TYPES_AFTER_PROCESS_LOSS = [
   "terminal.cleanup",
   "attachment.cleanup",
   "thread-title.generate",
+  "machine-handoff.export",
+  "machine-handoff.cleanup",
 ] as const satisfies ReadonlyArray<OrchestrationEffectRequestV2["type"]>;
 
 export const PROCESS_BOUND_EFFECT_TYPES = [

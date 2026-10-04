@@ -1,5 +1,6 @@
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
+import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as OrchestrationCommandReceipts from "../persistence/Layers/OrchestrationCommandReceipts.ts";
 import * as OrchestrationEventStore from "../persistence/Layers/OrchestrationEventStore.ts";
@@ -26,6 +27,7 @@ import { layerFromStores as eventSinkLayer } from "./EventSink.ts";
 import { layerFromOrchestrationEventStore as eventStoreLayer } from "./EventStore.ts";
 import { layer as idAllocatorLayer } from "./IdAllocator.ts";
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
+import * as MachineHandoffService from "./MachineHandoffService.ts";
 import { layer as orchestratorLayer } from "./Orchestrator.ts";
 import { layer as projectionStoreLayer } from "./ProjectionStore.ts";
 import { layer as projectionMaintenanceLayer } from "./ProjectionMaintenance.ts";
@@ -267,9 +269,19 @@ const providerContinuationWorkerProvided = providerContinuationWorkerLive.pipe(
 const threadTitleRegenerationProvided = threadTitleRegenerationServiceLayer.pipe(
   Layer.provide(Layer.mergeAll(threadManagementProvided, ProjectStore.layer, TextGeneration.layer)),
 );
+const machineHandoffProvided = Layer.succeed(MachineHandoffService.MachineHandoffService, {
+  exportBundle: () =>
+    Effect.fail(
+      new MachineHandoffService.MachineHandoffError({
+        message: "This server cannot hand threads off yet.",
+      }),
+    ),
+  cleanup: () => Effect.void,
+});
 const effectExecutorProvided = effectExecutorLayer.pipe(
   Layer.provide(
     Layer.mergeAll(
+      machineHandoffProvided,
       runFinalizationServiceProvided,
       checkpointRollbackServiceProvided,
       providerSessionManagerProvided,

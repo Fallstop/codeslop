@@ -16,6 +16,7 @@ import {
   type ChatAttachment,
   CommandId,
   isProviderNativeSubagentThread,
+  MachineHandoffId,
   MessageId,
   type ModelSelection,
   OrchestrationV2Command,
@@ -49,6 +50,7 @@ import {
   RunId,
   ThreadLinkedPullRequest,
   ThreadId,
+  threadAdmitsRuns,
   type TurnItemId,
 } from "@t3tools/contracts";
 import { modelSelectionsEqual } from "@t3tools/shared/model";
@@ -64,6 +66,7 @@ import * as Path from "effect/Path";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
@@ -119,6 +122,14 @@ import {
   ThreadForkServiceV2,
 } from "./ThreadForkService.ts";
 import { planThreadDeletion } from "./ThreadDeletion.ts";
+import {
+  isAutomaticMessageDelivery,
+  machineHandoffRunRefusal,
+  machineHandoffStartRefusal,
+  machineHandoffStopCommandId,
+  machineHandoffTargetLabel,
+  planMachineHandoffTransition,
+} from "./MachineHandoff.ts";
 
 export class OrchestratorDispatchError extends Schema.TaggedError<OrchestratorDispatchError>()(
   "OrchestratorDispatchError",
@@ -419,6 +430,12 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "checkpoint.rollback.fail":
     case "thread.background-work.settle":
     case "provider.switch":
+    case "thread.machine-handoff.start":
+    case "thread.machine-handoff.complete":
+    case "thread.machine-handoff.fail":
+    case "thread.machine-handoff.retry":
+    case "thread.machine-handoff.cancel":
+    case "thread.machine-handoff.ready":
       return command.threadId;
     case "delegated_task.request":
     case "delegated_task.wake-policy":
@@ -1216,6 +1233,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       if (
         projection.thread.archivedAt !== null ||
         projection.thread.deletedAt !== null ||
+        !threadAdmitsRuns(projection.thread) ||
         projection.runs.some(isBlockingRun) ||
         projection.runs.some((run) => run.status === "queued" && run.queueHeld === true)
       ) {
@@ -3350,6 +3368,263 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       yield* Ref.update(effects, (existing) => [...existing, pendingEffect]);
     },
   );
+
+  const machineHandoffDetachEffect = (input: {
+    readonly command: OrchestrationV2ServerCommand;
+    readonly handoffId: MachineHandoffId;
+    readonly providerSessionId: ProviderSessionId;
+    readonly reason: string;
+  }): PendingOrchestrationEffectV2 => {
+    const stopCommandId = machineHandoffStopCommandId(input.handoffId);
+    return {
+      id: `effect:${stopCommandId}:${input.command.commandId}:provider-session.detach:${input.providerSessionId}`,
+      commandId: stopCommandId,
+      threadId: commandThreadId(input.command),
+      request: {
+        type: "provider-session.detach",
+        providerSessionId: input.providerSessionId,
+        detail: input.reason,
+      },
+    };
+  };
+
+  const machineHandoffWorkEffect = (
+    command: OrchestrationV2ServerCommand,
+    work: { readonly type: "export" | "cleanup"; readonly handoffId: MachineHandoffId },
+  ): PendingOrchestrationEffectV2 => ({
+    id: `effect:${command.commandId}:machine-handoff.${work.type}:${work.handoffId}`,
+    commandId: command.commandId,
+    threadId: commandThreadId(command),
+    request: { type: `machine-handoff.${work.type}`, handoffId: work.handoffId },
+  });
+
+  /**
+   * Freezes the thread here and stages it for another machine: interrupts the
+   * active run, holds the queue, cancels open requests, and detaches every
+   * provider session. The export effect is enqueued last so the outbox runs it
+   * after those detaches.
+   */
+  const dispatchMachineHandoffStart = Effect.fn("orchestrationV2.dispatch.machineHandoffStart")(
+    function* (
+      command: Extract<OrchestrationV2Command, { readonly type: "thread.machine-handoff.start" }>,
+      events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+      effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>,
+    ) {
+      const current = yield* readCommandProjection(command.threadId);
+      const refusal = machineHandoffStartRefusal({ thread: current.thread, runs: current.runs });
+      if (refusal !== null) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: refusal,
+        });
+      }
+      const reason = `Handed off to ${machineHandoffTargetLabel(command)}.`;
+      const activeRun = current.runs.find(
+        (run) => run.status === "starting" || run.status === "running" || run.status === "waiting",
+      );
+      if (activeRun !== undefined) {
+        const eventsBefore = yield* Ref.get(events);
+        const effectsBefore = yield* Ref.get(effects);
+        const interrupted = yield* Effect.result(
+          dispatchRunInterrupt(
+            {
+              type: "run.interrupt",
+              commandId: command.commandId,
+              threadId: command.threadId,
+              runId: activeRun.id,
+              reason,
+              holdQueue: true,
+            },
+            events,
+            effects,
+          ),
+        );
+        // A run the provider cannot interrupt still ends when its session is
+        // detached below; export waits for that before staging anything.
+        if (Result.isFailure(interrupted)) {
+          yield* Ref.set(events, eventsBefore);
+          yield* Ref.set(effects, effectsBefore);
+        }
+      }
+      const now = yield* DateTime.now;
+      const emitEvent = emit(events, command);
+      const projection = yield* getProjectionWithPendingEvents(command.threadId, events);
+      for (const run of projection.runs) {
+        if (run.status !== "queued" || run.queueHeld === true) continue;
+        yield* emitEvent({
+          type: "run.updated",
+          threadId: command.threadId,
+          runId: run.id,
+          providerInstanceId: run.providerInstanceId,
+          occurredAt: now,
+          payload: { ...run, queueHeld: true },
+        });
+      }
+      for (const request of projection.runtimeRequests) {
+        if (request.status !== "pending") continue;
+        yield* emitEvent({
+          type: "runtime-request.updated",
+          threadId: command.threadId,
+          nodeId: request.nodeId,
+          occurredAt: now,
+          payload: {
+            ...request,
+            status: "cancelled",
+            responseCapability: { type: "not_resumable", reason },
+            resolvedAt: now,
+          },
+        });
+      }
+      const detaches: Array<PendingOrchestrationEffectV2> = [];
+      for (const session of projection.providerSessions) {
+        if (session.status === "stopped" || session.status === "error") continue;
+        yield* emitEvent({
+          type: "provider-session.detached",
+          threadId: command.threadId,
+          driver: session.driver,
+          providerInstanceId: session.providerInstanceId,
+          occurredAt: now,
+          payload: { providerSessionId: session.id, detachedAt: now, reason },
+        });
+        detaches.push(
+          machineHandoffDetachEffect({
+            command,
+            handoffId: command.handoffId,
+            providerSessionId: session.id,
+            reason,
+          }),
+        );
+      }
+      yield* emitEvent({
+        type: "thread.machine-handoff-updated",
+        threadId: command.threadId,
+        providerInstanceId: projection.thread.providerInstanceId,
+        occurredAt: now,
+        payload: {
+          ...projection.thread,
+          machineHandoff: {
+            id: command.handoffId,
+            target: command.target,
+            state: "exporting",
+            startedAt: DateTime.formatIso(now),
+          },
+          updatedAt: now,
+        },
+      });
+      yield* Ref.update(effects, (existing) => [
+        ...existing,
+        ...detaches,
+        machineHandoffWorkEffect(command, { type: "export", handoffId: command.handoffId }),
+      ]);
+      return {
+        effectTypes: ["provider-turn.start", "provider-turn.restart"],
+        reason,
+      } satisfies {
+        readonly effectTypes: ReadonlyArray<OrchestrationEffectRequestV2["type"]>;
+        readonly reason: string;
+      };
+    },
+  );
+
+  const dispatchMachineHandoffFollowUp = Effect.fn(
+    "orchestrationV2.dispatch.machineHandoffFollowUp",
+  )(function* (
+    command: Extract<
+      OrchestrationV2ServerCommand,
+      {
+        readonly type:
+          | "thread.machine-handoff.complete"
+          | "thread.machine-handoff.fail"
+          | "thread.machine-handoff.retry"
+          | "thread.machine-handoff.cancel"
+          | "thread.machine-handoff.ready";
+      }
+    >,
+    events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+    effects: Ref.Ref<Array<PendingOrchestrationEffectV2>>,
+  ) {
+    const thread = yield* projectionStore
+      .getThread(command.threadId)
+      .pipe(
+        Effect.mapError(
+          (cause) => new OrchestratorProjectionError({ threadId: command.threadId, cause }),
+        ),
+      );
+    const now = yield* DateTime.now;
+    const transition = planMachineHandoffTransition(
+      command,
+      thread.machineHandoff,
+      DateTime.formatIso(now),
+    );
+    if (transition.type === "reject") {
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause: transition.reason,
+      });
+    }
+    if (transition.type === "noop") {
+      // Unchanged row: a stale or replayed follow-up gets an accepted receipt.
+      yield* emit(
+        events,
+        command,
+      )({
+        type: "thread.metadata-updated",
+        threadId: command.threadId,
+        occurredAt: now,
+        payload: thread,
+      });
+      return;
+    }
+    yield* emit(
+      events,
+      command,
+    )({
+      type: "thread.machine-handoff-updated",
+      threadId: command.threadId,
+      providerInstanceId: thread.providerInstanceId,
+      occurredAt: now,
+      payload: { ...thread, machineHandoff: transition.machineHandoff, updatedAt: now },
+    });
+    const work = transition.enqueue;
+    if (work === undefined) return;
+    const handoffId = MachineHandoffId.make(work.handoffId);
+    const retryDetaches: Array<PendingOrchestrationEffectV2> = [];
+    if (work.type === "export") {
+      // A retry re-sends any detach that never succeeded, so the new export
+      // can still prove the thread stopped.
+      const previous = yield* effectOutbox
+        .listByCommandId(machineHandoffStopCommandId(handoffId))
+        .pipe(mapDispatchError(command));
+      const stopped = new Set(
+        previous.flatMap((effect) =>
+          effect.status === "succeeded" && effect.request.type === "provider-session.detach"
+            ? [effect.request.providerSessionId]
+            : [],
+        ),
+      );
+      for (const effect of previous) {
+        if (effect.request.type !== "provider-session.detach") continue;
+        const providerSessionId = effect.request.providerSessionId;
+        if (stopped.has(providerSessionId)) continue;
+        stopped.add(providerSessionId);
+        retryDetaches.push(
+          machineHandoffDetachEffect({
+            command,
+            handoffId,
+            providerSessionId,
+            reason: effect.request.detail ?? "Handed off to another machine.",
+          }),
+        );
+      }
+    }
+    yield* Ref.update(effects, (existing) => [
+      ...existing,
+      ...retryDetaches,
+      machineHandoffWorkEffect(command, { type: work.type, handoffId }),
+    ]);
+  });
 
   const dispatchThreadFork = Effect.fn("orchestrationV2.dispatch.threadFork")(function* (
     command: Extract<OrchestrationV2Command, { readonly type: "thread.fork" }>,
@@ -9420,6 +9695,31 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       "orchestration_v2.thread_id": commandThreadId(command),
     });
 
+    if (
+      command.type === "prepared-run.release" ||
+      command.type === "checkpoint.rollback" ||
+      command.type === "queue.resume" ||
+      command.type === "queued-message.promote-to-steer"
+    ) {
+      // These start or rewrite provider work, which belongs to one machine.
+      const refusal = machineHandoffRunRefusal(
+        yield* projectionStore
+          .getThread(command.threadId)
+          .pipe(
+            Effect.mapError(
+              (cause) => new OrchestratorProjectionError({ threadId: command.threadId, cause }),
+            ),
+          ),
+      );
+      if (refusal !== null) {
+        return yield* new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause: refusal,
+        });
+      }
+    }
+
     const events = yield* Ref.make<Array<OrchestrationV2DomainEvent>>([]);
     const effects = yield* Ref.make<Array<PendingOrchestrationEffectV2>>([]);
     let cancelUnsettledEffects:
@@ -9544,6 +9844,28 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             threadId: command.threadId,
           });
         }
+        const handedOff = machineHandoffRunRefusal(thread);
+        if (handedOff !== null) {
+          if (!isAutomaticMessageDelivery(command)) {
+            return yield* new OrchestratorDispatchError({
+              commandId: command.commandId,
+              commandType: command.type,
+              cause: handedOff,
+            });
+          }
+          // An automatic wake for work that moved: accept it without a run so
+          // its producer settles instead of retrying.
+          yield* emit(
+            events,
+            command,
+          )({
+            type: "thread.metadata-updated",
+            threadId: command.threadId,
+            occurredAt: yield* DateTime.now,
+            payload: thread,
+          });
+          break;
+        }
         yield* dispatchMessage(command, events, effects);
         break;
       }
@@ -9667,6 +9989,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         break;
       case "thread.created.record":
         yield* dispatchCreatedThreadRecord(command, events);
+        break;
+      case "thread.machine-handoff.start":
+        cancelUnsettledEffects = yield* dispatchMachineHandoffStart(command, events, effects);
+        break;
+      case "thread.machine-handoff.complete":
+      case "thread.machine-handoff.fail":
+      case "thread.machine-handoff.retry":
+      case "thread.machine-handoff.cancel":
+      case "thread.machine-handoff.ready":
+        yield* dispatchMachineHandoffFollowUp(command, events, effects);
         break;
       default:
         return yield* dispatchUnsupported(command);

@@ -47,6 +47,7 @@ import { worktreeRepairDependenciesTestLayer } from "../ProviderTurnStartService
 import * as RunExecutionService from "../RunExecutionService.ts";
 import * as RunFinalizationService from "../RunFinalizationService.ts";
 import * as ThreadTitleRegenerationService from "../ThreadTitleRegenerationService.ts";
+import * as MachineHandoffService from "../MachineHandoffService.ts";
 import * as RuntimePolicy from "../RuntimePolicy.ts";
 import * as TurnItemPositionStore from "../TurnItemPositionStore.ts";
 import * as RuntimeRequestService from "../RuntimeRequestService.ts";
@@ -262,6 +263,8 @@ export function makeOrchestratorV2ReplayLayerWithRegistry<Error>(
     // as server startup does after a crash or restart.
     readonly recoverOnStartup?: boolean;
     readonly continueThreadsAfterServerUpdate?: boolean;
+    // Export and cleanup are inert unless a test supplies the real service.
+    readonly machineHandoffLayer?: Layer.Layer<MachineHandoffService.MachineHandoffService>;
   } = {},
 ): Layer.Layer<
   Orchestrator.OrchestratorV2 | EffectWorker.OrchestrationEffectWorkerV2 | EventSink.EventSinkV2,
@@ -458,6 +461,11 @@ export function makeOrchestratorV2ReplayLayerWithRegistry<Error>(
         threadTitleRegenerationTestLayer,
         serverSettingsLayer,
         threadManagementProvided,
+        options.machineHandoffLayer ??
+          Layer.mock(MachineHandoffService.MachineHandoffService)({
+            exportBundle: () => Effect.void,
+            cleanup: () => Effect.void,
+          }),
       ),
     ),
   );

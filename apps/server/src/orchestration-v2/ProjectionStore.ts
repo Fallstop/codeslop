@@ -667,6 +667,7 @@ export function applyToProjection(
     case "thread.interaction-mode-updated":
     case "thread.model-selection-updated":
     case "thread.provider-switched":
+    case "thread.machine-handoff-updated":
       return {
         ...base,
         thread: event.payload,
@@ -1427,6 +1428,8 @@ export function threadShellFromProjection(
     lastVisitedAt: projection.thread.lastVisitedAt,
     titleRegeneration: projection.thread.titleRegeneration ?? null,
     limitRecovery: projection.thread.limitRecovery ?? null,
+    machineHandoff: projection.thread.machineHandoff ?? null,
+    continuedFrom: projection.thread.continuedFrom ?? null,
     deletedAt: projection.thread.deletedAt,
   };
 }
@@ -1653,6 +1656,8 @@ function shellFromState(input: {
     lastVisitedAt: input.state.thread.lastVisitedAt,
     titleRegeneration: input.state.thread.titleRegeneration ?? null,
     limitRecovery: input.state.thread.limitRecovery ?? null,
+    machineHandoff: input.state.thread.machineHandoff ?? null,
+    continuedFrom: input.state.thread.continuedFrom ?? null,
     deletedAt: input.state.thread.deletedAt,
   };
 }
@@ -1699,7 +1704,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           case "thread.runtime-mode-updated":
           case "thread.interaction-mode-updated":
           case "thread.model-selection-updated":
-          case "thread.provider-switched": {
+          case "thread.provider-switched":
+          case "thread.machine-handoff-updated": {
             const payloadJson = yield* encodeThreadPayload(event.payload);
             const payload = parseEncodedPayload(payloadJson);
             yield* sql`
@@ -2529,7 +2535,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           event.type !== "thread.runtime-mode-updated" &&
           event.type !== "thread.interaction-mode-updated" &&
           event.type !== "thread.model-selection-updated" &&
-          event.type !== "thread.provider-switched"
+          event.type !== "thread.provider-switched" &&
+          event.type !== "thread.machine-handoff-updated"
         ) {
           const rows = yield* sql<PayloadRow>`
             SELECT payload_json

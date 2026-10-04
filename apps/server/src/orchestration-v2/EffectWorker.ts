@@ -26,6 +26,7 @@ import * as ProviderTurnStartService from "./ProviderTurnStartService.ts";
 import * as RuntimeRequestService from "./RuntimeRequestService.ts";
 import * as ThreadTitleRegenerationService from "./ThreadTitleRegenerationService.ts";
 import * as ThreadManagementService from "./ThreadManagementService.ts";
+import * as MachineHandoffService from "./MachineHandoffService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { continueRestartedRun } from "./RestartContinuation.ts";
 
@@ -90,6 +91,7 @@ export const executorLayer: Layer.Layer<
   | ThreadTitleRegenerationService.ThreadTitleRegenerationService
   | ThreadManagementService.ThreadManagementService
   | ServerSettings.ServerSettingsService
+  | MachineHandoffService.MachineHandoffService
 > = Layer.effect(
   OrchestrationEffectExecutorV2,
   Effect.gen(function* () {
@@ -104,6 +106,7 @@ export const executorLayer: Layer.Layer<
       yield* ThreadTitleRegenerationService.ThreadTitleRegenerationService;
     const threads = yield* ThreadManagementService.ThreadManagementService;
     const settings = yield* ServerSettings.ServerSettingsService;
+    const machineHandoff = yield* MachineHandoffService.MachineHandoffService;
     return OrchestrationEffectExecutorV2.of({
       execute: (effect, options) => {
         const willRetry = options?.willRetry ?? false;
@@ -442,6 +445,39 @@ export const executorLayer: Layer.Layer<
                   }),
               ),
             );
+          case "machine-handoff.export": {
+            const handoffId = effect.request.handoffId;
+            return machineHandoff.exportBundle({ threadId: effect.threadId, handoffId }).pipe(
+              // A refusal parks the handoff with its reason at once; only a
+              // thread still stopping is worth the worker's retries.
+              Effect.catchIf(
+                (error) => !willRetry || error.retryable !== true,
+                (error) =>
+                  threads
+                    .dispatch({
+                      type: "thread.machine-handoff.fail",
+                      commandId: CommandId.make(`${effect.id}:failed`),
+                      threadId: effect.threadId,
+                      handoffId,
+                      error: error.message.trim() || "The handoff could not be staged.",
+                    })
+                    .pipe(Effect.asVoid),
+              ),
+              Effect.mapError(
+                (cause) =>
+                  new OrchestrationEffectExecutionError({
+                    effectId: effect.id,
+                    effectType: effect.request.type,
+                    cause,
+                  }),
+              ),
+            );
+          }
+          case "machine-handoff.cleanup":
+            return machineHandoff.cleanup({
+              threadId: effect.threadId,
+              handoffId: effect.request.handoffId,
+            });
           case "thread-title.generate":
             return threadTitleRegeneration
               .execute({

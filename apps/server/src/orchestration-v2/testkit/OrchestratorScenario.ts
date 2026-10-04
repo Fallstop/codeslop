@@ -176,6 +176,11 @@ function commandThreadIds(command: OrchestrationV2Command): ReadonlyArray<Thread
     case "thread.user-input.dismiss":
     case "checkpoint.rollback":
     case "provider.switch":
+    case "thread.machine-handoff.start":
+    case "thread.machine-handoff.complete":
+    case "thread.machine-handoff.fail":
+    case "thread.machine-handoff.retry":
+    case "thread.machine-handoff.cancel":
       return [command.threadId];
     case "delegated_task.request":
     case "delegated_task.wake-policy":

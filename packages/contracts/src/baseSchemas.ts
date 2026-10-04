@@ -215,6 +215,16 @@ export const CheckpointScopeId = makeEntityId("CheckpointScopeId");
 export type CheckpointScopeId = typeof CheckpointScopeId.Type;
 export const ContextHandoffId = makeEntityId("ContextHandoffId");
 export type ContextHandoffId = typeof ContextHandoffId.Type;
+/**
+ * Client-minted id for moving a thread to another machine. It names a git ref
+ * and a staging directory on both machines, so it is restricted to a safe
+ * path segment.
+ */
+export const MachineHandoffId = TrimmedNonEmptyString.check(
+  Schema.isMaxLength(128),
+  Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_-]*$/),
+).pipe(Schema.brand("MachineHandoffId"));
+export type MachineHandoffId = typeof MachineHandoffId.Type;
 export const ContextTransferId = makeEntityId("ContextTransferId");
 export type ContextTransferId = typeof ContextTransferId.Type;
 export const RawEventId = makeEntityId("RawEventId");

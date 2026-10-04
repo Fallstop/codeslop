@@ -11,8 +11,10 @@ import {
   CommandId,
   ContextHandoffId,
   ContextTransferId,
+  EnvironmentId,
   EventId,
   IsoDateTime,
+  MachineHandoffId,
   MessageId,
   NodeId,
   NonNegativeInt,
@@ -354,6 +356,55 @@ export const OrchestrationV2LimitRecoveryUpdate = Schema.Struct({
 );
 export type OrchestrationV2LimitRecoveryUpdate = typeof OrchestrationV2LimitRecoveryUpdate.Type;
 
+/** One end of a machine handoff: a thread on a specific environment. */
+export const OrchestrationV2MachineHandoffEndpoint = Schema.Struct({
+  environmentId: EnvironmentId,
+  threadId: ThreadId,
+  environmentLabel: Schema.optional(TrimmedNonEmptyString),
+});
+export type OrchestrationV2MachineHandoffEndpoint =
+  typeof OrchestrationV2MachineHandoffEndpoint.Type;
+
+/**
+ * exporting: the origin is stopping and staging the work. ready: the bundle
+ * is staged and a client can carry it. failed: export or transfer refused,
+ * with a reason. completed: the target adopted it and the work lives there.
+ */
+export const OrchestrationV2MachineHandoffState = Schema.Literals([
+  "exporting",
+  "ready",
+  "failed",
+  "completed",
+]);
+export type OrchestrationV2MachineHandoffState = typeof OrchestrationV2MachineHandoffState.Type;
+
+/** A thread's move to another machine, recorded on the origin thread. */
+export const OrchestrationV2MachineHandoff = Schema.Struct({
+  id: MachineHandoffId,
+  target: OrchestrationV2MachineHandoffEndpoint,
+  state: OrchestrationV2MachineHandoffState,
+  error: Schema.optional(TrimmedNonEmptyString),
+  startedAt: IsoDateTime,
+  completedAt: Schema.optional(IsoDateTime),
+});
+export type OrchestrationV2MachineHandoff = typeof OrchestrationV2MachineHandoff.Type;
+
+/**
+ * native: the provider's own session moved, so the agent resumes it.
+ * portable: only the conversation text moved; the first run replays it.
+ */
+export const OrchestrationV2MachineHandoffContext = Schema.Literals(["native", "portable"]);
+export type OrchestrationV2MachineHandoffContext = typeof OrchestrationV2MachineHandoffContext.Type;
+
+/** Where an adopted thread came from, recorded on the target thread. */
+export const OrchestrationV2MachineHandoffOrigin = Schema.Struct({
+  ...OrchestrationV2MachineHandoffEndpoint.fields,
+  handoffId: MachineHandoffId,
+  context: OrchestrationV2MachineHandoffContext,
+  at: IsoDateTime,
+});
+export type OrchestrationV2MachineHandoffOrigin = typeof OrchestrationV2MachineHandoffOrigin.Type;
+
 export const OrchestrationV2AppThread = Schema.Struct({
   ...OrchestrationV2CreationFields,
   id: ThreadId,
@@ -428,9 +479,20 @@ export const OrchestrationV2AppThread = Schema.Struct({
       }),
     ),
   ),
+  /** Set on the origin while and after its work moves to another machine. */
+  machineHandoff: Schema.optional(Schema.NullOr(OrchestrationV2MachineHandoff)),
+  /** Set on a thread adopted from another machine. */
+  continuedFrom: Schema.optional(Schema.NullOr(OrchestrationV2MachineHandoffOrigin)),
   deletedAt: Schema.NullOr(Schema.DateTimeUtc),
 });
 export type OrchestrationV2AppThread = typeof OrchestrationV2AppThread.Type;
+
+/** A thread whose work moved (or is moving) to another machine takes no new runs here. */
+export function threadAdmitsRuns(thread: {
+  readonly machineHandoff?: OrchestrationV2MachineHandoff | null | undefined;
+}): boolean {
+  return thread.machineHandoff == null;
+}
 
 /**
  * A subagent the provider spawned on its own (Claude's Agent tool, Codex or
@@ -1555,6 +1617,7 @@ export const OrchestrationV2DomainEvent = Schema.Union([
       "thread.interaction-mode-updated",
       "thread.model-selection-updated",
       "thread.provider-switched",
+      "thread.machine-handoff-updated",
     ]),
     payload: OrchestrationV2AppThread,
   }),
@@ -1800,6 +1863,9 @@ export const OrchestrationV2ThreadShell = Schema.Struct({
       }),
     ),
   ),
+  /** Omitted by servers that predate machine handoff. */
+  machineHandoff: Schema.optional(Schema.NullOr(OrchestrationV2MachineHandoff)),
+  continuedFrom: Schema.optional(Schema.NullOr(OrchestrationV2MachineHandoffOrigin)),
   deletedAt: Schema.NullOr(Schema.DateTimeUtc),
 });
 export type OrchestrationV2ThreadShell = typeof OrchestrationV2ThreadShell.Type;
@@ -2356,6 +2422,7 @@ export const OrchestrationV2DomainEventJson = Schema.Union([
       "thread.interaction-mode-updated",
       "thread.model-selection-updated",
       "thread.provider-switched",
+      "thread.machine-handoff-updated",
     ]),
     payload: OrchestrationV2AppThreadJson,
   }),
@@ -2912,6 +2979,46 @@ export const OrchestrationV2Command = Schema.Union([
     threadId: ThreadId,
     modelSelection: ModelSelection,
   }),
+  /** Stops the thread here and stages its work for `target`. */
+  Schema.Struct({
+    type: Schema.Literal("thread.machine-handoff.start"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    handoffId: MachineHandoffId,
+    target: OrchestrationV2MachineHandoffEndpoint,
+  }),
+  /** Records that the target adopted the work. Only accepted from `ready`. */
+  Schema.Struct({
+    type: Schema.Literal("thread.machine-handoff.complete"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    handoffId: MachineHandoffId,
+    target: OrchestrationV2MachineHandoffEndpoint,
+  }),
+  /** Parks an in-flight handoff with a reason. A stale `handoffId` is a no-op. */
+  Schema.Struct({
+    type: Schema.Literal("thread.machine-handoff.fail"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    handoffId: MachineHandoffId,
+    error: TrimmedNonEmptyString,
+  }),
+  /** Stages a failed handoff again. */
+  Schema.Struct({
+    type: Schema.Literal("thread.machine-handoff.retry"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    handoffId: MachineHandoffId,
+  }),
+  /**
+   * Gives the thread back to this machine from any state, including after
+   * the target adopted it. Never refused.
+   */
+  Schema.Struct({
+    type: Schema.Literal("thread.machine-handoff.cancel"),
+    commandId: CommandId,
+    threadId: ThreadId,
+  }),
 ]);
 export type OrchestrationV2Command = typeof OrchestrationV2Command.Type;
 
@@ -2962,6 +3069,13 @@ const OrchestrationV2InternalCommand = Schema.Union([
     threadId: ThreadId,
     providerThreadId: ProviderThreadId,
     providerTurnId: ProviderTurnId,
+  }),
+  /** The export effect staged the bundle; a client can now carry it. */
+  Schema.Struct({
+    type: Schema.Literal("thread.machine-handoff.ready"),
+    commandId: CommandId,
+    threadId: ThreadId,
+    handoffId: MachineHandoffId,
   }),
 ]);
 export type OrchestrationV2InternalCommand = typeof OrchestrationV2InternalCommand.Type;

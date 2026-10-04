@@ -225,6 +225,7 @@ export const layer: Layer.Layer<
       "thread.interaction-mode-updated",
       "thread.model-selection-updated",
       "thread.provider-switched",
+      "thread.machine-handoff-updated",
       "thread.visited",
       "thread.marked-unread",
     ];

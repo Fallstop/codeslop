@@ -45,6 +45,7 @@ import * as IdAllocator from "./IdAllocator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import { makeProviderFailure } from "./ProviderFailure.ts";
+import { machineHandoffRunRefusal } from "./MachineHandoff.ts";
 import * as RunExecutionService from "./RunExecutionService.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
 import {
@@ -368,6 +369,24 @@ export const layer: Layer.Layer<
           });
         },
       );
+      // Freezing a thread for another machine cancels its pending starts, but
+      // one already claimed by the worker can still arrive here.
+      const handedOff = machineHandoffRunRefusal(projection.thread);
+      if (handedOff !== null) {
+        yield* settleRunBeforeStart({
+          signal: "machine-handoff",
+          status: "failed",
+          now: yield* DateTime.now,
+          providerInstanceId: run.providerInstanceId,
+          itemProviderThreadId: providerThread.id,
+          item: {
+            type: "error",
+            title: "Thread handed off",
+            failure: makeProviderFailure({ class: "validation_error", message: handedOff }),
+          },
+        });
+        return;
+      }
       if (message.attachments.length === 0 && message.text.trimStart().startsWith("/")) {
         const isEmptyCompaction =
           message.text.trim().toLowerCase() === "/compact" && !projection.hasConversation;
