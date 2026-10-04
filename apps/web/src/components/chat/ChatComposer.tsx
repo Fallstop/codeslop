@@ -2644,13 +2644,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           label: "/model",
           description: "Switch response model for this thread",
         },
-        {
-          id: "slash:btw",
-          type: "slash-command",
-          command: "btw",
-          label: "/btw",
-          description: "Open a side chat without interrupting this thread",
-        },
         ...(planModeUiEnabled
           ? ([
               {
@@ -3967,27 +3960,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         return;
       }
       if (item.type === "slash-command") {
-        // Leave the command in the box with a trailing space, the way provider
-        // commands behave: the question is the argument, and the send path
-        // routes `/btw …` to the side chat instead of the thread.
-        if (item.command === "btw") {
-          const replacement = "/btw ";
-          const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
-            snapshot.value,
-            trigger.rangeEnd,
-            replacement,
-          );
-          const applied = applyPromptReplacement(
-            trigger.rangeStart,
-            replacementRangeEnd,
-            replacement,
-            { expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd) },
-          );
-          if (applied) {
-            setComposerHighlightedItemId(null);
-          }
-          return;
-        }
         if (item.command === "model") {
           const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
             expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
