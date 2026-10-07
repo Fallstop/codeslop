@@ -12,19 +12,19 @@ import * as Result from "effect/Result";
 import { detectSourceControlProviderFromRemoteUrl } from "./sourceControl.ts";
 
 export const WORKTREE_BRANCH_PREFIX = "slop";
-/** The pre-rebrand prefix; existing branches keep it, so matchers still accept it. */
-export const LEGACY_WORKTREE_BRANCH_PREFIX = "t3code";
-// Canonical form is `slop/<8 hex>`. `slop-<8 hex>` is the fallback when a plain `slop`
+// codeslop names temp branches `slop/<8 hex>`; upstream's `t3` shapes stay eligible too.
+const UPSTREAM_WORKTREE_BRANCH_PREFIX = "t3";
+// Canonical form is `t3/<8 hex>`. `t3-<8 hex>` is the fallback when a plain `t3`
 // branch blocks the namespace. The matcher also accepts every legacy shape, so
 // existing threads stay eligible for branch regeneration: `t3code/<8 hex>` and
-// `t3code-<8 hex>` from before the rebrand, and `t3code/<uuid>` from older mobile
-// builds that used Crypto.randomUUID() (always RFC 4122 v4, so version nibble `4`
-// and variant nibble `[89ab]`). Nothing looser than what was generated.
+// `t3code-<8 hex>` from before the prefix was shortened, and `t3code/<uuid>` from
+// older mobile builds that used Crypto.randomUUID() (always RFC 4122 v4, so version
+// nibble `4` and variant nibble `[89ab]`). Nothing looser than what was generated.
 const TEMP_WORKTREE_HEX_TOKEN = "[0-9a-f]{8}";
 const TEMP_WORKTREE_UUID_V4_TOKEN =
   "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const TEMP_WORKTREE_BRANCH_PATTERN = new RegExp(
-  `^(?:${WORKTREE_BRANCH_PREFIX}[-/]${TEMP_WORKTREE_HEX_TOKEN}|${LEGACY_WORKTREE_BRANCH_PREFIX}(?:[-/]${TEMP_WORKTREE_HEX_TOKEN}|\\/${TEMP_WORKTREE_UUID_V4_TOKEN}))$`,
+  `^(?:(?:${WORKTREE_BRANCH_PREFIX}|${UPSTREAM_WORKTREE_BRANCH_PREFIX})[-/]${TEMP_WORKTREE_HEX_TOKEN}|t3code(?:[-/]${TEMP_WORKTREE_HEX_TOKEN}|\\/${TEMP_WORKTREE_UUID_V4_TOKEN}))$`,
 );
 
 /**

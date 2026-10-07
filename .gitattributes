@@ -3,3 +3,6 @@
 # Batch files need CRLF for cmd.exe to parse them reliably.
 *.cmd text eol=crlf
 *.bat text eol=crlf
+# Merges take the incoming lockfile; run `pnpm install` afterwards to regenerate it.
+# The driver lives in local git config: git config merge.pnpm-lock.driver "cp %B %A"
+pnpm-lock.yaml merge=pnpm-lock
