@@ -19,7 +19,7 @@ import {
 import * as Crypto from "effect/Crypto";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
-import { Atom, type AtomRegistry } from "effect/unstable/reactivity";
+import { Atom, type AtomRegistry } from "effect/reactivity";
 
 import type { EnvironmentPresentation } from "../connection/presentation.ts";
 import * as EnvironmentRegistry from "../connection/registry.ts";

@@ -95,6 +95,7 @@ describe("selectCliRuntimeExternalDependencies", () => {
         "@napi-rs/keyring",
         "node-pty",
         "onnxruntime-node",
+        "playwright-core",
         "sharp",
       ],
     );

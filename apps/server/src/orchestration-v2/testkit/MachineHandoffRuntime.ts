@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import * as ServerConfig from "../../config.ts";
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
@@ -15,7 +15,7 @@ import * as MachineHandoffService from "../MachineHandoffService.ts";
 import * as Orchestrator from "../Orchestrator.ts";
 import type { ProviderAdapterV2Shape } from "../ProviderAdapter.ts";
 import * as ProviderAdapterRegistry from "../ProviderAdapterRegistry.ts";
-import { makeOrchestratorV2ReplayLayerWithRegistry } from "./ProviderReplayHarness.ts";
+import * as ProviderReplayHarness from "./ProviderReplayHarness.ts";
 import { checkpointWorkspace } from "./ReplayFixtureWorkspace.ts";
 
 export const git = (cwd: string, args: ReadonlyArray<string>) =>
@@ -42,9 +42,9 @@ export const machineHandoffRuntime = (adapter: ProviderAdapterV2Shape, name: str
     Layer.provideMerge(NodeServices.layer),
     Layer.orDie,
   );
-  return makeOrchestratorV2ReplayLayerWithRegistry(
+  return ProviderReplayHarness.layerWithRegistry(
     { name },
-    ProviderAdapterRegistry.makeSingleLayer(adapter),
+    ProviderAdapterRegistry.layerSingle(adapter),
     {
       machineHandoffLayer: MachineHandoffService.layer.pipe(
         Layer.provide(gitLayer),

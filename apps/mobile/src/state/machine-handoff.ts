@@ -1,7 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { MachineHandoffProgress } from "@t3tools/client-runtime/operations";
 import { createMachineHandoffClient } from "@t3tools/client-runtime/state/machine-handoff";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import { uuidv4 } from "../lib/uuid";

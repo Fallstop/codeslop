@@ -13,8 +13,8 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
-import { MessageEmbeddingRepositoryLive } from "../persistence/Layers/MessageEmbeddings.ts";
+import * as Sqlite from "../persistence/Sqlite.ts";
+import { MessageEmbeddingRepositoryLive } from "../persistence/MessageEmbeddings.ts";
 import { MessageEmbeddingRepository } from "../persistence/Services/MessageEmbeddings.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
@@ -74,7 +74,7 @@ const makeTestLayer = (options: {
         search: () => Effect.succeed({ matches: options.lexicalMatches }),
       }),
     ),
-    Layer.provideMerge(SqlitePersistenceMemory),
+    Layer.provideMerge(Sqlite.layerMemory),
     Layer.provideMerge(NodeServices.layer),
   );
 

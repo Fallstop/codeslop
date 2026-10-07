@@ -6,7 +6,7 @@ import type {
 import type { MachineHandoffProgress } from "@t3tools/client-runtime/operations";
 import { createMachineHandoffClient } from "@t3tools/client-runtime/state/machine-handoff";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import { randomUUID } from "../lib/utils";

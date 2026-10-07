@@ -33,7 +33,13 @@ line to add. Set `T3CODE_CHANNEL=nightly` to install the nightly train, or
 | Move to the newest release                       | `slop update`                                               |
 | Remove it again                                  | `slop uninstall`                                            |
 
-Run `slop --help` for the full reference.
+Run `slop help` or `slop --help` for the full reference. To start in a new working
+directory, use an explicit path such as `slop ./my-project`. A bare directory name
+is accepted only if it already exists.
+
+If `slop` or `slop start` reports an already running server, connect to that server
+instead. Stop it before starting a replacement, or use a different `--base-dir`
+for an independent server.
 
 To try codeslop once without installing it, run `npx t3@latest` instead (needs
 Node.js for `npx`).

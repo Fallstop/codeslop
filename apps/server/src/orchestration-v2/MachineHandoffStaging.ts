@@ -1,3 +1,4 @@
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- sha256Hex is synchronous; Effect Crypto digests are effects.
 import * as NodeCrypto from "node:crypto";
 
 import {

@@ -1,4 +1,4 @@
-import * as Encoding from "effect/Encoding";
+import * as Base64Url from "effect/encoding/Base64Url";
 import { CheckpointRef, ProjectId, type ThreadId } from "@t3tools/contracts";
 
 export const CHECKPOINT_REFS_PREFIX = "refs/slop/checkpoints";
@@ -10,7 +10,7 @@ export const LEGACY_CHECKPOINT_REFS_PREFIX = "refs/t3/checkpoints";
 
 export function checkpointRefForThreadTurn(threadId: ThreadId, turnCount: number): CheckpointRef {
   return CheckpointRef.make(
-    `${CHECKPOINT_REFS_PREFIX}/${Encoding.encodeBase64Url(threadId)}/turn/${turnCount}`,
+    `${CHECKPOINT_REFS_PREFIX}/${Base64Url.encode(threadId)}/turn/${turnCount}`,
   );
 }
 

@@ -26,7 +26,7 @@ import * as ProjectCloneTracker from "../project/ProjectCloneTracker.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as WorktreeSetupTracker from "../project/WorktreeSetupTracker.ts";
-import { makeProviderRegistryLayer } from "../provider/testUtils/providerRegistryMock.ts";
+import * as ProviderRegistryMock from "../provider/testUtils/providerRegistryMock.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
@@ -48,7 +48,7 @@ import * as ThreadManagement from "./ThreadManagementService.ts";
 import { makeMachineHandoffFakeAdapter } from "./testkit/MachineHandoffFakeAdapter.ts";
 import { awaitEvent, git, machineHandoffRuntime } from "./testkit/MachineHandoffRuntime.ts";
 import { checkpointWorkspace } from "./testkit/ReplayFixtureWorkspace.ts";
-import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import * as Sqlite from "../persistence/Sqlite.ts";
 
 const originThreadId = ThreadId.make("thread:laptop");
 const targetThreadId = ThreadId.make("thread:desktop");
@@ -94,7 +94,7 @@ const targetMachine = (input: {
   const projects = Layer.mock(ProjectService.ProjectService)({
     getById: (id) => Effect.succeed(id === targetProjectId ? Option.some(project) : Option.none()),
   });
-  const receipts = CommandReceiptStore.layer.pipe(Layer.provide(SqlitePersistenceMemory));
+  const receipts = CommandReceiptStore.layer.pipe(Layer.provide(Sqlite.layerMemory));
   const gitLayer = GitVcsDriver.layer.pipe(
     Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-handoff-target-git-" })),
     Layer.provideMerge(VcsProcess.layer),
@@ -138,7 +138,7 @@ const targetMachine = (input: {
         }),
         Layer.mock(TextGeneration.TextGeneration)({}),
         ServerSettings.layerTest(),
-        makeProviderRegistryLayer(),
+        ProviderRegistryMock.layer(),
         Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
           namedProjectsRoot: "/projects",
           folderForThread: () => Effect.succeed(Option.none()),
@@ -159,7 +159,7 @@ const targetMachine = (input: {
         gitLayer,
         projects,
         receipts,
-        ProviderAdapterRegistry.makeSingleLayer(input.adapter),
+        ProviderAdapterRegistry.layerSingle(input.adapter),
       ),
     ),
   );

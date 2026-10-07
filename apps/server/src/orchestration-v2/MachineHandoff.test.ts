@@ -26,7 +26,7 @@ import * as MachineHandoffService from "./MachineHandoffService.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import type { ProviderAdapterV2Event, ProviderAdapterV2Shape } from "./ProviderAdapter.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
-import { makeOrchestratorV2ReplayLayerWithRegistry } from "./testkit/ProviderReplayHarness.ts";
+import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
 import { checkpointWorkspace } from "./testkit/ReplayFixtureWorkspace.ts";
 
 const driver = ProviderDriverKind.make("codex");
@@ -133,9 +133,9 @@ function makeHarness() {
           };
         }),
     };
-    const layer = makeOrchestratorV2ReplayLayerWithRegistry(
+    const layer = ProviderReplayHarness.layerWithRegistry(
       { name: "machine-handoff" },
-      ProviderAdapterRegistry.makeSingleLayer(adapter),
+      ProviderAdapterRegistry.layerSingle(adapter),
       {
         runEffectWorker: false,
         machineHandoffLayer: Layer.succeed(MachineHandoffService.MachineHandoffService, {
@@ -248,11 +248,10 @@ it.effect("freezes a running thread and exports only after detaching its session
         assert.lengthOf(frozen.providerSessions, 0);
 
         yield* worker.drain();
-        // Codex shares one session across threads, so detaching interrupts the
-        // thread's turn again rather than releasing the process. Export runs
-        // only after both.
+        // The interrupt waits for the turn to end, so the detach that follows
+        // has nothing left to interrupt. Export runs only after both.
         const work = harness.log.filter((entry) => entry !== "session-released");
-        assert.deepEqual(work, ["turn-started", "interrupted", "interrupted", "exported"]);
+        assert.deepEqual(work, ["turn-started", "interrupted", "exported"]);
       }).pipe(Effect.provide(layer));
     }),
   ),

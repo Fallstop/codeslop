@@ -27,7 +27,7 @@ vi.mock("node:os", async (importOriginal) => {
   return { ...actual, homedir: vi.fn(actual.homedir) };
 });
 
-const TestLayer = Layer.empty.pipe(
+const layerTest = Layer.empty.pipe(
   Layer.provideMerge(WorkspaceEntries.layer.pipe(Layer.provide(WorkspacePaths.layer))),
   Layer.provideMerge(WorkspacePaths.layer),
   Layer.provideMerge(VcsProcess.layer),
@@ -96,7 +96,7 @@ const appendSeparator = (input: string) =>
       : `${input}${platform === "win32" ? "\\" : "/"}`,
   );
 
-it.layer(TestLayer, { excludeTestServices: true })("WorkspaceEntries", (it) => {
+it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
   afterEach(() => {
     vi.restoreAllMocks();
   });

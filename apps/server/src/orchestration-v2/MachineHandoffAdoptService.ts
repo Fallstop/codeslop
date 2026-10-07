@@ -10,6 +10,7 @@ import {
   type OrchestrationV2MachineHandoffManifest,
   type ProviderInstanceId,
 } from "@t3tools/contracts";
+import * as KeyedLock from "@t3tools/shared/KeyedLock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -21,7 +22,6 @@ import * as GitWorkflow from "../git/GitWorkflowService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
-import { makeKeyedSerialExecutor } from "./KeyedSerialExecutor.ts";
 import { isMachineHandoffError, MachineHandoffError } from "./MachineHandoff.ts";
 import { fetchRef, findRemoteByUrl, machineHandoffAdoptedRef } from "./MachineHandoffGit.ts";
 import { MachineHandoffService } from "./MachineHandoffService.ts";
@@ -67,7 +67,7 @@ const make = Effect.gen(function* () {
   const gitWorkflow = yield* GitWorkflow.GitWorkflowService;
   const git = yield* GitVcsDriver.GitVcsDriver;
   const adapters = yield* ProviderAdapterRegistry.ProviderAdapterRegistryV2;
-  const serial = yield* makeKeyedSerialExecutor<MachineHandoffId>();
+  const serial = yield* KeyedLock.make<MachineHandoffId>();
 
   /** The thread a previous adopt of this handoff already launched, if any. */
   const previousAdopt = (handoffId: MachineHandoffId) =>

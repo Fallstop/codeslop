@@ -12,7 +12,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import {
   BundleNotSelfContainedError,
@@ -694,6 +694,9 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
         "!**/node_modules/onnxruntime-node/bin/**/win32/**/*",
         "!**/node_modules/onnxruntime-node/bin/**/linux/**/*",
       ]);
+      assert.deepStrictEqual(linux.toolsets, { appimage: "1.0.3" });
+      assert.notProperty(mac, "toolsets");
+      assert.notProperty(win, "toolsets");
       assert.deepStrictEqual(winWithoutWslRuntime.files, win.files);
       assert.notProperty(mac.mac as Record<string, unknown>, "sign");
       for (const config of [linux, win]) {
@@ -1673,6 +1676,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
           stageDistDir: fixture.stageDistDir,
           appExecutableName: fixture.appExecutableName,
           targetArch: "arm64",
+          appVersion: WINDOWS_PAYLOAD_FIXTURE_VERSION,
         });
 
         const probe = commands.find(

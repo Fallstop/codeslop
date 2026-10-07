@@ -10,11 +10,11 @@ import * as GitVcsDriver from "./GitVcsDriver.ts";
 import * as VcsDriver from "./VcsDriver.ts";
 import * as VcsProcess from "./VcsProcess.ts";
 
-const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
+const layerServerConfig = ServerConfig.layerTest(process.cwd(), {
   prefix: "t3-git-handoff-",
 });
-const GitLayer = Layer.mergeAll(GitVcsDriver.vcsLayer, GitVcsDriver.layer).pipe(
-  Layer.provide(ServerConfigLayer),
+const layerGit = Layer.mergeAll(GitVcsDriver.layerVcs, GitVcsDriver.layer).pipe(
+  Layer.provide(layerServerConfig),
   Layer.provideMerge(VcsProcess.layer),
   Layer.provideMerge(NodeServices.layer),
 );
@@ -45,7 +45,7 @@ const makeRepo = Effect.fn("makeRepo")(function* () {
   return cwd;
 });
 
-it.layer(GitLayer)("publishHandoffCommit", (it) => {
+it.layer(layerGit)("publishHandoffCommit", (it) => {
   it.effect("carries uncommitted and untracked work but not ignored files", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
