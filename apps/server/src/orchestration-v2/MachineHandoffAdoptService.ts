@@ -1,7 +1,6 @@
 import {
   CommandId,
   defaultInstanceIdForDriver,
-  OrchestrationV2MachineHandoffHistoryEntry,
   type MachineHandoffId,
   type ModelSelection,
   type OrchestrationV2AdoptMachineHandoffInput,
@@ -24,6 +23,7 @@ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
 import { isMachineHandoffError, MachineHandoffError } from "./MachineHandoff.ts";
 import { fetchRef, findRemoteByUrl, machineHandoffAdoptedRef } from "./MachineHandoffGit.ts";
+import { MachineHandoffHistoryJson } from "./MachineHandoffHistory.ts";
 import { MachineHandoffService } from "./MachineHandoffService.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import type { ProviderAdapterV2Shape } from "./ProviderAdapter.ts";
@@ -49,9 +49,7 @@ export class MachineHandoffAdoptService extends Context.Service<
   MachineHandoffAdoptServiceShape
 >()("t3/orchestration-v2/MachineHandoffAdoptService") {}
 
-const decodeHistory = Schema.decodeUnknownEffect(
-  Schema.fromJsonString(Schema.Array(OrchestrationV2MachineHandoffHistoryEntry)),
-);
+const decodeHistory = Schema.decodeUnknownEffect(MachineHandoffHistoryJson);
 
 const refuse = (message: string) => (cause: unknown) => new MachineHandoffError({ message, cause });
 

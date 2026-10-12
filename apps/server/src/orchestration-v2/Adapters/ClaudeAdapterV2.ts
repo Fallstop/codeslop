@@ -88,6 +88,7 @@ import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { resolveClaudeSdkExecutablePath } from "../../provider/Drivers/ClaudeExecutable.ts";
 import { resolveClaudeHomePath } from "../../provider/Drivers/ClaudeHome.ts";
 import {
+  claudeSessionExists,
   exportClaudeSession,
   installClaudeSession,
 } from "../../provider/Drivers/ClaudeSessionTransfer.ts";
@@ -3080,6 +3081,19 @@ export function makeClaudeAdapterV2(
         Effect.mapError(transferError("install", nativeThreadId)),
       ),
   };
+  const nativeSessionOnDisk = (nativeThreadId: string, cwd: string | null) =>
+    cwd === null
+      ? Effect.succeed(false)
+      : Effect.gen(function* () {
+          return yield* claudeSessionExists({
+            configDir: yield* configDir,
+            cwd,
+            sessionId: nativeThreadId,
+          });
+        }).pipe(
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
+        );
 
   return ProviderAdapter.ProviderAdapterV2.of({
     instanceId: adapterOptions.instanceId,
@@ -7362,10 +7376,15 @@ export function makeClaudeAdapterV2(
           // requires resume; sessionId would fail with "already in use".
           // A fresh-session fallback keeps provider-thread history but binds
           // a new native id, which must be created before it can be resumed.
+          // A transcript installed by a machine handoff has no turns here yet,
+          // so its file on disk is the only proof it exists.
           const hasPersistedProviderTurn =
             turnInput.nativeThreadHasTurns ?? turnInput.providerTurnOrdinal > 1;
           const shouldResume =
-            resumeSessionAt !== undefined || openedWithResume || hasPersistedProviderTurn;
+            resumeSessionAt !== undefined ||
+            openedWithResume ||
+            hasPersistedProviderTurn ||
+            (yield* nativeSessionOnDisk(nativeThreadId, turnInput.runtimePolicy.cwd));
           const queryOptions = makeClaudeQueryOptions({
             modelSelection: turnInput.modelSelection,
             nativeThreadId,

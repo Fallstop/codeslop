@@ -79,6 +79,19 @@ export const claudeSessionFilePath = Effect.fn("ClaudeSessionTransfer.claudeSess
   },
 );
 
+/** Whether the session's transcript is on disk, so the CLI must resume it rather than create it. */
+export const claudeSessionExists = Effect.fn("ClaudeSessionTransfer.claudeSessionExists")(
+  function* (input: {
+    readonly configDir: string;
+    readonly cwd: string;
+    readonly sessionId: string;
+  }) {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const filePath = yield* claudeSessionFilePath(input);
+    return yield* fileSystem.exists(filePath).pipe(Effect.orElseSucceed(() => false));
+  },
+);
+
 /**
  * Read a session's transcript for transport. Returns null when the file is
  * missing so a caller can refuse the handoff before stopping the user's

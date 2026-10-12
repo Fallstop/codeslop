@@ -317,7 +317,7 @@ const setupMachines = (options: {
       Context.get(origin, MachineHandoffService.MachineHandoffService),
       Context.get(target, MachineHandoffService.MachineHandoffService),
     );
-    return { repos, installed, origin, target };
+    return { repos, installed, origin, target, targetPrompts: targetFake.prompts };
   });
 
 const adopt = (continueWork: boolean) =>
@@ -328,7 +328,7 @@ const adopt = (continueWork: boolean) =>
 it.effect("lands the work uncommitted with the agent's own session", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const { repos, installed, target } = yield* setupMachines({ native: true });
+      const { repos, installed, target, targetPrompts } = yield* setupMachines({ native: true });
       yield* Effect.gen(function* () {
         const orchestrator = yield* Orchestrator.OrchestratorV2;
         const first = yield* adopt(false);
@@ -394,6 +394,27 @@ it.effect("lands the work uncommitted with the agent's own session", () =>
           (yield* orchestrator.getThreadProjection(targetThreadId)).contextHandoffs,
           0,
         );
+        // The first turn tells the agent the move, not the user, stopped it; later turns don't.
+        assert.match(targetPrompts[0] ?? "", /moved here from [^.]*\.[\s\S]*Keep going$/);
+        const resumedAgain = yield* awaitEvent(
+          (event) =>
+            event.type === "run.updated" &&
+            event.payload.status === "completed" &&
+            event.payload.ordinal === 2,
+        );
+        yield* orchestrator.dispatch({
+          type: "message.dispatch",
+          commandId: CommandId.make("continue-again"),
+          threadId: targetThreadId,
+          messageId: MessageId.make("message:continue-again"),
+          text: "And again",
+          attachments: [],
+          dispatchMode: { type: "start_immediately" },
+          createdBy: "user",
+          creationSource: "web",
+        });
+        yield* Fiber.join(resumedAgain);
+        assert.equal(targetPrompts[1], "And again");
       }).pipe(Effect.provideContext(target), Effect.provide(NodeServices.layer));
     }),
   ),

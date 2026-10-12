@@ -11,6 +11,7 @@ import {
   type OrchestrationV2Command,
   type OrchestrationV2InternalCommand,
   type OrchestrationV2MachineHandoff,
+  type OrchestrationV2MachineHandoffOrigin,
   type OrchestrationV2Run,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -42,6 +43,26 @@ export function machineHandoffRunRefusal(
   return handoff.state === "completed"
     ? `This thread's work moved to ${label}.`
     : `This thread is being handed off to ${label}.`;
+}
+
+/**
+ * Told to the agent on an adopted thread's first turn. Moving stopped it where
+ * it was, and a provider such as Claude records the interrupted tool call as
+ * the user rejecting it.
+ */
+export function machineHandoffArrivalNote(
+  origin: OrchestrationV2MachineHandoffOrigin,
+  worktreePath: string | null,
+): string {
+  return [
+    `Note: this conversation was moved here from ${origin.environmentLabel ?? "another machine"}.`,
+    "Moving it stopped you mid-work: an interrupted or rejected tool call just before this was the move, not the user declining it, so retry it if it is still needed.",
+    ...(worktreePath === null
+      ? []
+      : [
+          `Your working directory is now ${worktreePath}; uncommitted changes came with it. Paths from before the move may differ.`,
+        ]),
+  ].join(" ");
 }
 
 export function machineHandoffStartRefusal(input: {

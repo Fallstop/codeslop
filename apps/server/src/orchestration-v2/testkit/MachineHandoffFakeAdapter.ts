@@ -44,6 +44,8 @@ export const makeMachineHandoffFakeAdapter = Effect.fn("makeMachineHandoffFakeAd
   options: MachineHandoffFakeAdapterOptions = {},
 ) {
   const log: Array<FakeAdapterLogEntry> = [];
+  /** Text each started turn sent the provider. */
+  const prompts: Array<string> = [];
   const instanceId = ProviderInstanceId.make(options.instanceId ?? "codex");
   const driver = ProviderDriverKind.make(options.driver ?? "codex");
   const capabilities = options.capabilities ?? CodexProviderCapabilitiesV2;
@@ -126,6 +128,7 @@ export const makeMachineHandoffFakeAdapter = Effect.fn("makeMachineHandoffFakeAd
           startTurn: (turn) =>
             Effect.gen(function* () {
               log.push("turn-started");
+              prompts.push(turn.message.text);
               const started = yield* DateTime.now;
               const providerTurn: OrchestrationV2ProviderTurn = {
                 id: ProviderTurnId.make(`provider-turn:${turn.attemptId}`),
@@ -180,5 +183,5 @@ export const makeMachineHandoffFakeAdapter = Effect.fn("makeMachineHandoffFakeAd
         };
       }),
   };
-  return { adapter, log, instanceId, driver, nativeId };
+  return { adapter, log, prompts, instanceId, driver, nativeId };
 });

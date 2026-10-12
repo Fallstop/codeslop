@@ -403,15 +403,6 @@ export type OrchestrationV2MachineHandoff = typeof OrchestrationV2MachineHandoff
 export const OrchestrationV2MachineHandoffContext = Schema.Literals(["native", "portable"]);
 export type OrchestrationV2MachineHandoffContext = typeof OrchestrationV2MachineHandoffContext.Type;
 
-/** One message of conversation carried for a provider whose session cannot move. */
-export const OrchestrationV2MachineHandoffHistoryEntry = Schema.Struct({
-  role: Schema.Literals(["user", "assistant"]),
-  text: Schema.String,
-  createdAt: IsoDateTime,
-});
-export type OrchestrationV2MachineHandoffHistoryEntry =
-  typeof OrchestrationV2MachineHandoffHistoryEntry.Type;
-
 /** Where an adopted thread came from, recorded on the target thread. */
 export const OrchestrationV2MachineHandoffOrigin = Schema.Struct({
   ...OrchestrationV2MachineHandoffEndpoint.fields,
@@ -1644,6 +1635,21 @@ export const OrchestrationV2TurnItem = Schema.Union([
   }),
 ]);
 export type OrchestrationV2TurnItem = typeof OrchestrationV2TurnItem.Type;
+
+/**
+ * One timeline entry a handoff carries: a message, or another item such as a
+ * tool call, whose origin identity the target replaces when it adopts it.
+ */
+export const OrchestrationV2MachineHandoffHistoryEntry = Schema.Union([
+  Schema.Struct({
+    role: Schema.Literals(["user", "assistant"]),
+    text: Schema.String,
+    createdAt: IsoDateTime,
+  }),
+  Schema.Struct({ item: OrchestrationV2TurnItem }),
+]);
+export type OrchestrationV2MachineHandoffHistoryEntry =
+  typeof OrchestrationV2MachineHandoffHistoryEntry.Type;
 
 /**
  * Turn item types grow over time, so clients decode them forward-compatibly:

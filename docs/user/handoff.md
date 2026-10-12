@@ -31,8 +31,8 @@ up, any other device can finish the move with **Continue**.
 ## What travels
 
 **Claude Code and Codex** carry the agent's own session, so it resumes knowing everything it did.
-**Other providers** continue from the conversation instead: the agent receives your messages and its
-replies as context on its first turn. The new thread tells you when that happened.
+**Other providers** continue from the conversation instead: the agent receives your messages, its
+replies, and the commands and edits it made as context on its first turn. The new thread tells you when that happened.
 
 **Stays behind:** files git ignores (`.env`, `node_modules`, build output), which the setup script
 rebuilds; attachments; terminals and dev servers; and queued messages, which you get back if you

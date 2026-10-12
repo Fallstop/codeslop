@@ -61,6 +61,7 @@ import { WorktreeToolkit } from "../../mcp/toolkits/worktree/tools.ts";
 import { ThreadToolkit } from "../../mcp/toolkits/thread/tools.ts";
 import { OrchestratorToolkit } from "../../mcp/toolkits/orchestrator/tools.ts";
 import { ClaudeExecutableFileCheck } from "../../provider/Drivers/ClaudeExecutable.ts";
+import { installClaudeSession } from "../../provider/Drivers/ClaudeSessionTransfer.ts";
 import type { EventNdjsonLogger } from "../../provider/EventNdjsonLogger.ts";
 import {
   ProviderAdapterV2RuntimePolicy,
@@ -1810,7 +1811,11 @@ describe("ClaudeAdapterV2 native fork", () => {
 });
 
 describe("ClaudeAdapterV2 native session identity", () => {
-  const openTurnWithOrdinal = (providerTurnOrdinal: number, nativeThreadHasTurns?: boolean) =>
+  const openTurnWithOrdinal = (
+    providerTurnOrdinal: number,
+    nativeThreadHasTurns?: boolean,
+    transcriptInstalled = false,
+  ) =>
     Effect.scoped(
       Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
@@ -1818,10 +1823,29 @@ describe("ClaudeAdapterV2 native session identity", () => {
         const attachmentsDir = yield* fileSystem.makeTempDirectoryScoped({
           prefix: "t3-claude-v2-session-identity-",
         });
+        // Own Claude home and cwd so the transcript check never reads the real ~/.claude.
+        const claudeHome = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "t3-claude-v2-session-identity-home-",
+        });
+        const cwd = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "t3-claude-v2-session-identity-cwd-",
+        });
+        const runtimePolicy = ProviderAdapterV2RuntimePolicy.make({
+          ...CLAUDE_TEST_RUNTIME_POLICY,
+          cwd,
+        });
+        if (transcriptInstalled) {
+          yield* installClaudeSession({
+            configDir: claudeHome,
+            cwd,
+            sessionId: "native-session-identity",
+            bytes: new TextEncoder().encode("{}"),
+          });
+        }
         const openedQueries: Array<ClaudeAdapterV2.ClaudeAgentSdkQueryOpenInput> = [];
         const adapter = ClaudeAdapterV2.makeClaudeAdapterV2({
           instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
-          settings: DEFAULT_CLAUDE_SETTINGS,
+          settings: { ...DEFAULT_CLAUDE_SETTINGS, homePath: claudeHome },
           environment: {},
           attachmentsDir,
           fileSystem,
@@ -1853,12 +1877,12 @@ describe("ClaudeAdapterV2 native session identity", () => {
           threadId,
           providerSessionId,
           modelSelection: CLAUDE_TEST_MODEL_SELECTION,
-          runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
+          runtimePolicy,
         });
         const providerThread = yield* runtime.ensureThread({
           threadId,
           modelSelection: CLAUDE_TEST_MODEL_SELECTION,
-          runtimePolicy: CLAUDE_TEST_RUNTIME_POLICY,
+          runtimePolicy,
         });
         const now = yield* DateTime.now;
         yield* runtime.startTurn(
@@ -1870,6 +1894,7 @@ describe("ClaudeAdapterV2 native session identity", () => {
             text: "Respond with identity ok",
             attachments: [],
             providerTurnOrdinal,
+            runtimePolicy,
             ...(nativeThreadHasTurns === undefined ? {} : { nativeThreadHasTurns }),
           }),
         );
@@ -1902,6 +1927,14 @@ describe("ClaudeAdapterV2 native session identity", () => {
       const openedQueries = yield* openTurnWithOrdinal(4, false);
       assert.equal(openedQueries[0]?.options.sessionId, "native-session-identity");
       assert.equal(openedQueries[0]?.options.resume, undefined);
+    }),
+  );
+
+  it.effect("resumes a transcript installed by a machine handoff on its first turn", () =>
+    Effect.gen(function* () {
+      const openedQueries = yield* openTurnWithOrdinal(1, false, true);
+      assert.equal(openedQueries[0]?.options.resume, "native-session-identity");
+      assert.equal(openedQueries[0]?.options.sessionId, undefined);
     }),
   );
 });

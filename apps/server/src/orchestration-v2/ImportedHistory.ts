@@ -7,6 +7,15 @@ import {
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
+const importedSuffix = (index: number) => String(index).padStart(6, "0");
+
+const importedTurnItemId = (input: {
+  readonly threadId: ThreadId;
+  readonly index: number;
+  readonly idPrefix: string;
+}) =>
+  TurnItemId.make(`${input.idPrefix}:turn-item:${input.threadId}:${importedSuffix(input.index)}`);
+
 export interface ImportedHistoryMessage {
   readonly role: "user" | "assistant";
   readonly text: string;
@@ -30,7 +39,7 @@ export function importedHistoryRecords(input: {
   readonly message: OrchestrationV2ConversationMessage;
   readonly turnItem: OrchestrationV2TurnItem;
 } {
-  const suffix = String(input.index).padStart(6, "0");
+  const suffix = importedSuffix(input.index);
   const messageId = MessageId.make(`${input.threadId}:${suffix}`);
   const at = DateTime.makeUnsafe(input.message.createdAt);
   const message: OrchestrationV2ConversationMessage = {
@@ -48,7 +57,7 @@ export function importedHistoryRecords(input: {
     updatedAt: at,
   };
   const common = {
-    id: TurnItemId.make(`${input.idPrefix}:turn-item:${input.threadId}:${suffix}`),
+    id: importedTurnItemId(input),
     threadId: input.threadId,
     runId: null,
     nodeId: null,
@@ -83,4 +92,49 @@ export function importedHistoryRecords(input: {
           streaming: false,
         };
   return { message, turnItem };
+}
+
+const SETTLED_STATUSES: ReadonlySet<OrchestrationV2TurnItem["status"]> = new Set([
+  "completed",
+  "failed",
+  "cancelled",
+  "interrupted",
+]);
+
+const rehome = <Item extends OrchestrationV2TurnItem>(
+  item: Item,
+  input: { readonly threadId: ThreadId; readonly index: number; readonly idPrefix: string },
+): Item => ({
+  ...item,
+  id: importedTurnItemId(input),
+  threadId: input.threadId,
+  runId: null,
+  nodeId: null,
+  providerThreadId: null,
+  providerTurnId: null,
+  nativeItemRef: null,
+  parentItemId: null,
+  ordinal: input.index + 1,
+  status: SETTLED_STATUSES.has(item.status) ? item.status : "interrupted",
+});
+
+/**
+ * A non-message item brought in from another thread, rehomed as a runless item
+ * here. Work the origin stopped mid-way shows as interrupted, never as live.
+ */
+export function importedHistoryItem(input: {
+  readonly threadId: ThreadId;
+  readonly index: number;
+  readonly item: OrchestrationV2TurnItem;
+  readonly idPrefix: string;
+}): OrchestrationV2TurnItem {
+  const rehomed = rehome(input.item, input);
+  switch (rehomed.type) {
+    case "assistant_message":
+    case "reasoning":
+    case "proposed_plan":
+      return { ...rehomed, streaming: false };
+    default:
+      return rehomed;
+  }
 }

@@ -47,7 +47,7 @@ import * as IdAllocator from "./IdAllocator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 import { makeProviderFailure } from "./ProviderFailure.ts";
-import { machineHandoffRunRefusal } from "./MachineHandoff.ts";
+import { machineHandoffArrivalNote, machineHandoffRunRefusal } from "./MachineHandoff.ts";
 import * as RunExecutionService from "./RunExecutionService.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
 import {
@@ -996,10 +996,23 @@ export const layer: Layer.Layer<
         run,
         attempts: projection.attempts,
       });
-      const restartNote =
+      // Told until a turn here completes: the origin stopped the agent mid-work.
+      const handoffNote =
+        projection.thread.continuedFrom != null &&
+        !projection.providerTurns.some((turn) => turn.status === "completed")
+          ? machineHandoffArrivalNote(
+              projection.thread.continuedFrom,
+              projection.thread.worktreePath,
+            )
+          : "";
+      const restartNote = [
         restartCancelledWork.length === 0
           ? ""
-          : restartCancelledBackgroundWorkNote(restartCancelledWork);
+          : restartCancelledBackgroundWorkNote(restartCancelledWork),
+        handoffNote,
+      ]
+        .filter((note) => note !== "")
+        .join("\n\n");
       const tokenCap = yield* handoffTokenCapConfig.pipe(
         Effect.orElseSucceed(() => DEFAULT_HANDOFF_TOKEN_CAP),
       );

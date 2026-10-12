@@ -125,7 +125,7 @@ import {
   ThreadForkServiceV2,
 } from "./ThreadForkService.ts";
 import { planThreadDeletion } from "./ThreadDeletion.ts";
-import { importedHistoryRecords } from "./ImportedHistory.ts";
+import { importedHistoryItem, importedHistoryRecords } from "./ImportedHistory.ts";
 import {
   isAutomaticMessageDelivery,
   machineHandoffRunRefusal,
@@ -10730,12 +10730,27 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         const emitEvent = emit(events, command);
         // Recorded now so the thread sorts as just adopted; payloads keep their own times.
         const now = yield* DateTime.now;
+        const idPrefix = `machine-handoff:${continuedFrom.handoffId}`;
         for (const [index, entry] of history.entries()) {
+          if ("item" in entry) {
+            yield* emitEvent({
+              type: "turn-item.updated",
+              threadId: command.threadId,
+              occurredAt: now,
+              payload: importedHistoryItem({
+                threadId: command.threadId,
+                index,
+                item: entry.item,
+                idPrefix,
+              }),
+            });
+            continue;
+          }
           const records = importedHistoryRecords({
             threadId: command.threadId,
             index,
             message: entry,
-            idPrefix: `machine-handoff:${continuedFrom.handoffId}`,
+            idPrefix,
           });
           yield* emitEvent({
             type: "message.updated",

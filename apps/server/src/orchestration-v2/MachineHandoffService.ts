@@ -1,8 +1,8 @@
 import {
   CommandId,
   MACHINE_HANDOFF_MAX_PAYLOAD_BYTES,
-  OrchestrationV2MachineHandoffHistoryEntry,
   type MachineHandoffId,
+  type OrchestrationV2MachineHandoffHistoryEntry,
   type OrchestrationV2MachineHandoffManifest,
   type OrchestrationV2ReadMachineHandoffBundleInput,
   type OrchestrationV2ReadMachineHandoffBundleResult,
@@ -34,6 +34,11 @@ import {
   machineHandoffStopProof,
 } from "./MachineHandoff.ts";
 import { deleteRefs, findRemoteByUrl, machineHandoffRef, pushRef } from "./MachineHandoffGit.ts";
+import {
+  MachineHandoffHistoryJson,
+  machineHandoffHistory,
+  messagesOnly,
+} from "./MachineHandoffHistory.ts";
 import { makeMachineHandoffStaging, sha256Hex } from "./MachineHandoffStaging.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
@@ -88,8 +93,7 @@ export class MachineHandoffService extends Context.Service<
 /** How long export waits for an interrupted run to end before trying again later. */
 const STOP_WAIT = Duration.seconds(20);
 
-const HistoryJson = Schema.fromJsonString(Schema.Array(OrchestrationV2MachineHandoffHistoryEntry));
-const encodeHistory = Schema.encodeEffect(HistoryJson);
+const encodeHistory = Schema.encodeEffect(MachineHandoffHistoryJson);
 
 const refuse = (message: string, cause?: unknown) =>
   new MachineHandoffError(cause === undefined ? { message } : { message, cause });
@@ -188,21 +192,8 @@ const make = Effect.gen(function* () {
   });
 
   const readHistory = (threadId: ThreadId) =>
-    projections.getTurnStartHistory(threadId).pipe(
-      Effect.map((items) =>
-        items.flatMap((item) =>
-          (item.type === "user_message" || item.type === "assistant_message") &&
-          item.text.trim().length > 0
-            ? [
-                {
-                  role: item.type === "user_message" ? ("user" as const) : ("assistant" as const),
-                  text: item.text,
-                  createdAt: DateTime.formatIso(item.startedAt ?? item.updatedAt),
-                },
-              ]
-            : [],
-        ),
-      ),
+    projections.getThreadRecords(threadId, ["turnItems"]).pipe(
+      Effect.map((records) => machineHandoffHistory(records.turnItems)),
       Effect.mapError((cause) => refuse("Could not read the conversation.", cause)),
     );
 
@@ -233,12 +224,21 @@ const make = Effect.gen(function* () {
     if (cwd === null) return yield* refuse("This thread has no workspace to hand off.");
 
     const native = yield* exportNativeSession(projection, cwd);
-    const historyBytes = new TextEncoder().encode(
-      yield* encodeHistory(yield* readHistory(input.threadId)).pipe(
-        Effect.mapError((cause) => refuse("Could not read the conversation.", cause)),
-      ),
-    );
     const nativeBytes = native?.session.bytes ?? new Uint8Array(0);
+    const encodeHistoryBytes = (
+      history: ReadonlyArray<OrchestrationV2MachineHandoffHistoryEntry>,
+    ) =>
+      encodeHistory(history).pipe(
+        Effect.map((json) => new TextEncoder().encode(json)),
+        Effect.mapError((cause) => refuse("Could not read the conversation.", cause)),
+      );
+    const history = yield* readHistory(input.threadId);
+    const fullHistoryBytes = yield* encodeHistoryBytes(history);
+    // Tool items are display only: drop them before refusing a bundle that is too large.
+    const historyBytes =
+      nativeBytes.length + fullHistoryBytes.length > MACHINE_HANDOFF_MAX_PAYLOAD_BYTES
+        ? yield* encodeHistoryBytes(messagesOnly(history))
+        : fullHistoryBytes;
     const payload = new Uint8Array(nativeBytes.length + historyBytes.length);
     payload.set(nativeBytes, 0);
     payload.set(historyBytes, nativeBytes.length);
