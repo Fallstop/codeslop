@@ -20,11 +20,11 @@ import type {
   ProjectSearchEntriesResult,
 } from "@t3tools/contracts";
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/filePreview";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import { isExplicitRelativePath, isWindowsAbsolutePath } from "@t3tools/shared/path";
 import { normalizeSearchQuery } from "@t3tools/shared/searchRanking";
 
-import { expandHomePathWith } from "../pathExpansion.ts";
+import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as WorkspacePaths from "./WorkspacePaths.ts";
 import * as WorkspaceSearchIndex from "./WorkspaceSearchIndex.ts";
@@ -111,7 +111,7 @@ const resolveBrowseTarget = Effect.fn("WorkspaceEntries.resolveBrowseTarget")(fu
   input: FilesystemBrowseInput,
   path: Path.Path,
 ): Effect.fn.Return<string, WorkspaceEntriesBrowseError> {
-  const platform = yield* HostProcessPlatform;
+  const platform = yield* HostProcess.Platform;
   if (platform !== "win32" && isWindowsAbsolutePath(input.partialPath)) {
     return yield* new WorkspaceEntriesWindowsPathUnsupportedError({
       cwd: input.cwd,
@@ -121,7 +121,7 @@ const resolveBrowseTarget = Effect.fn("WorkspaceEntries.resolveBrowseTarget")(fu
   }
 
   if (!isExplicitRelativePath(input.partialPath)) {
-    return path.resolve(expandHomePathWith(input.partialPath, path));
+    return path.resolve(expandHomePath(input.partialPath, yield* HostProcess.HomeDirectory));
   }
 
   if (!input.cwd) {
@@ -129,7 +129,10 @@ const resolveBrowseTarget = Effect.fn("WorkspaceEntries.resolveBrowseTarget")(fu
       partialPath: input.partialPath,
     });
   }
-  return path.resolve(expandHomePathWith(input.cwd, path), input.partialPath);
+  return path.resolve(
+    expandHomePath(input.cwd, yield* HostProcess.HomeDirectory),
+    input.partialPath,
+  );
 });
 
 // Queries that begin with a `..` segment or `~` reference paths the workspace
@@ -150,12 +153,12 @@ const searchOutsideRoot = Effect.fn("WorkspaceEntries.searchOutsideRoot")(functi
 ): Effect.fn.Return<ProjectSearchEntriesResult> {
   const query = input.query.trim();
   const isHomeQuery = query === "~" || query.startsWith("~/") || query.startsWith("~\\");
-  const homeDir = expandHomePathWith("~", path);
+  const homeDir = expandHomePath("~", yield* HostProcess.HomeDirectory);
   // A bare `~` reads as "list the home directory", not as a completion of
   // `~` among its siblings.
   const endsWithSeparator = query === "~" || /[\\/]$/.test(query);
   const resolvedQueryPath = isHomeQuery
-    ? path.resolve(expandHomePathWith(query, path))
+    ? path.resolve(expandHomePath(query, homeDir))
     : path.resolve(normalizedCwd, query);
   const parentPath = endsWithSeparator ? resolvedQueryPath : path.dirname(resolvedQueryPath);
   const prefix = endsWithSeparator ? "" : path.basename(resolvedQueryPath);

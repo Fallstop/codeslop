@@ -34,20 +34,20 @@ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as ServerConfig from "../config.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
-import * as IdAllocator from "./IdAllocator.ts";
+import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as MachineHandoffAdoptService from "./MachineHandoffAdoptService.ts";
 import * as MachineHandoffService from "./MachineHandoffService.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import {
   ProviderAdapterNativeSessionTransferError,
   type ProviderAdapterV2NativeSession,
-} from "./ProviderAdapter.ts";
+} from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ThreadLaunch from "./ThreadLaunchService.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
 import { makeMachineHandoffFakeAdapter } from "./testkit/MachineHandoffFakeAdapter.ts";
 import { awaitEvent, git, machineHandoffRuntime } from "./testkit/MachineHandoffRuntime.ts";
-import { checkpointWorkspace } from "./testkit/ReplayFixtureWorkspace.ts";
+import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
 import * as Sqlite from "../persistence/Sqlite.ts";
 
 const originThreadId = ThreadId.make("thread:laptop");
@@ -77,7 +77,10 @@ const targetMachine = (input: {
   readonly worktreesDir: string;
 }) => {
   const orchestrator = machineHandoffRuntime(input.adapter, "desktop");
-  const threadManagement = ThreadManagement.layer.pipe(Layer.provide(orchestrator));
+  const receipts = CommandReceiptStore.layer.pipe(Layer.provide(Sqlite.layerMemory));
+  const threadManagement = ThreadManagement.layer.pipe(
+    Layer.provide(Layer.mergeAll(orchestrator, receipts, ServerSettings.layerTest())),
+  );
   const project = {
     id: targetProjectId,
     title: "Project",
@@ -94,7 +97,6 @@ const targetMachine = (input: {
   const projects = Layer.mock(ProjectService.ProjectService)({
     getById: (id) => Effect.succeed(id === targetProjectId ? Option.some(project) : Option.none()),
   });
-  const receipts = CommandReceiptStore.layer.pipe(Layer.provide(Sqlite.layerMemory));
   const gitLayer = GitVcsDriver.layer.pipe(
     Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "t3-handoff-target-git-" })),
     Layer.provideMerge(VcsProcess.layer),

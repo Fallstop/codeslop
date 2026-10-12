@@ -8,8 +8,9 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import * as ServerConfig from "../../config.ts";
-import * as IdAllocator from "../IdAllocator.ts";
-import type { ProviderAdapterV2NativeSessionTransfer } from "../ProviderAdapter.ts";
+import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import type { ProviderAdapterV2NativeSessionTransfer } from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ClaudeAdapterV2 from "./ClaudeAdapterV2.ts";
 import * as CodexAdapterV2 from "./CodexAdapterV2.ts";
 
@@ -18,6 +19,7 @@ const DEFAULT_CODEX_SETTINGS = Schema.decodeSync(CodexSettings)({});
 
 const TestLayer = Layer.mergeAll(
   IdAllocator.layer,
+  McpProviderSessions.layer,
   ServerConfig.layerTest(process.cwd(), { prefix: "t3-native-transfer-" }),
 ).pipe(Layer.provideMerge(NodeServices.layer));
 
@@ -25,7 +27,7 @@ const claudeTransfer = (homePath: string) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const unused = Effect.die("unused");
-    const adapter = ClaudeAdapterV2.makeClaudeAdapterV2({
+    const adapter = yield* ClaudeAdapterV2.makeClaudeAdapterV2({
       instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
       settings: { ...DEFAULT_CLAUDE_SETTINGS, homePath },
       environment: {},
@@ -47,7 +49,7 @@ const claudeTransfer = (homePath: string) =>
 
 const codexTransfer = (homePath: string) =>
   Effect.gen(function* () {
-    const adapter = CodexAdapterV2.makeCodexAdapterV2({
+    const adapter = yield* CodexAdapterV2.makeCodexAdapterV2({
       instanceId: CodexAdapterV2.CODEX_DEFAULT_INSTANCE_ID,
       settings: DEFAULT_CODEX_SETTINGS,
       environment: {},

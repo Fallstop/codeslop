@@ -1,3 +1,4 @@
+import { NATIVE_WORKSPACE_COLUMNS_SUPPORTED } from "../native/NativeWorkspaceColumns";
 import Constants from "expo-constants";
 import type { NativeStackNavigationOptions } from "@react-navigation/native-stack";
 import { Platform, View } from "react-native";
@@ -13,7 +14,7 @@ import { useAndroidControlSizing } from "./useAndroidControlSizing";
  */
 export function brandTitleOffset(): number {
   if (Platform.OS !== "ios") return 0;
-  return Platform.isPad ? IPAD_HOME_TITLE_OFFSET : 0;
+  return Platform.isPad && !NATIVE_WORKSPACE_COLUMNS_SUPPORTED ? IPAD_HOME_TITLE_OFFSET : 0;
 }
 
 /**
@@ -22,6 +23,7 @@ export function brandTitleOffset(): number {
 export function CompactBrandTitle(
   props: {
     readonly allowFontScaling?: boolean;
+    readonly accessibilityLabel?: string;
   } = {},
 ) {
   const stageLabel = resolveMobileStageLabel(Constants.expoConfig?.extra?.appVariant);
@@ -31,7 +33,7 @@ export function CompactBrandTitle(
   return (
     <View
       aria-level={1}
-      accessibilityLabel="codeslop, Threads"
+      accessibilityLabel={props.accessibilityLabel ?? "codeslop, Threads"}
       accessible
       role="heading"
       className="flex-row items-center gap-1.5"

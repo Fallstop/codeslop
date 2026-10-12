@@ -1,6 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFSP from "node:fs/promises";
-import * as NodeOS from "node:os";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { FileFinder } from "@ff-labs/fff-node";
 import { it, afterEach, describe, expect } from "@effect/vitest";
@@ -12,7 +11,7 @@ import * as PlatformError from "effect/PlatformError";
 import { vi } from "vite-plus/test";
 
 import * as ServerConfig from "../config.ts";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as WorkspaceEntries from "./WorkspaceEntries.ts";
 import * as WorkspacePaths from "./WorkspacePaths.ts";
@@ -20,11 +19,6 @@ import * as WorkspacePaths from "./WorkspacePaths.ts";
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
   return { ...actual, readdir: vi.fn(actual.readdir) };
-});
-
-vi.mock("node:os", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:os")>();
-  return { ...actual, homedir: vi.fn(actual.homedir) };
 });
 
 const layerTest = Layer.empty.pipe(
@@ -90,7 +84,7 @@ const searchWorkspaceEntries = (input: {
   });
 
 const appendSeparator = (input: string) =>
-  Effect.map(HostProcessPlatform, (platform) =>
+  Effect.map(HostProcess.Platform, (platform) =>
     input.endsWith("/") || input.endsWith("\\")
       ? input
       : `${input}${platform === "win32" ? "\\" : "/"}`,
@@ -149,7 +143,7 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
           const fileSystem = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
           yield* writeTextFile(cwd, ".git/HEAD");
-          const platform = yield* HostProcessPlatform;
+          const platform = yield* HostProcess.Platform;
           if (platform !== "win32") yield* fileSystem.symlink(outside, path.join(cwd, "external"));
           const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
           for (const directoryPath of [
@@ -196,6 +190,42 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
           }
         }),
       60_000,
+    );
+
+    it.effect("includes images and other binary files in non-git workspace indexes", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTempDir();
+        const imagePaths = ["photo.png", "photo.jpg", "photo.jpeg"];
+        const binaryPaths = [...imagePaths, "document.pdf", "archive.zip", "data.bin"];
+        for (const filePath of binaryPaths) {
+          yield* writeTextFile(cwd, filePath, "\0binary contents\n");
+        }
+        yield* writeTextFile(cwd, "notes.txt", "plain text\n");
+
+        const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
+        const expectedPaths = [...binaryPaths, "notes.txt"].toSorted();
+        const listed = yield* workspaceEntries.list({ cwd });
+        expect(listed.entries.map((entry) => entry.path).toSorted()).toEqual(expectedPaths);
+        expect(listed.truncated).toBe(false);
+
+        const searched = yield* workspaceEntries.search({
+          cwd,
+          query: "",
+          limit: 100,
+          kind: "file",
+        });
+        expect(searched.entries.map((entry) => entry.path).toSorted()).toEqual(expectedPaths);
+        expect(searched.truncated).toBe(false);
+
+        const images = yield* workspaceEntries.search({
+          cwd,
+          query: "",
+          limit: 100,
+          imageOnly: true,
+        });
+        expect(images.entries.map((entry) => entry.path).toSorted()).toEqual(imagePaths.toSorted());
+        expect(images.truncated).toBe(false);
+      }),
     );
 
     it.effect("returns the complete cached workspace index", () =>
@@ -482,9 +512,12 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
       it.effect("completes `~/` queries against the home directory", () =>
         Effect.gen(function* () {
           const { parent, cwd } = yield* makeSiblingWorkspace();
-          vi.mocked(NodeOS.homedir).mockReturnValue(parent);
+          const search = (input: Parameters<typeof searchWorkspaceEntries>[0]) =>
+            searchWorkspaceEntries(input).pipe(
+              Effect.provideService(HostProcess.HomeDirectory, parent),
+            );
 
-          const listed = yield* searchWorkspaceEntries({ cwd, query: "~/", limit: 100 });
+          const listed = yield* search({ cwd, query: "~/", limit: 100 });
           expect(listed.entries).toEqual(
             expect.arrayContaining([
               { path: "~/sibling", kind: "directory" },
@@ -493,10 +526,10 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
           );
           expect(listed.entries.every((entry) => entry.path.startsWith("~/"))).toBe(true);
 
-          const prefixed = yield* searchWorkspaceEntries({ cwd, query: "~/sib", limit: 100 });
+          const prefixed = yield* search({ cwd, query: "~/sib", limit: 100 });
           expect(prefixed.entries).toEqual([{ path: "~/sibling", kind: "directory" }]);
 
-          const nested = yield* searchWorkspaceEntries({ cwd, query: "~/sibling/", limit: 100 });
+          const nested = yield* search({ cwd, query: "~/sibling/", limit: 100 });
           expect(nested.entries).toEqual([{ path: "~/sibling/file.ts", kind: "file" }]);
         }),
       );
@@ -504,9 +537,12 @@ it.layer(layerTest, { excludeTestServices: true })("WorkspaceEntries", (it) => {
       it.effect("treats a bare `~` as the home directory listing", () =>
         Effect.gen(function* () {
           const { parent, cwd } = yield* makeSiblingWorkspace();
-          vi.mocked(NodeOS.homedir).mockReturnValue(parent);
+          const search = (input: Parameters<typeof searchWorkspaceEntries>[0]) =>
+            searchWorkspaceEntries(input).pipe(
+              Effect.provideService(HostProcess.HomeDirectory, parent),
+            );
 
-          const result = yield* searchWorkspaceEntries({ cwd, query: "~", limit: 100 });
+          const result = yield* search({ cwd, query: "~", limit: 100 });
 
           expect(result.entries).toEqual(
             expect.arrayContaining([{ path: "~/sibling", kind: "directory" }]),

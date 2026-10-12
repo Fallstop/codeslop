@@ -6,7 +6,7 @@ You can think of codeslop as an open source "bring-your-own-subscription" altern
 
 ## What makes codeslop special?
 
-We have over 400,000 users who love codeslop. It's important we maintain the things they love as we continue to iterate on the product. Here's a brief list of the things we can never compromise on.
+We have over 500,000 users who love codeslop. It's important we maintain the things they love as we continue to iterate on the product. Here's a brief list of the things we can never compromise on.
 
 ### 1. Open at the core
 

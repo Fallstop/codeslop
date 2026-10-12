@@ -18,7 +18,7 @@ import type {
   ProviderAdapterV2Event,
   ProviderAdapterV2NativeSessionTransfer,
   ProviderAdapterV2Shape,
-} from "../ProviderAdapter.ts";
+} from "@t3tools/provider-core/server/ProviderAdapter";
 
 export interface MachineHandoffFakeAdapterOptions {
   readonly instanceId?: string;

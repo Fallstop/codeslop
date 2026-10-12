@@ -1,5 +1,9 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
-import { pullRequestHostOf, type ScopedThreadRef } from "@t3tools/contracts";
+import {
+  pullRequestHostOf,
+  type ScopedThreadRef,
+  SourceControlProviderKind,
+} from "@t3tools/contracts";
 import { ExternalLinkIcon, FileCodeIcon } from "lucide-react";
 import { memo, useMemo } from "react";
 
@@ -63,7 +67,9 @@ function useReviewFindingTargets(
     // A URL in the report names its own repository; a bare "PR #2292" is about the repository the
     // thread is working in, which is the only other one this client can name.
     const identity = project?.repositoryIdentity;
-    const host = pullRequest.host ?? (identity ? pullRequestHostOf(identity, "github") : null);
+    const host =
+      pullRequest.host ??
+      (identity ? pullRequestHostOf(identity, SourceControlProviderKind.make("github")) : null);
     const repository =
       pullRequest.repository ??
       identity?.displayName ??

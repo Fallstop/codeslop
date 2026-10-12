@@ -82,6 +82,8 @@ import Migration0060 from "./Migrations/060_RemoveRedundantProjectionIndexes.ts"
 import Migration0061 from "./Migrations/061_ScheduledTaskWebhooks.ts";
 import Migration0062 from "./Migrations/062_WebhookRelayDeliveries.ts";
 import Migration0063 from "./Migrations/063_McpAppModelContext.ts";
+import Migration0064 from "./Migrations/064_ThreadSnapshotWindowIndexes.ts";
+import Migration0065 from "./Migrations/065_PullRequestReviewGuides.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -156,10 +158,12 @@ export const migrationEntries = [
   // Preserve this migration's schema. Future V2 schema changes need new migrations.
   [59, "OrchestrationV2", Migration0059],
   [60, "RemoveRedundantProjectionIndexes", Migration0060],
-  // Upstream numbers these 57-59.
+  // Upstream numbers these 57-61.
   [61, "ScheduledTaskWebhooks", Migration0061],
   [62, "WebhookRelayDeliveries", Migration0062],
   [63, "McpAppModelContext", Migration0063],
+  [64, "ThreadSnapshotWindowIndexes", Migration0064],
+  [65, "PullRequestReviewGuides", Migration0065],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

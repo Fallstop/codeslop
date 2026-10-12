@@ -13,10 +13,10 @@ import * as GitVcsDriver from "../../vcs/GitVcsDriver.ts";
 import * as VcsProcess from "../../vcs/VcsProcess.ts";
 import * as MachineHandoffService from "../MachineHandoffService.ts";
 import * as Orchestrator from "../Orchestrator.ts";
-import type { ProviderAdapterV2Shape } from "../ProviderAdapter.ts";
+import type { ProviderAdapterV2Shape } from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ProviderAdapterRegistry from "../ProviderAdapterRegistry.ts";
 import * as ProviderReplayHarness from "./ProviderReplayHarness.ts";
-import { checkpointWorkspace } from "./ReplayFixtureWorkspace.ts";
+import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
 
 export const git = (cwd: string, args: ReadonlyArray<string>) =>
   Effect.gen(function* () {

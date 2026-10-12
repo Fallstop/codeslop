@@ -23,7 +23,7 @@ import {
   machineHandoffRuntime,
   workspaceWithRemote,
 } from "./testkit/MachineHandoffRuntime.ts";
-import { checkpointWorkspace } from "./testkit/ReplayFixtureWorkspace.ts";
+import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
 
 const threadId = ThreadId.make("thread:export");
 const handoffId = MachineHandoffId.make("export-1");

@@ -26,7 +26,7 @@ import { fetchRef, findRemoteByUrl, machineHandoffAdoptedRef } from "./MachineHa
 import { MachineHandoffHistoryJson } from "./MachineHandoffHistory.ts";
 import { MachineHandoffService } from "./MachineHandoffService.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
-import type { ProviderAdapterV2Shape } from "./ProviderAdapter.ts";
+import type { ProviderAdapterV2Shape } from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ThreadLaunch from "./ThreadLaunchService.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
 

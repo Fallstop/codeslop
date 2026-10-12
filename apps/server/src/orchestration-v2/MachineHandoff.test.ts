@@ -24,10 +24,13 @@ import * as EffectWorker from "./EffectWorker.ts";
 import { machineHandoffStopProof } from "./MachineHandoff.ts";
 import * as MachineHandoffService from "./MachineHandoffService.ts";
 import * as Orchestrator from "./Orchestrator.ts";
-import type { ProviderAdapterV2Event, ProviderAdapterV2Shape } from "./ProviderAdapter.ts";
+import type {
+  ProviderAdapterV2Event,
+  ProviderAdapterV2Shape,
+} from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
-import { checkpointWorkspace } from "./testkit/ReplayFixtureWorkspace.ts";
+import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
 
 const driver = ProviderDriverKind.make("codex");
 const instanceId = ProviderInstanceId.make("codex");
