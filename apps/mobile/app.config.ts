@@ -63,7 +63,7 @@ const RELEASE_ASSETS = {
   iosIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionIconComposerProject),
   splashIcon: fromRepoRoot(BRAND_ASSET_PATHS.productionIosIconPng),
   androidAdaptiveForeground,
-  androidAdaptiveBackgroundColor: "#000000",
+  androidAdaptiveBackgroundColor: "#0b0c0d",
   androidAdaptiveBackgroundImage: undefined,
   androidSplashIcon: "./assets/android-splash-icon-prod.png",
   androidMonochromeIcon: "./assets/android-icon-mark.png",
