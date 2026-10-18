@@ -15,7 +15,7 @@
   ],
   "type": "module",
   "scripts": {
-    "dev": "node --watch src/bin.ts",
+    "dev": "node --watch --watch-path=src --watch-path=../../packages --watch-path=package.json src/bin.ts",
     "build:bundle": "vp pack",
     "build:exe": "node scripts/cli.ts build-exe",
     "start": "node dist/bin.mjs",
@@ -62,6 +62,7 @@
     "sharp": "0.34.5",
     "stream-chain": "^4.2.5",
     "stream-json": "3.6.0",
+    "undici": "catalog:",
     "yaml": "catalog:",
     "yauzl": "^3.4.0"
   },

@@ -9,7 +9,7 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell
 import { useCallback, useMemo } from "react";
 import { Alert } from "react-native";
 
-import { showConfirmDialog } from "../../components/ConfirmDialogHost";
+import * as Dialog from "../../components/ui/Dialog";
 import { machineHandoff } from "../../state/machine-handoff";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -29,7 +29,7 @@ function confirm(input: {
     ]);
     return;
   }
-  showConfirmDialog(input);
+  Dialog.confirm(input);
 }
 
 /**

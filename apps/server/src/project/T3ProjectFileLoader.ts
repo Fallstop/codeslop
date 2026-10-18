@@ -1,13 +1,3 @@
-/**
- * T3ProjectFileLoader - Effect service that loads the checked-in `t3.json`
- * (or `slop.json`) project file from a workspace root.
- *
- * Loading is best-effort: a missing file resolves to `Option.none`, and
- * unreadable or invalid files are logged and treated as absent so callers
- * can fall back to their defaults.
- *
- * @module T3ProjectFileLoader
- */
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -35,16 +25,13 @@ export class T3ProjectFileLoadError extends Schema.TaggedError<T3ProjectFileLoad
   }
 }
 
-/** Service tag for t3.json/slop.json project file loading. */
 export class T3ProjectFileLoader extends Context.Service<
   T3ProjectFileLoader,
   {
     /**
-     * Load and decode the project file at the workspace root, trying
-     * `slop.json` then `t3.json`; the first existing file wins.
-     *
-     * Never fails: missing, unreadable, or invalid files resolve to
-     * `Option.none` (invalid files are logged as warnings).
+     * Tries `slop.json` then `t3.json`; the first existing file wins.
+     * Never fails: missing, unreadable, or invalid files resolve to `Option.none` (invalid files
+     * are logged as warnings).
      */
     readonly load: (workspaceRoot: string) => Effect.Effect<Option.Option<T3ProjectFile>>;
   }

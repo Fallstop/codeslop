@@ -44,7 +44,6 @@ it.layer(NodeServices.layer)("slop update launcher", (it) => {
       const copy = path.join(root, "copy/slop");
       const foreign = path.join(root, "foreign/slop");
       const elsewhere = path.join(root, "elsewhere/slop");
-      // Another install's versions tree: same shape, different home.
       const otherHome = path.join(root, "other/runtime/versions/1.0.0/slop");
       const otherLauncher = path.join(root, "other/bin/slop");
       for (const file of [newExe, copy, elsewhere, otherHome]) {
