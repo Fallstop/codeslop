@@ -10,7 +10,11 @@ import { makeComponentLogger } from "./DesktopObservability.ts";
 // AppImage itself instead of pointing into it.
 const { logInfo, logWarning } = makeComponentLogger("desktop-cli-shim");
 
-export const MARKER = "Written by T3 Code: runs the desktop app's bundled t3 CLI.";
+export const MARKER = "Written by codeslop: runs the desktop app's bundled slop CLI.";
+// Launchers written before the rebrand carry this marker and are still ours to replace.
+const LEGACY_MARKER = "Written by T3 Code: runs the desktop app's bundled t3 CLI.";
+export const isAppWrittenLauncher = (content: string) =>
+  content.includes(MARKER) || content.includes(LEGACY_MARKER);
 
 const SERVER_ENTRY = "apps/server/dist/bin.mjs";
 
@@ -19,7 +23,7 @@ const shellWord = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'`;
 const cmdText = (value: string) => value.replaceAll("%", "%%");
 const cmdWord = (value: string) => `"${cmdText(value)}"`;
 
-const MOVED = "T3 Code has moved or been removed. Open the app once to update this command.";
+const MOVED = "codeslop has moved or been removed. Open the app once to update this command.";
 
 export type CliShimTarget =
   | { readonly kind: "appimage"; readonly appImage: string; readonly executableName: string }
@@ -121,12 +125,25 @@ export const renderCliShim = (input: {
   ].join("\n");
 };
 
-export const launcherPath = (environment: DesktopEnvironment.DesktopEnvironment["Service"]) =>
+export const COMMAND_NAME = "slop";
+/** The name launchers were installed under before the rebrand. */
+export const LEGACY_COMMAND_NAME = "t3";
+
+const launcherPathFor = (
+  environment: DesktopEnvironment.DesktopEnvironment["Service"],
+  command: string,
+) =>
   environment.path.join(
     environment.baseDir,
     "bin",
-    environment.platform === "win32" ? "t3.cmd" : "t3",
+    environment.platform === "win32" ? `${command}.cmd` : command,
   );
+
+export const launcherPath = (environment: DesktopEnvironment.DesktopEnvironment["Service"]) =>
+  launcherPathFor(environment, COMMAND_NAME);
+
+export const legacyLauncherPath = (environment: DesktopEnvironment.DesktopEnvironment["Service"]) =>
+  launcherPathFor(environment, LEGACY_COMMAND_NAME);
 
 export const install = Effect.gen(function* () {
   const environment = yield* DesktopEnvironment.DesktopEnvironment;
@@ -150,8 +167,8 @@ export const install = Effect.gen(function* () {
 
   return yield* Effect.gen(function* () {
     const existing = yield* fs.readFileString(shimPath).pipe(Effect.option);
-    if (Option.isSome(existing) && !existing.value.includes(MARKER)) {
-      yield* logWarning("leaving a t3 launcher the app did not write", { shimPath });
+    if (Option.isSome(existing) && !isAppWrittenLauncher(existing.value)) {
+      yield* logWarning("leaving a slop launcher the app did not write", { shimPath });
       return Option.none<string>();
     }
     if (Option.getOrUndefined(existing) !== content) {
@@ -159,12 +176,12 @@ export const install = Effect.gen(function* () {
       const staging = `${shimPath}.${process.pid}.tmp`;
       yield* fs.writeFileString(staging, content, { mode: 0o755 });
       yield* fs.rename(staging, shimPath);
-      yield* logInfo("installed t3 launcher", { shimPath });
+      yield* logInfo("installed slop launcher", { shimPath });
     }
     return Option.some(shimPath);
   }).pipe(
     Effect.catchCause((cause) =>
-      logWarning("could not install t3 launcher", { shimPath, cause: Cause.pretty(cause) }).pipe(
+      logWarning("could not install slop launcher", { shimPath, cause: Cause.pretty(cause) }).pipe(
         Effect.as(Option.none<string>()),
       ),
     ),

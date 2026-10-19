@@ -3246,7 +3246,7 @@ export function GeneralSettingsPanel() {
         <MobileAppSettingsRow />
         <SettingsRow
           {...searchableSetting("privacy-policy")}
-          description="How we handle your data, including the anonymous usage data T3 Code collects."
+          description="How we handle your data, including the anonymous usage data codeslop collects."
           control={
             <Button
               render={<a href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer noopener" />}
@@ -3280,7 +3280,7 @@ export function GeneralSettingsPanel() {
         />
         <SettingsRow
           {...searchableSetting("open-source-licenses")}
-          description="Notices for dependencies, assets, and optional tools used by T3 Code."
+          description="Notices for dependencies, assets, and optional tools used by codeslop."
           control={
             <Button
               render={<Link to="/settings/open-source-licenses" />}

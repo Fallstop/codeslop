@@ -639,7 +639,9 @@ describe("ssh tunnel scripts", () => {
                 ...makeSuccessfulProcess(""),
                 exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(1)),
                 stderr: Stream.make(
-                  new TextEncoder().encode("Remote T3 server did not stop within 2 seconds.\n"),
+                  new TextEncoder().encode(
+                    "Remote codeslop server did not stop within 2 seconds.\n",
+                  ),
                 ),
               };
             }
@@ -682,7 +684,7 @@ describe("ssh tunnel scripts", () => {
             assert.instanceOf(disconnected.failure, SshCommandError);
             assert.equal(
               disconnected.failure.message,
-              "Remote T3 server did not stop within 2 seconds.",
+              "Remote codeslop server did not stop within 2 seconds.",
             );
           }
         } else {

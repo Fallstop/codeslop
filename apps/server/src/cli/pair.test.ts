@@ -265,8 +265,8 @@ describe("slop pair", () => {
         typeof error === "object" && error !== null && "cause" in error ? error.cause : error,
       );
       assert.include(rendered, "No running codeslop server found.");
-      assert.include(rendered, "npx t3 serve");
-      assert.include(rendered, "npx t3 connect");
+      assert.include(rendered, "slop serve");
+      assert.include(rendered, "slop connect");
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 

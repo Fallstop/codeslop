@@ -48,7 +48,7 @@ function causeMessage(cause: unknown): string | undefined {
         case "CursorModelUnavailableError":
           return stringField(cause, "message");
         case "ContextHandoffDeliveryUncertainError":
-          return "T3 could not confirm whether conversation history reached the provider. Retry the turn to recover the session.";
+          return "codeslop could not confirm whether conversation history reached the provider. Retry the turn to recover the session.";
         case "ProviderAdapterTurnStartError":
           message =
             "The provider could not start this turn. Retry the turn; if it keeps failing, check the provider setup and server logs.";

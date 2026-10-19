@@ -72,6 +72,8 @@ export const make = Effect.gen(function* () {
   const path = environment.path;
   const windows = environment.platform === "win32";
   const launcher = DesktopCliShim.launcherPath(environment);
+  const legacyLauncher = DesktopCliShim.legacyLauncherPath(environment);
+  const command = DesktopCliShim.COMMAND_NAME;
   const binDirectory = path.dirname(launcher);
   const ownedPathMarker = path.join(environment.stateDir, "cli-command-path-entry");
 
@@ -86,12 +88,30 @@ export const make = Effect.gen(function* () {
   const isOurLink = (link: string) =>
     Effect.gen(function* () {
       yield* fs.readLink(link);
-      // The launcher is a few KB; never read a large binary another `t3` links to.
+      // The launcher is a few KB; never read a large binary another command links to.
       const info = yield* fs.stat(link);
       if (info.type !== "File" || Number(info.size) > 16_384) return false;
       const content = yield* fs.readFileString(link);
-      return content.includes(DesktopCliShim.MARKER);
+      return DesktopCliShim.isAppWrittenLauncher(content);
     }).pipe(Effect.orElseSucceed(() => false));
+
+  // Installs from before the rebrand used a `t3` launcher and links; they keep working until the
+  // user installs or removes the command here. Only links into this app's launcher are touched.
+  const removeLegacyCommand = Effect.gen(function* () {
+    if (!windows) {
+      for (const directory of unixCandidates(environment.homeDirectory, environment.platform)) {
+        const link = path.join(directory, DesktopCliShim.LEGACY_COMMAND_NAME);
+        const target = yield* fs.readLink(link).pipe(Effect.option);
+        if (Option.getOrUndefined(target) === legacyLauncher || (yield* isOurLink(link))) {
+          yield* fs.remove(link).pipe(Effect.mapError(() => fail(`Could not remove ${link}.`)));
+        }
+      }
+    }
+    const content = yield* fs.readFileString(legacyLauncher).pipe(Effect.option);
+    if (Option.isSome(content) && DesktopCliShim.isAppWrittenLauncher(content.value)) {
+      yield* fs.remove(legacyLauncher).pipe(Effect.ignore);
+    }
+  });
 
   const powershell = (env: Record<string, string>) =>
     Effect.scoped(
@@ -124,7 +144,7 @@ export const make = Effect.gen(function* () {
 
   const firstOnPath = Effect.gen(function* () {
     for (const directory of pathEntries(process.env.PATH, ":")) {
-      const candidate = path.join(directory, "t3");
+      const candidate = path.join(directory, command);
       if (yield* exists(candidate)) return Option.some(candidate);
     }
     return Option.none<string>();
@@ -146,7 +166,7 @@ export const make = Effect.gen(function* () {
         : Option.none<string>();
     }
     for (const directory of unixCandidates(environment.homeDirectory, environment.platform)) {
-      const link = path.join(directory, "t3");
+      const link = path.join(directory, command);
       if (yield* isOurLink(link)) return Option.some(link);
     }
     return Option.none<string>();
@@ -172,22 +192,23 @@ export const make = Effect.gen(function* () {
     Effect.provideService(FileSystem.FileSystem, fs),
     Effect.flatMap(
       Option.match({
-        onNone: () => Effect.fail(fail(`Could not set up the t3 launcher at ${launcher}.`)),
+        onNone: () => Effect.fail(fail(`Could not set up the slop launcher at ${launcher}.`)),
         onSome: () => Effect.void,
       }),
     ),
   );
 
   const install: DesktopCliCommand["Service"]["install"] = Effect.gen(function* () {
-    if (!environment.isPackaged) return yield* fail("The t3 command needs an installed app.");
+    if (!environment.isPackaged) return yield* fail("The slop command needs an installed app.");
     yield* ensureLauncher;
+    yield* removeLegacyCommand;
     if (windows) {
       const entries = pathEntries(yield* readUserPath, ";");
       if (!entries.some((entry) => sameWindowsPath(entry, binDirectory))) {
         yield* writeUserPath([...entries, binDirectory].join(";"));
         yield* fs
           .writeFileString(ownedPathMarker, `${binDirectory}\n`)
-          .pipe(Effect.mapError(() => fail("Added t3 to your PATH but could not record it.")));
+          .pipe(Effect.mapError(() => fail("Added slop to your PATH but could not record it.")));
       }
       return yield* state;
     }
@@ -202,7 +223,7 @@ export const make = Effect.gen(function* () {
     const shadowedBy = yield* foreignFirstOnPath;
     if (Option.isSome(shadowedBy)) {
       return yield* fail(
-        `Another t3 at ${shadowedBy.value} runs first in a new terminal. Remove it, or run the launcher directly at ${launcher}.`,
+        `Another slop at ${shadowedBy.value} runs first in a new terminal. Remove it, or run the launcher directly at ${launcher}.`,
       );
     }
     const onPath = pathEntries(process.env.PATH, ":");
@@ -211,7 +232,7 @@ export const make = Effect.gen(function* () {
       ...candidates.filter((candidate) => onPath.includes(candidate)),
       ...candidates.filter((candidate) => !onPath.includes(candidate)),
     ]) {
-      const link = path.join(directory, "t3");
+      const link = path.join(directory, command);
       const created = (yield* exists(directory))
         ? yield* writableDirectory(directory)
         : yield* fs.makeDirectory(directory, { recursive: true }).pipe(
@@ -226,11 +247,12 @@ export const make = Effect.gen(function* () {
       if (linked) return yield* state;
     }
     return yield* fail(
-      `Another t3 command is already installed, or no folder on your PATH is writable. Run the launcher directly at ${launcher}.`,
+      `Another slop command is already installed, or no folder on your PATH is writable. Run the launcher directly at ${launcher}.`,
     );
   }).pipe(Effect.withSpan("desktop.cliCommand.install"));
 
   const uninstall: DesktopCliCommand["Service"]["uninstall"] = Effect.gen(function* () {
+    yield* removeLegacyCommand;
     if (windows) {
       if (yield* exists(ownedPathMarker)) {
         const entries = pathEntries(yield* readUserPath, ";");
@@ -241,7 +263,7 @@ export const make = Effect.gen(function* () {
       return yield* state;
     }
     for (const directory of unixCandidates(environment.homeDirectory, environment.platform)) {
-      const link = path.join(directory, "t3");
+      const link = path.join(directory, command);
       if (yield* isOurLink(link)) {
         yield* fs.remove(link).pipe(Effect.mapError(() => fail(`Could not remove ${link}.`)));
       }

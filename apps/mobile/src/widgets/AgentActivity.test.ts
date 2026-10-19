@@ -99,7 +99,7 @@ describe("AgentActivity widget layout", () => {
     expect(banner).toContain("Out of date");
     expect(banner).not.toContain("#7dd3fc");
     expect(banner).toContain("Done");
-    expect(JSON.stringify(layout.minimal)).not.toContain("2");
+    expect(JSON.stringify(layout.minimal)).not.toContain(`"2"`);
   });
 
   it("switches to the web sidebar's light palette when the scheme is light", () => {

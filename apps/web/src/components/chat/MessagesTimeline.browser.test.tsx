@@ -361,7 +361,7 @@ describe("MessagesTimeline work rows", () => {
       }),
     ]);
     await click(button(/^Received 1 update/));
-    await vi.waitFor(() => expect(text()).toContain("Read a T3 thread"));
+    await vi.waitFor(() => expect(text()).toContain("Read a codeslop thread"));
     expect(text()).not.toContain("mcp__t3-code__t3_thread_read");
   });
 

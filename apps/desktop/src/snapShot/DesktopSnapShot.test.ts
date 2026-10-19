@@ -3228,7 +3228,7 @@ it.effect("flags revoked macOS permissions on read and re-registers once they re
       const revoked = yield* service.state;
       assert.equal(
         revoked.message,
-        "Allow Screen Recording in System Settings, then restart T3 Code.",
+        "Allow Screen Recording in System Settings, then restart codeslop.",
       );
       assert.deepEqual(revoked.macPermissions, { screenRecording: false, accessibility: true });
 
@@ -3241,7 +3241,7 @@ it.effect("flags revoked macOS permissions on read and re-registers once they re
       const blocked = yield* service.state;
       assert.equal(
         blocked.message,
-        "Allow Screen Recording in System Settings, then restart T3 Code.",
+        "Allow Screen Recording in System Settings, then restart codeslop.",
       );
       assert.isFalse(blocked.shortcutRegistered);
 

@@ -91,14 +91,14 @@ it("expands a T3 Code notice to the prompt the agent got", () => {
     type: "notification",
     source: { kind: "system" },
     outcome: "updated",
-    summary: "T3 Code restarted and resumed this turn",
+    summary: "codeslop restarted and resumed this turn",
     detail: "Continue where you left off.",
   } as OrchestrationV2TurnItem;
   const [activity] = buildThreadFeed([projected(item, 0)]).flatMap((entry) =>
     entry.type === "activity-group" ? entry.activities : [],
   );
 
-  expect(activity?.summary).toBe("T3 Code restarted and resumed this turn");
+  expect(activity?.summary).toBe("codeslop restarted and resumed this turn");
   expect(activity?.canExpand).toBe(true);
   expect(activity?.getFullDetail()).toBe("Continue where you left off.");
 });
@@ -1459,7 +1459,9 @@ describe("buildThreadFeed", () => {
           "message",
         ]);
         expect(rows[2]).toMatchObject({
-          activities: [{ canExpand: true, groupStandIn: { label: "Waited for a T3 thread" } }],
+          activities: [
+            { canExpand: true, groupStandIn: { label: "Waited for a codeslop thread" } },
+          ],
         });
         expect(rows[2]).not.toMatchObject({ activities: [{ groupedToolDetail: true }] });
         // The group's own disclosure adds nothing while the call is alone.
@@ -1490,7 +1492,7 @@ describe("buildThreadFeed", () => {
         expect(rows.map((entry) => entry.type)).toEqual(["activity-group"]);
         expect(rows[0]).toMatchObject({
           id: "live-activity-row",
-          activities: [{ live: true, groupStandIn: { label: "Waiting for a T3 thread" } }],
+          activities: [{ live: true, groupStandIn: { label: "Waiting for a codeslop thread" } }],
         });
       }
 
@@ -1502,7 +1504,7 @@ describe("buildThreadFeed", () => {
         groupId,
         hiddenCount: 2,
         expanded: true,
-        summary: "Reading a T3 thread",
+        summary: "Reading a codeslop thread",
       });
       expect(grouped[1]).toMatchObject({
         activities: [
@@ -1539,9 +1541,9 @@ describe("buildThreadFeed", () => {
     const feed = buildThreadFeed([projected(toolItem, 0)]);
     const activity = feed[0]?.type === "activity-group" ? feed[0].activities[0] : null;
 
-    expect(activity?.summary).toBe("Read a T3 thread");
+    expect(activity?.summary).toBe("Read a codeslop thread");
     expect(activity?.logo).toBe("t3-code");
-    expect(activity?.getCopyText().split("\n")[0]).toBe("Read a T3 thread");
+    expect(activity?.getCopyText().split("\n")[0]).toBe("Read a codeslop thread");
   });
 
   it.each(["cua_repl.js", "node_repl.js", "js"])(

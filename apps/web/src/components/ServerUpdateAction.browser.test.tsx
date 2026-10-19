@@ -222,14 +222,14 @@ describe("ServerUpdateAction", () => {
       "Copy relaunch command",
       "npx t3@0.0.45",
       "Relaunch command copied",
-      "This does not update an installed t3 command.",
+      "This does not update an installed slop command.",
     ],
     [
       undefined,
       "Copy relaunch command",
       "npx t3@0.0.45",
       "Relaunch command copied",
-      "This does not update an installed t3 command.",
+      "This does not update an installed slop command.",
     ],
   ] satisfies ReadonlyArray<
     readonly [ServerInstallation | undefined, string, string, string, string]

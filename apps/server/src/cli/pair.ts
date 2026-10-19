@@ -67,7 +67,7 @@ export class NoRunningServerError extends Schema.TaggedError<NoRunningServerErro
     return [
       "No running codeslop server found.",
       ...this.checkedStatePaths.map((statePath) => `  checked ${statePath}`),
-      "Start one with `npx t3 serve`, or connect this machine with T3 Connect: `npx t3 connect`.",
+      "Start one with `slop serve`, or connect this machine with T3 Connect: `slop connect`.",
     ].join("\n");
   }
 }

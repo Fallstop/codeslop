@@ -531,7 +531,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "cli-command",
-    title: "t3 command",
+    title: "slop command",
     to: "/settings/general",
     searchTerms: ["cli terminal shell path install command line"],
     desktopOnly: true,
@@ -752,7 +752,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "pull-request-links-open-in-app",
-    title: "Open pull requests in T3 Code",
+    title: "Open pull requests in codeslop",
     to: "/settings/integrations",
     searchTerms: ["pr links github browser external click default pull request view panel"],
   },

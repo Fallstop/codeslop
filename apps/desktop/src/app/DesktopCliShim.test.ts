@@ -6,7 +6,7 @@ import * as NodePath from "node:path";
 
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
-import { type CliShimTarget, renderCliShim } from "./DesktopCliShim.ts";
+import { type CliShimTarget, isAppWrittenLauncher, renderCliShim } from "./DesktopCliShim.ts";
 
 const directories: Array<string> = [];
 afterEach(() => {
@@ -134,6 +134,15 @@ describe("renderCliShim", () => {
     const result = run(shim, ["--version"]);
     expect(result.status).toBe(127);
     expect(result.stderr).toContain("Open the app once to update this command.");
+  });
+
+  it("still recognises launchers written before the rebrand", () => {
+    expect(
+      isAppWrittenLauncher(
+        "#!/bin/sh\n# Written by T3 Code: runs the desktop app's bundled t3 CLI.\n",
+      ),
+    ).toBe(true);
+    expect(isAppWrittenLauncher("#!/bin/sh\nexec some-other-t3\n")).toBe(false);
   });
 
   it("writes a Windows launcher that keeps cmd from reinterpreting paths", () => {
