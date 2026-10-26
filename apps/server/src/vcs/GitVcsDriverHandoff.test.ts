@@ -128,7 +128,12 @@ it.layer(layerGit)("publishHandoffCommit", (it) => {
       yield* runGit(origin, ["push", "--force", "origin", `${HANDOFF_REF}:${HANDOFF_REF}`]);
 
       // A plain clone sees no new branch, so the push never looks like work to CI.
-      const branches = yield* runGit(remote, ["for-each-ref", "--format=%(refname)", "refs/heads"]);
+      const branches = yield* runGit(remote, [
+        "--git-dir=.",
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/heads",
+      ]);
       expect(branches.stdout.trim()).toBe("refs/heads/main");
 
       const target = path.join(yield* fileSystem.makeTempDirectoryScoped(), "target");
@@ -139,7 +144,12 @@ it.layer(layerGit)("publishHandoffCommit", (it) => {
       expect(fetched.stdout.trim()).toBe(published.commit);
 
       yield* runGit(origin, ["push", "origin", `:${HANDOFF_REF}`]);
-      const left = yield* runGit(remote, ["for-each-ref", "--format=%(refname)", "refs/slop"]);
+      const left = yield* runGit(remote, [
+        "--git-dir=.",
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/slop",
+      ]);
       expect(left.stdout.trim()).toBe("");
     }).pipe(Effect.scoped),
   );

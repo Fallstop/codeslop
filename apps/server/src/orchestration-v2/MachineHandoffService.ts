@@ -332,58 +332,61 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  const readBundle: MachineHandoffServiceShape["readBundle"] = (input) =>
-    Effect.gen(function* () {
-      const manifest = yield* staging.readManifest(input.handoffId);
-      if (Option.isNone(manifest)) {
-        return yield* refuse("This handoff is not staged on this machine.");
-      }
-      const chunk = yield* staging.readChunk(input.handoffId, input.offset, input.length);
-      return {
-        manifest: manifest.value,
-        chunk: Buffer.from(chunk.bytes).toString("base64"),
-        totalBytes: chunk.totalBytes,
-      };
-    });
+  const readBundle: MachineHandoffServiceShape["readBundle"] = Effect.fn(
+    "MachineHandoffService.readBundle",
+  )(function* (input) {
+    const manifest = yield* staging.readManifest(input.handoffId);
+    if (Option.isNone(manifest)) {
+      return yield* refuse("This handoff is not staged on this machine.");
+    }
+    const chunk = yield* staging.readChunk(input.handoffId, input.offset, input.length);
+    return {
+      manifest: manifest.value,
+      chunk: Buffer.from(chunk.bytes).toString("base64"),
+      totalBytes: chunk.totalBytes,
+    };
+  });
 
-  const writeBundle: MachineHandoffServiceShape["writeBundle"] = (input) =>
-    Effect.gen(function* () {
-      if (input.offset === 0) {
-        if (input.manifest === undefined) {
-          return yield* refuse("The handoff transfer started without its manifest.");
-        }
-        if (input.manifest.handoffId !== input.handoffId) {
-          return yield* refuse("The handoff manifest belongs to another handoff.");
-        }
-        if (input.manifest.payloadBytes > MACHINE_HANDOFF_MAX_PAYLOAD_BYTES) {
-          return yield* refuse("The handoff is too large to move.");
-        }
-        yield* staging.writeManifest(input.manifest);
-      } else if (Option.isNone(yield* staging.readManifest(input.handoffId))) {
-        return yield* refuse("The handoff transfer lost its start. Try again.");
+  const writeBundle: MachineHandoffServiceShape["writeBundle"] = Effect.fn(
+    "MachineHandoffService.writeBundle",
+  )(function* (input) {
+    if (input.offset === 0) {
+      if (input.manifest === undefined) {
+        return yield* refuse("The handoff transfer started without its manifest.");
       }
-      const receivedBytes = yield* staging.writeChunk(
-        input.handoffId,
-        input.offset,
-        new Uint8Array(Buffer.from(input.chunk, "base64")),
-      );
-      return { receivedBytes };
-    });
+      if (input.manifest.handoffId !== input.handoffId) {
+        return yield* refuse("The handoff manifest belongs to another handoff.");
+      }
+      if (input.manifest.payloadBytes > MACHINE_HANDOFF_MAX_PAYLOAD_BYTES) {
+        return yield* refuse("The handoff is too large to move.");
+      }
+      yield* staging.writeManifest(input.manifest);
+    } else if (Option.isNone(yield* staging.readManifest(input.handoffId))) {
+      return yield* refuse("The handoff transfer lost its start. Try again.");
+    }
+    const receivedBytes = yield* staging.writeChunk(
+      input.handoffId,
+      input.offset,
+      new Uint8Array(Buffer.from(input.chunk, "base64")),
+    );
+    return { receivedBytes };
+  });
 
-  const readReceived: MachineHandoffServiceShape["readReceived"] = (handoffId) =>
-    Effect.gen(function* () {
-      const manifest = yield* staging.readManifest(handoffId);
-      if (Option.isNone(manifest)) {
-        return yield* refuse("This handoff has not arrived on this machine.");
-      }
-      if (manifest.value.originStoppedAt.trim().length === 0) {
-        return yield* refuse("The handoff does not show the other machine stopped.");
-      }
-      return {
-        manifest: manifest.value,
-        payload: yield* staging.readVerifiedPayload(manifest.value),
-      };
-    });
+  const readReceived: MachineHandoffServiceShape["readReceived"] = Effect.fn(
+    "MachineHandoffService.readReceived",
+  )(function* (handoffId) {
+    const manifest = yield* staging.readManifest(handoffId);
+    if (Option.isNone(manifest)) {
+      return yield* refuse("This handoff has not arrived on this machine.");
+    }
+    if (manifest.value.originStoppedAt.trim().length === 0) {
+      return yield* refuse("The handoff does not show the other machine stopped.");
+    }
+    return {
+      manifest: manifest.value,
+      payload: yield* staging.readVerifiedPayload(manifest.value),
+    };
+  });
 
   return MachineHandoffService.of({
     exportBundle,

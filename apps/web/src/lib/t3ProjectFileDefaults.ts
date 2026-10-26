@@ -24,7 +24,7 @@ export async function readT3ProjectFile(
       fileName,
       result._tag === "Success" ? result.value : null,
     );
-    if (data === null || data.truncated) continue;
+    if (data === null || data.exists === false || data.truncated) continue;
     // Matches the server loader: the first existing file wins outright, even
     // when its contents fail to parse.
     return parseT3ProjectFile(data.contents);

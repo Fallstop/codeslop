@@ -75,6 +75,12 @@ import Migration0064 from "./Migrations/064_ThreadSnapshotWindowIndexes.ts";
 import Migration0065 from "./Migrations/065_PullRequestReviewGuides.ts";
 import Migration0066 from "./Migrations/066_ThreadFailureLookupIndex.ts";
 import Migration0067 from "./Migrations/067_DropUnusedV1Projections.ts";
+import Migration0068 from "./Migrations/068_CanonicalizeThreadPullRequestLinks.ts";
+import Migration0069 from "./Migrations/069_CodexUsageNativeTurnIndex.ts";
+import Migration0070 from "./Migrations/070_RepairClientSettlementTimestamps.ts";
+import Migration0071 from "./Migrations/071_WebhookDedupe.ts";
+import Migration0072 from "./Migrations/072_ShellStopRequestIndex.ts";
+import Migration0073 from "./Migrations/073_ThreadMessageSearch.ts";
 
 export const migrationEntries = [
   [1, "OrchestrationEvents", Migration0001],
@@ -147,6 +153,13 @@ export const migrationEntries = [
   [65, "PullRequestReviewGuides", Migration0065],
   [66, "ThreadFailureLookupIndex", Migration0066],
   [67, "DropUnusedV1Projections", Migration0067],
+  // Upstream numbers these 64-69.
+  [68, "CanonicalizeThreadPullRequestLinks", Migration0068],
+  [69, "CodexUsageNativeTurnIndex", Migration0069],
+  [70, "RepairClientSettlementTimestamps", Migration0070],
+  [71, "WebhookDedupe", Migration0071],
+  [72, "ShellStopRequestIndex", Migration0072],
+  [73, "ThreadMessageSearch", Migration0073],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);
@@ -163,12 +176,7 @@ const makeMigrationLoader = (throughId?: number) =>
 // V2's schema migrations start at 59 in this fork (upstream: 55).
 const FIRST_V2_MIGRATION_ID = 59;
 
-/**
- * Fail before migrating when the migrator would skip one of V2's own
- * migrations. It skips every id up to the highest recorded one, whatever name
- * was recorded, so a database that took a V2 id for another migration would
- * start without V2's schema and fail on first use.
- */
+// Migrators skip ids up to the highest recorded; reject collisions that would skip V2 schema.
 const assertV2MigrationsCanRun = Effect.fn("assertV2MigrationsCanRun")(function* (
   throughId?: number,
 ) {

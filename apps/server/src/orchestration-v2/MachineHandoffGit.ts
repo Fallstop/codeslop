@@ -57,24 +57,26 @@ export const fetchRef = (
   });
 
 /** Best-effort: a ref that is already gone is the goal, not a failure. */
-export const deleteRefs = (git: Git, input: { cwd: string; ref: string; remote: string | null }) =>
-  Effect.gen(function* () {
-    yield* git
-      .execute({
-        operation: "MachineHandoff.deleteLocalRef",
-        cwd: input.cwd,
-        args: ["update-ref", "-d", input.ref],
-        allowNonZeroExit: true,
-      })
-      .pipe(Effect.ignore);
-    if (input.remote === null) return;
-    yield* git
-      .execute({
-        operation: "MachineHandoff.deleteRemoteRef",
-        cwd: input.cwd,
-        args: ["push", input.remote, `:${input.ref}`],
-        allowNonZeroExit: true,
-        timeoutMs: NETWORK_TIMEOUT_MS,
-      })
-      .pipe(Effect.ignore);
-  });
+export const deleteRefs = Effect.fn("MachineHandoffGit.deleteRefs")(function* (
+  git: Git,
+  input: { cwd: string; ref: string; remote: string | null },
+) {
+  yield* git
+    .execute({
+      operation: "MachineHandoff.deleteLocalRef",
+      cwd: input.cwd,
+      args: ["update-ref", "-d", input.ref],
+      allowNonZeroExit: true,
+    })
+    .pipe(Effect.ignore);
+  if (input.remote === null) return;
+  yield* git
+    .execute({
+      operation: "MachineHandoff.deleteRemoteRef",
+      cwd: input.cwd,
+      args: ["push", input.remote, `:${input.ref}`],
+      allowNonZeroExit: true,
+      timeoutMs: NETWORK_TIMEOUT_MS,
+    })
+    .pipe(Effect.ignore);
+});

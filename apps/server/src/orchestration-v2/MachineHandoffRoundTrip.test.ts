@@ -143,7 +143,7 @@ const targetMachine = (input: {
         ProviderRegistryMock.layer(),
         Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
           namedProjectsRoot: "/projects",
-          folderForThread: () => Effect.succeed(Option.none()),
+          folderForThread: () => Effect.succeedNone,
         }),
         threadManagement,
         receipts,

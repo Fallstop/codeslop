@@ -46,14 +46,16 @@ export function makeMachineHandoffStaging(input: {
     path.join(dirOf(handoffId), "manifest.json");
   const payloadPath = (handoffId: MachineHandoffId) => path.join(dirOf(handoffId), "payload.bin");
 
-  const writeManifest = (manifest: OrchestrationV2MachineHandoffManifest) =>
-    Effect.gen(function* () {
+  const writeManifest = Effect.fn("MachineHandoffStaging.writeManifest")(
+    function* (manifest: OrchestrationV2MachineHandoffManifest) {
       yield* fileSystem.makeDirectory(dirOf(manifest.handoffId), { recursive: true });
       yield* fileSystem.writeFileString(
         manifestPath(manifest.handoffId),
         yield* encodeManifest(manifest),
       );
-    }).pipe(Effect.mapError(stagingError("Could not stage the handoff.")));
+    },
+    Effect.mapError(stagingError("Could not stage the handoff.")),
+  );
 
   /** None when nothing is staged for the id. */
   const readManifest = (handoffId: MachineHandoffId) =>
@@ -62,7 +64,7 @@ export function makeMachineHandoffStaging(input: {
       Effect.flatMap(
         Option.match({
           onNone: () => Effect.succeed(Option.none<OrchestrationV2MachineHandoffManifest>()),
-          onSome: (raw) => decodeManifest(raw).pipe(Effect.map(Option.some)),
+          onSome: (raw) => decodeManifest(raw).pipe(Effect.asSome),
         }),
       ),
       Effect.mapError(stagingError("The staged handoff is unreadable.")),
@@ -99,8 +101,8 @@ export function makeMachineHandoffStaging(input: {
    * duplicating. Offset 0 starts the file over; a later offset must not leave
    * a gap. Returns the bytes now on disk.
    */
-  const writeChunk = (handoffId: MachineHandoffId, offset: number, bytes: Uint8Array) =>
-    Effect.gen(function* () {
+  const writeChunk = Effect.fn("MachineHandoffStaging.writeChunk")(
+    function* (handoffId: MachineHandoffId, offset: number, bytes: Uint8Array) {
       const received = offset === 0 ? 0 : yield* payloadSize(handoffId);
       if (offset > received) {
         return yield* new MachineHandoffError({
@@ -121,32 +123,33 @@ export function makeMachineHandoffStaging(input: {
         }),
       );
       return Math.max(received, offset + bytes.length);
-    }).pipe(
-      Effect.mapError((cause) =>
-        isMachineHandoffError(cause)
-          ? cause
-          : new MachineHandoffError({ message: "Could not receive the handoff.", cause }),
-      ),
-    );
+    },
+    Effect.mapError((cause) =>
+      isMachineHandoffError(cause)
+        ? cause
+        : new MachineHandoffError({ message: "Could not receive the handoff.", cause }),
+    ),
+  );
 
   /** The whole payload, only once its size and checksum match the manifest. */
-  const readVerifiedPayload = (manifest: OrchestrationV2MachineHandoffManifest) =>
-    Effect.gen(function* () {
-      const bytes = yield* fileSystem
-        .readFile(payloadPath(manifest.handoffId))
-        .pipe(Effect.orElseSucceed(() => new Uint8Array(0)));
-      if (bytes.length !== manifest.payloadBytes) {
-        return yield* new MachineHandoffError({
-          message: `The handoff arrived incomplete: ${bytes.length} of ${manifest.payloadBytes} bytes.`,
-        });
-      }
-      if (sha256Hex(bytes) !== manifest.payloadSha256) {
-        return yield* new MachineHandoffError({
-          message: "The handoff arrived corrupted. Try the transfer again.",
-        });
-      }
-      return bytes;
-    });
+  const readVerifiedPayload = Effect.fn("MachineHandoffStaging.readVerifiedPayload")(function* (
+    manifest: OrchestrationV2MachineHandoffManifest,
+  ) {
+    const bytes = yield* fileSystem
+      .readFile(payloadPath(manifest.handoffId))
+      .pipe(Effect.orElseSucceed(() => new Uint8Array(0)));
+    if (bytes.length !== manifest.payloadBytes) {
+      return yield* new MachineHandoffError({
+        message: `The handoff arrived incomplete: ${bytes.length} of ${manifest.payloadBytes} bytes.`,
+      });
+    }
+    if (sha256Hex(bytes) !== manifest.payloadSha256) {
+      return yield* new MachineHandoffError({
+        message: "The handoff arrived corrupted. Try the transfer again.",
+      });
+    }
+    return bytes;
+  });
 
   const adoptedPath = (handoffId: MachineHandoffId) => path.join(dirOf(handoffId), "adopted.json");
 

@@ -228,32 +228,33 @@ export const make = Effect.fn("semanticSearch.embeddingModel.make")(function* ()
 
   const ensureReady: EmbeddingModel["Service"]["ensureReady"] = Effect.asVoid(getPipeline);
 
-  const embedTexts: EmbeddingModel["Service"]["embedTexts"] = (texts) =>
-    Effect.gen(function* () {
-      if (!(yield* isEnabled)) {
-        return yield* new EmbeddingModelUnavailableError({ reason: "Semantic search is disabled" });
-      }
-      if (texts.length === 0) {
-        return [];
-      }
-      const pipeline = yield* getPipeline;
-      const output = yield* Effect.tryPromise({
-        try: () => pipeline(texts, { pooling: "mean", normalize: true }),
-        catch: (cause) =>
-          new EmbeddingModelUnavailableError({ reason: "Embedding inference failed", cause }),
-      });
-      const [rows, dims] = [output.dims[0] ?? 0, output.dims[1] ?? 0];
-      if (rows !== texts.length || dims === 0) {
-        return yield* new EmbeddingModelUnavailableError({
-          reason: `Unexpected embedding output shape ${output.dims.join("x")}`,
-        });
-      }
-      const vectors: Float32Array[] = [];
-      for (let row = 0; row < rows; row += 1) {
-        vectors.push(output.data.slice(row * dims, (row + 1) * dims));
-      }
-      return vectors;
+  const embedTexts: EmbeddingModel["Service"]["embedTexts"] = Effect.fn(
+    "semanticSearch.embeddingModel.embedTexts",
+  )(function* (texts) {
+    if (!(yield* isEnabled)) {
+      return yield* new EmbeddingModelUnavailableError({ reason: "Semantic search is disabled" });
+    }
+    if (texts.length === 0) {
+      return [];
+    }
+    const pipeline = yield* getPipeline;
+    const output = yield* Effect.tryPromise({
+      try: () => pipeline(texts, { pooling: "mean", normalize: true }),
+      catch: (cause) =>
+        new EmbeddingModelUnavailableError({ reason: "Embedding inference failed", cause }),
     });
+    const [rows, dims] = [output.dims[0] ?? 0, output.dims[1] ?? 0];
+    if (rows !== texts.length || dims === 0) {
+      return yield* new EmbeddingModelUnavailableError({
+        reason: `Unexpected embedding output shape ${output.dims.join("x")}`,
+      });
+    }
+    const vectors: Float32Array[] = [];
+    for (let row = 0; row < rows; row += 1) {
+      vectors.push(output.data.slice(row * dims, (row + 1) * dims));
+    }
+    return vectors;
+  });
 
   return EmbeddingModel.of({
     modelId,

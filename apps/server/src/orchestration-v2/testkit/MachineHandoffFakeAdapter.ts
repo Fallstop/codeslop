@@ -53,25 +53,27 @@ export const makeMachineHandoffFakeAdapter = Effect.fn("makeMachineHandoffFakeAd
   const events = yield* Queue.unbounded<ProviderAdapterV2Event>();
   const turns = new Map<string, { turn: OrchestrationV2ProviderTurn; runOrdinal: number }>();
 
-  const finish = (providerTurnId: ProviderTurnId, status: "completed" | "interrupted") =>
-    Effect.gen(function* () {
-      const running = turns.get(providerTurnId);
-      if (running === undefined || running.turn.status !== "running") return;
-      const now = yield* DateTime.now;
-      const turn = { ...running.turn, status, completedAt: now };
-      turns.set(providerTurnId, { ...running, turn });
-      yield* Queue.offer(events, { type: "provider_turn.updated", driver, providerTurn: turn });
-      yield* Queue.offer(events, {
-        type: "turn.terminal",
-        driver,
-        providerThreadId: turn.providerThreadId,
-        providerTurnId,
-        runOrdinal: running.runOrdinal,
-        status,
-        failure: null,
-        threadDisposition: "reusable",
-      });
+  const finish = Effect.fn("MachineHandoffFakeAdapter.finish")(function* (
+    providerTurnId: ProviderTurnId,
+    status: "completed" | "interrupted",
+  ) {
+    const running = turns.get(providerTurnId);
+    if (running === undefined || running.turn.status !== "running") return;
+    const now = yield* DateTime.now;
+    const turn = { ...running.turn, status, completedAt: now };
+    turns.set(providerTurnId, { ...running, turn });
+    yield* Queue.offer(events, { type: "provider_turn.updated", driver, providerTurn: turn });
+    yield* Queue.offer(events, {
+      type: "turn.terminal",
+      driver,
+      providerThreadId: turn.providerThreadId,
+      providerTurnId,
+      runOrdinal: running.runOrdinal,
+      status,
+      failure: null,
+      threadDisposition: "reusable",
     });
+  });
 
   const adapter: ProviderAdapterV2Shape = {
     instanceId,
@@ -81,107 +83,104 @@ export const makeMachineHandoffFakeAdapter = Effect.fn("makeMachineHandoffFakeAd
     ...(options.nativeSessionTransfer === undefined
       ? {}
       : { nativeSessionTransfer: options.nativeSessionTransfer }),
-    openSession: (input) =>
-      Effect.gen(function* () {
-        const now = yield* DateTime.now;
-        yield* Effect.addFinalizer(() =>
-          Effect.sync(() => log.push("session-released")).pipe(
-            Effect.andThen(options.onRelease ?? Effect.void),
-          ),
-        );
-        return {
-          instanceId,
+    openSession: Effect.fn("MachineHandoffFakeAdapter.openSession")(function* (input) {
+      const now = yield* DateTime.now;
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => log.push("session-released")).pipe(
+          Effect.andThen(options.onRelease ?? Effect.void),
+        ),
+      );
+      return {
+        instanceId,
+        driver,
+        providerSessionId: input.providerSessionId,
+        providerSession: {
+          id: input.providerSessionId,
           driver,
-          providerSessionId: input.providerSessionId,
-          providerSession: {
-            id: input.providerSessionId,
+          providerInstanceId: instanceId,
+          status: "ready",
+          cwd: input.runtimePolicy.cwd ?? "/",
+          model: input.modelSelection.model,
+          capabilities,
+          createdAt: now,
+          updatedAt: now,
+          lastError: null,
+        },
+        events: Stream.fromQueue(events),
+        ensureThread: ({ threadId }) =>
+          Effect.succeed({
+            id: ProviderThreadId.make(`provider-thread:${driver}:${threadId}`),
             driver,
             providerInstanceId: instanceId,
-            status: "ready",
-            cwd: input.runtimePolicy.cwd ?? "/",
-            model: input.modelSelection.model,
-            capabilities,
+            providerSessionId: input.providerSessionId,
+            appThreadId: threadId,
+            ownerNodeId: null,
+            nativeThreadRef: { driver, nativeId, strength: "strong" },
+            nativeConversationHeadRef: null,
+            status: "idle",
+            firstRunOrdinal: null,
+            lastRunOrdinal: null,
+            handoffIds: [],
+            forkedFrom: null,
             createdAt: now,
             updatedAt: now,
-            lastError: null,
-          },
-          events: Stream.fromQueue(events),
-          ensureThread: ({ threadId }) =>
-            Effect.succeed({
-              id: ProviderThreadId.make(`provider-thread:${driver}:${threadId}`),
-              driver,
-              providerInstanceId: instanceId,
-              providerSessionId: input.providerSessionId,
-              appThreadId: threadId,
-              ownerNodeId: null,
-              nativeThreadRef: { driver, nativeId, strength: "strong" },
-              nativeConversationHeadRef: null,
-              status: "idle",
-              firstRunOrdinal: null,
-              lastRunOrdinal: null,
-              handoffIds: [],
-              forkedFrom: null,
-              createdAt: now,
-              updatedAt: now,
-            }),
-          resumeThread: ({ providerThread }) => Effect.succeed(providerThread),
-          startTurn: (turn) =>
-            Effect.gen(function* () {
-              log.push("turn-started");
-              prompts.push(turn.message.text);
-              const started = yield* DateTime.now;
-              const providerTurn: OrchestrationV2ProviderTurn = {
-                id: ProviderTurnId.make(`provider-turn:${turn.attemptId}`),
-                providerThreadId: turn.providerThread.id,
-                nodeId: turn.rootNodeId,
-                runAttemptId: turn.attemptId,
-                nativeTurnRef: { driver, nativeId: `native:${turn.attemptId}`, strength: "strong" },
-                ordinal: turn.providerTurnOrdinal,
-                status: "running",
-                startedAt: started,
-                completedAt: null,
-              };
-              turns.set(providerTurn.id, { turn: providerTurn, runOrdinal: turn.runOrdinal });
-              yield* Queue.offer(events, { type: "provider_turn.updated", driver, providerTurn });
-              if (options.reply === undefined) return;
-              yield* Queue.offer(events, {
-                type: "turn_item.updated",
-                driver,
-                turnItem: {
-                  id: TurnItemId.make(`reply:${turn.attemptId}`),
-                  threadId: turn.threadId,
-                  runId: turn.runId,
-                  nodeId: turn.rootNodeId,
-                  providerThreadId: turn.providerThread.id,
-                  providerTurnId: providerTurn.id,
-                  nativeItemRef: null,
-                  parentItemId: null,
-                  ordinal: 1,
-                  status: "completed",
-                  title: null,
-                  startedAt: started,
-                  completedAt: started,
-                  updatedAt: started,
-                  type: "assistant_message",
-                  messageId: MessageId.make(`reply:${turn.attemptId}`),
-                  text: options.reply,
-                  streaming: false,
-                },
-              });
-              yield* finish(providerTurn.id, "completed");
-            }),
-          steerTurn: () => Effect.die("unused"),
-          interruptTurn: (interrupt) =>
-            Effect.gen(function* () {
-              log.push("interrupted");
-              yield* finish(interrupt.providerTurnId, "interrupted");
-            }),
-          respondToRuntimeRequest: () => Effect.die("unused"),
-          readThreadSnapshot: () => Effect.die("unused"),
-          rollbackThread: () => Effect.die("unused"),
-          forkThread: () => Effect.die("unused"),
-        };
-      }),
+          }),
+        resumeThread: ({ providerThread }) => Effect.succeed(providerThread),
+        startTurn: Effect.fn("MachineHandoffFakeAdapter.startTurn")(function* (turn) {
+          log.push("turn-started");
+          prompts.push(turn.message.text);
+          const started = yield* DateTime.now;
+          const providerTurn: OrchestrationV2ProviderTurn = {
+            id: ProviderTurnId.make(`provider-turn:${turn.attemptId}`),
+            providerThreadId: turn.providerThread.id,
+            nodeId: turn.rootNodeId,
+            runAttemptId: turn.attemptId,
+            nativeTurnRef: { driver, nativeId: `native:${turn.attemptId}`, strength: "strong" },
+            ordinal: turn.providerTurnOrdinal,
+            status: "running",
+            startedAt: started,
+            completedAt: null,
+          };
+          turns.set(providerTurn.id, { turn: providerTurn, runOrdinal: turn.runOrdinal });
+          yield* Queue.offer(events, { type: "provider_turn.updated", driver, providerTurn });
+          if (options.reply === undefined) return;
+          yield* Queue.offer(events, {
+            type: "turn_item.updated",
+            driver,
+            turnItem: {
+              id: TurnItemId.make(`reply:${turn.attemptId}`),
+              threadId: turn.threadId,
+              runId: turn.runId,
+              nodeId: turn.rootNodeId,
+              providerThreadId: turn.providerThread.id,
+              providerTurnId: providerTurn.id,
+              nativeItemRef: null,
+              parentItemId: null,
+              ordinal: 1,
+              status: "completed",
+              title: null,
+              startedAt: started,
+              completedAt: started,
+              updatedAt: started,
+              type: "assistant_message",
+              messageId: MessageId.make(`reply:${turn.attemptId}`),
+              text: options.reply,
+              streaming: false,
+            },
+          });
+          yield* finish(providerTurn.id, "completed");
+        }),
+        steerTurn: () => Effect.die("unused"),
+        interruptTurn: Effect.fn("MachineHandoffFakeAdapter.interruptTurn")(function* (interrupt) {
+          log.push("interrupted");
+          yield* finish(interrupt.providerTurnId, "interrupted");
+        }),
+        respondToRuntimeRequest: () => Effect.die("unused"),
+        readThreadSnapshot: () => Effect.die("unused"),
+        rollbackThread: () => Effect.die("unused"),
+        forkThread: () => Effect.die("unused"),
+      };
+    }),
   };
   return { adapter, log, prompts, instanceId, driver, nativeId };
 });

@@ -15,6 +15,7 @@ export const PersistedServerRuntimeState = Schema.Struct({
   pid: Schema.Int,
   ownerId: Schema.optional(Schema.String),
   host: Schema.optional(Schema.String),
+  privateNetworkOnly: Schema.optional(Schema.Boolean),
   port: Schema.Int,
   origin: Schema.String,
   // Dev is single-origin: browsers must pair through this URL, not `origin`.
@@ -56,7 +57,10 @@ const runtimeOriginForConfig = (
 };
 
 export const makePersistedServerRuntimeState = (input: {
-  readonly config: Pick<ServerConfig.ServerConfig["Service"], "host" | "devUrl">;
+  readonly config: Pick<
+    ServerConfig.ServerConfig["Service"],
+    "host" | "privateNetworkOnly" | "devUrl"
+  >;
   readonly port: number;
   readonly serviceManaged?: boolean;
 }): Effect.Effect<PersistedServerRuntimeState> =>
@@ -64,6 +68,7 @@ export const makePersistedServerRuntimeState = (input: {
     version: 1,
     pid: process.pid,
     ...(input.config.host ? { host: input.config.host } : {}),
+    ...(input.config.privateNetworkOnly ? { privateNetworkOnly: true } : {}),
     port: input.port,
     origin: runtimeOriginForConfig(input.config, input.port),
     ...(input.config.devUrl ? { devUrl: input.config.devUrl.toString() } : {}),
@@ -91,154 +96,101 @@ export const persistServerRuntimeState = (input: {
   );
 
 /**
- * Signal 0 delivers nothing; it only reports whether the pid exists. EPERM means
- * it exists but belongs to another user, which still counts as alive.
+ * Put this server's record back when nothing else live holds the slot: servers
+ * predating compare-and-delete still clear a record they do not own on shutdown.
+ * A different, still-running owner is left alone; it is reachable.
  */
-export const processIsAlive = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error instanceof Error && "code" in error && error.code === "EPERM";
+export const reassertServerRuntimeState = Effect.fn(
+  "serverRuntimeState.reassertServerRuntimeState",
+)(function* (input: { readonly path: string; readonly state: PersistedServerRuntimeState }) {
+  const persisted = yield* readPersistedServerRuntimeState(input.path);
+  if (Option.isSome(persisted)) {
+    if (persisted.value.pid === input.state.pid) {
+      return false;
+    }
+    if (isProcessAlive(persisted.value.pid)) {
+      return false;
+    }
   }
-};
+  yield* persistServerRuntimeState({ path: input.path, state: input.state });
+  return true;
+});
 
 /**
- * Put this server's record back when nothing else live is using the slot.
- *
- * Servers older than the compare-and-delete fix still clear the shared record on
- * their own shutdown, so a co-located one — an SSH-launched server on a remote
- * that has not been upgraded yet — can delete a live server's entry. Without
- * this, that server stays undiscoverable until it restarts, and every later
- * connection launches another server beside it.
- *
- * A record naming a different, still-running process is left alone: that server
- * is reachable and fighting over the slot would only produce churn.
+ * The server actually running against this state directory. An SSH-launched one
+ * publishes beside its launch state, so an empty shared slot does not mean the
+ * database is idle. Mirrors `resolve_sibling_runtime_port` in the remote launch script.
  */
-export const reassertServerRuntimeState = (input: {
-  readonly path: string;
-  readonly state: PersistedServerRuntimeState;
-}) =>
-  Effect.gen(function* () {
-    const persisted = yield* readPersistedServerRuntimeState(input.path);
-    if (Option.isSome(persisted)) {
-      if (persisted.value.pid === input.state.pid) {
-        return false;
-      }
-      if (processIsAlive(persisted.value.pid)) {
-        return false;
-      }
+export const readLiveServerRuntimeState = Effect.fn(
+  "serverRuntimeState.readLiveServerRuntimeState",
+)(function* (input: { readonly runtimeStatePath: string; readonly baseDir: string }) {
+  const primary = yield* readPersistedServerRuntimeState(input.runtimeStatePath);
+  if (Option.isSome(primary) && isProcessAlive(primary.value.pid)) {
+    return primary;
+  }
+
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const sshLaunchDir = path.join(input.baseDir, SSH_LAUNCH_DIR_NAME);
+  const stateKeys = yield* fileSystem
+    .readDirectory(sshLaunchDir)
+    .pipe(Effect.orElseSucceed(() => [] as ReadonlyArray<string>));
+
+  for (const stateKey of stateKeys) {
+    const candidate = path.join(sshLaunchDir, stateKey, SERVER_RUNTIME_FILE_NAME);
+    if (candidate === input.runtimeStatePath) {
+      continue;
     }
-    yield* persistServerRuntimeState({ path: input.path, state: input.state });
-    return true;
-  });
+    const record = yield* readPersistedServerRuntimeState(candidate);
+    if (Option.isSome(record) && isProcessAlive(record.value.pid)) {
+      return record;
+    }
+  }
+
+  return Option.none<PersistedServerRuntimeState>();
+});
 
 /**
- * Remove the record only while it still describes `ownerPid`.
- *
- * The path is a single slot per state directory, and a second server sharing the
- * directory (an SSH-launched one, say) would otherwise delete the incumbent's
- * record on its own shutdown — leaving a live server undiscoverable until it
- * restarts.
+ * Clear a record whose process is gone; the only clear a non-owner may do. An
+ * unreachable live server is far more often a transient failure than a dead one.
  */
-/**
- * Find the server actually running against this state directory.
- *
- * A server launched over SSH publishes beside its own launch state rather than
- * into the shared slot, so the slot being empty does not mean the database is
- * idle. Callers that skip this end up treating a live environment as offline and
- * writing to its database behind its back.
- *
- * Mirrors `resolve_sibling_runtime_port` in the remote launch script; the two
- * must keep agreeing about where a launched server advertises itself.
- */
-export const readLiveServerRuntimeState = (input: {
-  readonly runtimeStatePath: string;
-  readonly baseDir: string;
-}) =>
-  Effect.gen(function* () {
-    const primary = yield* readPersistedServerRuntimeState(input.runtimeStatePath);
-    if (Option.isSome(primary) && processIsAlive(primary.value.pid)) {
-      return primary;
-    }
+export const clearStaleServerRuntimeState = Effect.fn(
+  "serverRuntimeState.clearStaleServerRuntimeState",
+)(function* (path: string) {
+  const persisted = yield* readPersistedServerRuntimeState(path);
+  if (Option.isNone(persisted) || isProcessAlive(persisted.value.pid)) {
+    return;
+  }
+  yield* clearPersistedServerRuntimeState(path);
+});
 
-    const fileSystem = yield* FileSystem.FileSystem;
-    const path = yield* Path.Path;
-    const sshLaunchDir = path.join(input.baseDir, SSH_LAUNCH_DIR_NAME);
-    const stateKeys = yield* fileSystem
-      .readDirectory(sshLaunchDir)
-      .pipe(Effect.orElseSucceed(() => [] as ReadonlyArray<string>));
-
-    for (const stateKey of stateKeys) {
-      const candidate = path.join(sshLaunchDir, stateKey, SERVER_RUNTIME_FILE_NAME);
-      if (candidate === input.runtimeStatePath) {
-        continue;
-      }
-      const record = yield* readPersistedServerRuntimeState(candidate);
-      if (Option.isSome(record) && processIsAlive(record.value.pid)) {
-        return record;
-      }
-    }
-
-    return Option.none<PersistedServerRuntimeState>();
-  });
-
-export const clearOwnedServerRuntimeState = (input: {
-  readonly path: string;
-  readonly ownerPid: number;
-}) =>
-  Effect.gen(function* () {
-    const persisted = yield* readPersistedServerRuntimeState(input.path);
-    if (Option.isNone(persisted) || persisted.value.pid !== input.ownerPid) {
-      return;
-    }
-    yield* clearPersistedServerRuntimeState(input.path);
-  });
-
-/**
- * Clear a record left behind by a process that no longer exists. This is the only
- * clear a non-owner may perform: a live server's record stays put even when this
- * process cannot reach it, because an unreachable server is far more often a
- * transient failure than a dead one.
- */
-export const clearStaleServerRuntimeState = (path: string) =>
-  Effect.gen(function* () {
-    const persisted = yield* readPersistedServerRuntimeState(path);
-    if (Option.isNone(persisted) || processIsAlive(persisted.value.pid)) {
-      return;
-    }
-    yield* clearPersistedServerRuntimeState(path);
-  });
-
-export const clearPersistedServerRuntimeState = (path: string) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
-    yield* fs.remove(path, { force: true }).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ServerRuntimeStateError({
-            operation: "clear",
-            statePath: path,
-            cause,
+export const clearPersistedServerRuntimeState = Effect.fn(
+  "serverRuntimeState.clearPersistedServerRuntimeState",
+)(function* (path: string) {
+  const fs = yield* FileSystem.FileSystem;
+  yield* fs.remove(path, { force: true }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new ServerRuntimeStateError({
+          operation: "clear",
+          statePath: path,
+          cause,
+        }),
+    ),
+    Effect.catchTags({
+      ServerRuntimeStateError: (error) =>
+        Effect.logWarning(error.message).pipe(
+          Effect.annotateLogs({
+            operation: error.operation,
+            statePath: error.statePath,
+            cause: error,
           }),
-      ),
-      Effect.catchTags({
-        ServerRuntimeStateError: (error) =>
-          Effect.logWarning(error.message).pipe(
-            Effect.annotateLogs({
-              operation: error.operation,
-              statePath: error.statePath,
-              cause: error,
-            }),
-          ),
-      }),
-    );
-  });
+        ),
+    }),
+  );
+});
 
-/**
- * Signal 0 delivers nothing; it only reports whether the pid exists. EPERM
- * means it exists but belongs to another user, which still counts as alive.
- */
+/** Signal 0 only probes existence; EPERM still means alive. */
 export const isProcessAlive = (pid: number): boolean => {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
@@ -249,8 +201,10 @@ export const isProcessAlive = (pid: number): boolean => {
   }
 };
 
-export const readPersistedServerRuntimeState = (path: string) =>
-  Effect.gen(function* () {
+export const readPersistedServerRuntimeState = Effect.fn(
+  "serverRuntimeState.readPersistedServerRuntimeState",
+)(
+  function* (path: string) {
     const fs = yield* FileSystem.FileSystem;
     const raw = yield* fs.readFileString(path).pipe(
       Effect.matchEffect({
@@ -287,16 +241,16 @@ export const readPersistedServerRuntimeState = (path: string) =>
           }),
       ),
     );
-  }).pipe(
-    Effect.catchTags({
-      ServerRuntimeStateError: (error) =>
-        Effect.logWarning(error.message).pipe(
-          Effect.annotateLogs({
-            operation: error.operation,
-            statePath: error.statePath,
-            cause: error,
-          }),
-          Effect.as(Option.none<PersistedServerRuntimeState>()),
-        ),
-    }),
-  );
+  },
+  Effect.catchTags({
+    ServerRuntimeStateError: (error) =>
+      Effect.logWarning(error.message).pipe(
+        Effect.annotateLogs({
+          operation: error.operation,
+          statePath: error.statePath,
+          cause: error,
+        }),
+        Effect.as(Option.none<PersistedServerRuntimeState>()),
+      ),
+  }),
+);

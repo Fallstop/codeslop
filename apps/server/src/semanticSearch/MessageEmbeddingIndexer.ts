@@ -41,42 +41,43 @@ const startIndexer = Effect.gen(function* () {
 
   let tickCount = 0;
 
-  const processBatch = (messages: ReadonlyArray<StaleEmbeddingMessage>) =>
-    Effect.gen(function* () {
-      const chunked = messages.map((message) => ({
-        message,
-        chunks: chunkTextForEmbedding(message.text),
-      }));
-      const texts = chunked.flatMap((entry) => entry.chunks);
-      const vectors = yield* model.embedTexts(texts);
-      const now = DateTime.formatIso(yield* DateTime.now);
+  const processBatch = Effect.fn("semanticSearch.messageEmbeddingIndexer.processBatch")(function* (
+    messages: ReadonlyArray<StaleEmbeddingMessage>,
+  ) {
+    const chunked = messages.map((message) => ({
+      message,
+      chunks: chunkTextForEmbedding(message.text),
+    }));
+    const texts = chunked.flatMap((entry) => entry.chunks);
+    const vectors = yield* model.embedTexts(texts);
+    const now = DateTime.formatIso(yield* DateTime.now);
 
-      let vectorOffset = 0;
-      for (const { message, chunks } of chunked) {
-        const chunkWrites = chunks.map((chunkText, chunkIndex) => ({
-          chunkIndex,
-          chunkText,
-          vector: packEmbedding(vectors[vectorOffset + chunkIndex]!),
-        }));
-        vectorOffset += chunks.length;
-        yield* repository.replaceForMessage({
-          messageId: message.messageId,
-          threadId: message.threadId,
-          model: model.indexKey,
-          messageUpdatedAt: message.updatedAt,
-          updatedAt: now,
-          chunks: chunkWrites,
-        });
-        yield* index.setMessageChunks(
-          message.messageId,
-          message.threadId,
-          chunkWrites.map((write) => ({
-            chunkIndex: write.chunkIndex,
-            vector: unpackEmbedding(write.vector)!,
-          })),
-        );
-      }
-    });
+    let vectorOffset = 0;
+    for (const { message, chunks } of chunked) {
+      const chunkWrites = chunks.map((chunkText, chunkIndex) => ({
+        chunkIndex,
+        chunkText,
+        vector: packEmbedding(vectors[vectorOffset + chunkIndex]!),
+      }));
+      vectorOffset += chunks.length;
+      yield* repository.replaceForMessage({
+        messageId: message.messageId,
+        threadId: message.threadId,
+        model: model.indexKey,
+        messageUpdatedAt: message.updatedAt,
+        updatedAt: now,
+        chunks: chunkWrites,
+      });
+      yield* index.setMessageChunks(
+        message.messageId,
+        message.threadId,
+        chunkWrites.map((write) => ({
+          chunkIndex: write.chunkIndex,
+          vector: unpackEmbedding(write.vector)!,
+        })),
+      );
+    }
+  });
 
   const tick = Effect.gen(function* () {
     // The setting can flip at runtime; every tick re-checks it.

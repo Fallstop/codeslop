@@ -68,8 +68,8 @@ const make = Effect.gen(function* () {
   const serial = yield* KeyedLock.make<MachineHandoffId>();
 
   /** The thread a previous adopt of this handoff already launched, if any. */
-  const previousAdopt = (handoffId: MachineHandoffId) =>
-    Effect.gen(function* () {
+  const previousAdopt = Effect.fn("MachineHandoffAdoptService.previousAdopt")(
+    function* (handoffId: MachineHandoffId) {
       const receipt = yield* receipts.getByCommandId(launchCommandId(handoffId));
       if (Option.isNone(receipt) || receipt.value.status !== "accepted") return null;
       const shell = yield* threads.getThreadShell(receipt.value.threadId);
@@ -79,7 +79,9 @@ const make = Effect.gen(function* () {
         worktreePath: shell.worktreePath,
         context: shell.continuedFrom.context,
       } satisfies OrchestrationV2AdoptMachineHandoffResult;
-    }).pipe(Effect.mapError(refuse("Could not check for an earlier adopt.")));
+    },
+    Effect.mapError(refuse("Could not check for an earlier adopt.")),
+  );
 
   /**
    * The provider instance that continues the work: the origin's own instance
@@ -301,7 +303,9 @@ const make = Effect.gen(function* () {
   });
 
   return MachineHandoffAdoptService.of({
-    adopt: (input) => serial.withLock(input.handoffId, adoptOnce(input)),
+    adopt: Effect.fn("MachineHandoffAdoptService.adopt")((input) =>
+      serial.withLock(input.handoffId, adoptOnce(input)),
+    ),
   });
 });
 

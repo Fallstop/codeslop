@@ -18,11 +18,14 @@ import * as ProviderAdapterRegistry from "../ProviderAdapterRegistry.ts";
 import * as ProviderReplayHarness from "./ProviderReplayHarness.ts";
 import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
 
-export const git = (cwd: string, args: ReadonlyArray<string>) =>
-  Effect.gen(function* () {
+export const git = Effect.fn("MachineHandoffRuntime.git")(
+  function* (cwd: string, args: ReadonlyArray<string>) {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     return (yield* spawner.string(ChildProcess.make("git", args, { cwd }))).trim();
-  }).pipe(Effect.provide(NodeServices.layer), Effect.orDie);
+  },
+  Effect.provide(NodeServices.layer),
+  Effect.orDie,
+);
 
 /** A repository with a shared bare remote, the way two machines meet. */
 export const workspaceWithRemote = Effect.gen(function* () {
@@ -65,13 +68,14 @@ export const machineHandoffRuntime = (adapter: ProviderAdapterV2Shape, name: str
 };
 
 /** Resolves once an event matching `predicate` is committed. Start before dispatching. */
-export const awaitEvent = (predicate: (event: OrchestrationV2DomainEvent) => boolean) =>
-  Effect.gen(function* () {
-    const orchestrator = yield* Orchestrator.OrchestratorV2;
-    return yield* orchestrator.streamDomainEvents.pipe(
-      Stream.filter(predicate),
-      Stream.take(1),
-      Stream.runDrain,
-      Effect.forkScoped,
-    );
-  });
+export const awaitEvent = Effect.fn("MachineHandoffRuntime.awaitEvent")(function* (
+  predicate: (event: OrchestrationV2DomainEvent) => boolean,
+) {
+  const orchestrator = yield* Orchestrator.OrchestratorV2;
+  return yield* orchestrator.streamDomainEvents.pipe(
+    Stream.filter(predicate),
+    Stream.take(1),
+    Stream.runDrain,
+    Effect.forkScoped,
+  );
+});

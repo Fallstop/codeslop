@@ -7,7 +7,6 @@ and adding:
 
 - **Semantic chat search** — opt-in, with embeddings computed locally
 - **Thread handoff** — freeze a thread on one machine and pick the work up on another
-- **Side chats** — branch a question off a thread without derailing it
 - **Projects grouped by folder path** across machines
 - **90-day sessions that renew themselves** before expiry, so clients stay paired
 - **Composer**: `@~` home completion, editable path mentions, and dropped

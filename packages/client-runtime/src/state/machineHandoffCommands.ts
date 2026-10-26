@@ -119,115 +119,114 @@ export function createMachineHandoffCommandAtoms<R, E>(
       mode: "singleFlight" as const,
       key: (input: RunMachineHandoffInput) => input.handoffId,
     },
-    execute: (input: RunMachineHandoffInput, registry) =>
-      Effect.gen(function* () {
-        const environments = yield* EnvironmentRegistry.EnvironmentRegistry;
-        const context = yield* Effect.context<
-          EnvironmentRegistry.EnvironmentRegistry | Crypto.Crypto
-        >();
-        const inEnvironment = <A, EE>(
-          environmentId: EnvironmentId,
-          effect: Effect.Effect<
-            A,
-            EE,
-            EnvironmentSupervisor | EnvironmentRegistry.EnvironmentRegistry | Crypto.Crypto
-          >,
-        ) =>
-          environments.run(environmentId, effect).pipe(
-            Effect.provide(context),
-            Effect.mapError(
-              (cause) =>
-                new MachineHandoffTransferError({ message: describeMachineHandoffFailure(cause) }),
-            ),
-          );
-        const origin = input.origin;
-        const target = {
-          environmentId: input.target.environmentId,
-          threadId: input.target.threadId,
-          ...(input.target.environmentLabel === undefined
-            ? {}
-            : { environmentLabel: input.target.environmentLabel }),
-        };
-        const handoffId = input.handoffId;
-        const shellAtom = options.threadShellAtom(origin);
-        // Starting or retrying gives the record a new start time; only an
-        // outcome of that attempt counts, not the state it replaces.
-        const before = registry.get(shellAtom)?.machineHandoff;
-        const previousStart =
-          input.mode === "resume" || before?.id !== handoffId ? undefined : before.startedAt;
-        let seen = input.mode === "resume";
-        return yield* runMachineHandoff({
-          resume: input.mode === "resume",
-          ports: {
-            start: inEnvironment(
-              origin.environmentId,
-              input.mode === "retry"
-                ? retryMachineHandoff({ threadId: origin.threadId, handoffId })
-                : startMachineHandoff({ threadId: origin.threadId, handoffId, target }),
-            ),
-            awaitStaged: awaitAtomValue(
-              registry,
-              shellAtom,
-              (shell): OrchestrationV2MachineHandoff | null | undefined => {
-                const handoff = shell?.machineHandoff ?? null;
-                if (handoff?.id === handoffId && handoff.startedAt !== previousStart) {
-                  seen = true;
-                  return handoff.state === "exporting" ? undefined : handoff;
-                }
-                // Gone after we saw it: cancelled from another device.
-                return seen && handoff?.id !== handoffId ? null : undefined;
-              },
-            ),
-            readBundle: (slice) =>
-              inEnvironment(
-                origin.environmentId,
-                request(ORCHESTRATION_V2_WS_METHODS.readMachineHandoffBundle, {
-                  handoffId,
-                  ...slice,
-                }),
-              ),
-            writeBundle: (chunk) =>
-              inEnvironment(
-                target.environmentId,
-                request(ORCHESTRATION_V2_WS_METHODS.writeMachineHandoffBundle, {
-                  handoffId,
-                  ...chunk,
-                }),
-              ),
-            adopt: inEnvironment(
-              target.environmentId,
-              request(ORCHESTRATION_V2_WS_METHODS.adoptMachineHandoff, {
-                handoffId,
-                projectId: input.target.projectId,
-                continueWork: input.continueWork,
-              }),
-            ),
-            complete: (adopted) =>
-              inEnvironment(
-                origin.environmentId,
-                completeMachineHandoff({
-                  threadId: origin.threadId,
-                  handoffId,
-                  target: { ...target, threadId: adopted.threadId },
-                }),
-              ),
-            fail: (error) =>
-              inEnvironment(
-                origin.environmentId,
-                failMachineHandoff({ threadId: origin.threadId, handoffId, error }),
-              ),
-            progress: (progress) =>
-              Effect.sync(() => registry.set(progressAtom(handoffId), progress)),
-          },
-        }).pipe(
-          Effect.ensuring(Effect.sync(() => registry.set(progressAtom(handoffId), null))),
-          Effect.mapError((cause) =>
-            cause instanceof MachineHandoffTransferError
-              ? cause
-              : new MachineHandoffTransferError({ message: cause.message }),
+    execute: Effect.fn("execute")(function* (input: RunMachineHandoffInput, registry) {
+      const environments = yield* EnvironmentRegistry.EnvironmentRegistry;
+      const context = yield* Effect.context<
+        EnvironmentRegistry.EnvironmentRegistry | Crypto.Crypto
+      >();
+      const inEnvironment = <A, EE>(
+        environmentId: EnvironmentId,
+        effect: Effect.Effect<
+          A,
+          EE,
+          EnvironmentSupervisor | EnvironmentRegistry.EnvironmentRegistry | Crypto.Crypto
+        >,
+      ) =>
+        environments.run(environmentId, effect).pipe(
+          Effect.provide(context),
+          Effect.mapError(
+            (cause) =>
+              new MachineHandoffTransferError({ message: describeMachineHandoffFailure(cause) }),
           ),
         );
-      }),
+      const origin = input.origin;
+      const target = {
+        environmentId: input.target.environmentId,
+        threadId: input.target.threadId,
+        ...(input.target.environmentLabel === undefined
+          ? {}
+          : { environmentLabel: input.target.environmentLabel }),
+      };
+      const handoffId = input.handoffId;
+      const shellAtom = options.threadShellAtom(origin);
+      // Starting or retrying gives the record a new start time; only an
+      // outcome of that attempt counts, not the state it replaces.
+      const before = registry.get(shellAtom)?.machineHandoff;
+      const previousStart =
+        input.mode === "resume" || before?.id !== handoffId ? undefined : before.startedAt;
+      let seen = input.mode === "resume";
+      return yield* runMachineHandoff({
+        resume: input.mode === "resume",
+        ports: {
+          start: inEnvironment(
+            origin.environmentId,
+            input.mode === "retry"
+              ? retryMachineHandoff({ threadId: origin.threadId, handoffId })
+              : startMachineHandoff({ threadId: origin.threadId, handoffId, target }),
+          ),
+          awaitStaged: awaitAtomValue(
+            registry,
+            shellAtom,
+            (shell): OrchestrationV2MachineHandoff | null | undefined => {
+              const handoff = shell?.machineHandoff ?? null;
+              if (handoff?.id === handoffId && handoff.startedAt !== previousStart) {
+                seen = true;
+                return handoff.state === "exporting" ? undefined : handoff;
+              }
+              // Gone after we saw it: cancelled from another device.
+              return seen && handoff?.id !== handoffId ? null : undefined;
+            },
+          ),
+          readBundle: (slice) =>
+            inEnvironment(
+              origin.environmentId,
+              request(ORCHESTRATION_V2_WS_METHODS.readMachineHandoffBundle, {
+                handoffId,
+                ...slice,
+              }),
+            ),
+          writeBundle: (chunk) =>
+            inEnvironment(
+              target.environmentId,
+              request(ORCHESTRATION_V2_WS_METHODS.writeMachineHandoffBundle, {
+                handoffId,
+                ...chunk,
+              }),
+            ),
+          adopt: inEnvironment(
+            target.environmentId,
+            request(ORCHESTRATION_V2_WS_METHODS.adoptMachineHandoff, {
+              handoffId,
+              projectId: input.target.projectId,
+              continueWork: input.continueWork,
+            }),
+          ),
+          complete: (adopted) =>
+            inEnvironment(
+              origin.environmentId,
+              completeMachineHandoff({
+                threadId: origin.threadId,
+                handoffId,
+                target: { ...target, threadId: adopted.threadId },
+              }),
+            ),
+          fail: (error) =>
+            inEnvironment(
+              origin.environmentId,
+              failMachineHandoff({ threadId: origin.threadId, handoffId, error }),
+            ),
+          progress: (progress) =>
+            Effect.sync(() => registry.set(progressAtom(handoffId), progress)),
+        },
+      }).pipe(
+        Effect.ensuring(Effect.sync(() => registry.set(progressAtom(handoffId), null))),
+        Effect.mapError((cause) =>
+          cause instanceof MachineHandoffTransferError
+            ? cause
+            : new MachineHandoffTransferError({ message: cause.message }),
+        ),
+      );
+    }),
   });
   return { run, progressAtom };
 }

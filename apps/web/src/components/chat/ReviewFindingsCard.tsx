@@ -1,9 +1,6 @@
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
-import {
-  pullRequestHostOf,
-  type ScopedThreadRef,
-  SourceControlProviderKind,
-} from "@t3tools/contracts";
+import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
+import { type ScopedThreadRef, SourceControlProviderKind } from "@t3tools/contracts";
 import { ExternalLinkIcon, FileCodeIcon } from "lucide-react";
 import { memo, useMemo } from "react";
 
@@ -69,7 +66,9 @@ function useReviewFindingTargets(
     const identity = project?.repositoryIdentity;
     const host =
       pullRequest.host ??
-      (identity ? pullRequestHostOf(identity, SourceControlProviderKind.make("github")) : null);
+      (identity
+        ? sourceControlClients.changeRequestHost(identity, SourceControlProviderKind.make("github"))
+        : null);
     const repository =
       pullRequest.repository ??
       identity?.displayName ??

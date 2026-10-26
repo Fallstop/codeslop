@@ -23,8 +23,14 @@ export function runServicePreflight(input: {
     return {
       status: "blocked",
       version,
-      reason:
-        "This release requires a newer codeslop service launcher. Update it on the server machine.",
+      // A stale `slop` earlier on PATH makes `slop service install` reinstall
+      // itself and report success, so name the exact install and the path check.
+      reason: [
+        `The installed service launcher speaks protocol ${input.launcherProtocol}, but slop ${version} requires protocol ${SERVICE_LAUNCHER_PROTOCOL}.`,
+        `On the server machine, install this exact CLI: \`curl -fsSL https://raw.githubusercontent.com/Fallstop/codeslop/main/scripts/install.sh | T3CODE_VERSION=${version} sh\`.`,
+        `Check that \`slop --version\` prints ${version} and that \`which -a slop\` lists no older slop first, then run \`~/.local/bin/slop service install\` (the installer's default path).`,
+        "Updating the desktop app does not update this CLI, and `slop service update` only repairs the service with whichever CLI runs it.",
+      ].join(" "),
     };
   }
 
