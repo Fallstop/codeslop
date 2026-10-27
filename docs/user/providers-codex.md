@@ -1,18 +1,18 @@
 # Codex
 
-Use your ChatGPT plan or an existing Codex CLI login to code in T3 Code.
+Use your ChatGPT plan or an existing Codex CLI login to code in codeslop.
 
 ## Connect with ChatGPT
 
 Connect during onboarding or in **Settings → Providers**. For a remote machine,
-select that environment first. T3 Code handles Codex installation; sign in on
+select that environment first. codeslop handles Codex installation; sign in on
 OpenAI and allow sharing of your ChatGPT plan.
 
-Manage shared usage and credits in ChatGPT through **Manage usage** in T3 Code.
+Manage shared usage and credits in ChatGPT through **Manage usage** in codeslop.
 If a request uses a feature that ChatGPT sharing does not support, use another
 provider for that request.
 
-When reconnecting, choose the same account in T3 Code and on OpenAI's sign-in
+When reconnecting, choose the same account in codeslop and on OpenAI's sign-in
 page. Disconnecting stops running threads but keeps their history and lets you
 reconnect later.
 
@@ -21,7 +21,7 @@ localhost page into the sign-in panel, even if that page could not load.
 
 ## Use an existing Codex login
 
-T3 Code can use your installed Codex and its existing login. Run `codex login`
+codeslop can use your installed Codex and its existing login. Run `codex login`
 on the environment's machine to sign in. [Provider setup](./install.md#providers)
 covers installation and custom configuration.
 
@@ -29,7 +29,7 @@ covers installation and custom configuration.
 
 Add another ChatGPT account in **Settings → Providers**, then select the account
 from the thread's model picker. Compatible accounts can continue the same thread.
-Connecting accounts through T3 Code leaves your CLI login unchanged.
+Connecting accounts through codeslop leaves your CLI login unchanged.
 
 ### Multiple CLI logins
 

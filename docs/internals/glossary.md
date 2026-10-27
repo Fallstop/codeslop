@@ -15,7 +15,7 @@ Terms whose meaning matters across codeslop. Architecture and lifecycle constrai
 | Thread         | The durable conversation and work history for a project. It survives provider process exits.      |
 | Turn           | One user-to-agent cycle, a V2 run. Provider work can end before checkpoint and diff work settles. |
 | Activity       | A non-message timeline item, such as a tool action, approval, or failure.                         |
-| T3 home        | The base data directory. Runtime state normally lives under its `userdata` directory.             |
+| codeslop home  | The base data directory. Runtime state normally lives under its `userdata` directory.             |
 
 ## Orchestration
 

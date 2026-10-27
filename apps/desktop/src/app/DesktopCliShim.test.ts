@@ -45,7 +45,7 @@ const fakeAppImage = (canMount = true) => {
   const root = tempRoot();
   const image = NodePath.join(root, "image");
   writeExecutable(NodePath.join(image, "t3code"), REPORTER);
-  const appImage = NodePath.join(root, "T3 Code.AppImage");
+  const appImage = NodePath.join(root, "codeslop.AppImage");
   writeExecutable(
     appImage,
     [
@@ -73,7 +73,7 @@ describe("renderCliShim", () => {
     );
   });
 
-  it("keeps the install's T3 home under sudo, unless one is set", () => {
+  it("keeps the install's codeslop home under sudo, unless one is set", () => {
     const root = tempRoot();
     writeExecutable(NodePath.join(root, "app"), REPORTER);
     const shim = writeShim(root, {
@@ -89,7 +89,7 @@ describe("renderCliShim", () => {
 
   it("runs an installed app's server directly", () => {
     const root = tempRoot();
-    const executable = NodePath.join(root, "opt", "T3 Code", "t3code");
+    const executable = NodePath.join(root, "opt", "codeslop", "t3code");
     writeExecutable(executable, REPORTER);
     const shim = writeShim(root, {
       kind: "direct",
@@ -107,14 +107,14 @@ describe("renderCliShim", () => {
   it("still recognises launchers written before the rebrand", () => {
     expect(
       isAppWrittenLauncher(
-        "#!/bin/sh\n# Written by T3 Code: runs the desktop app's bundled t3 CLI.\n",
+        "#!/bin/sh\n# Written by codeslop: runs the desktop app's bundled t3 CLI.\n",
       ),
     ).toBe(true);
     expect(isAppWrittenLauncher("#!/bin/sh\nexec some-other-t3\n")).toBe(false);
   });
 
   it("writes a Windows launcher that keeps cmd from reinterpreting paths", () => {
-    const executable = "C:\\Apps\\R&whoami&X 100%\\!CHANNEL!\\T3 Code.exe";
+    const executable = "C:\\Apps\\R&whoami&X 100%\\!CHANNEL!\\codeslop.exe";
     const script = renderCliShim({
       target: { kind: "windows", executable, entry: "C:\\Apps\\server.asar\\bin.mjs" },
       shimPath: "C:\\Users\\José\\.t3\\bin\\t3.cmd",
@@ -124,7 +124,7 @@ describe("renderCliShim", () => {
     expect(lines).toContain("setlocal EnableExtensions DisableDelayedExpansion");
     expect(lines).toContain("chcp 65001 >nul");
     expect(lines).toContain(
-      'if exist "C:\\Apps\\R&whoami&X 100%%\\!CHANNEL!\\T3 Code.exe" goto run',
+      'if exist "C:\\Apps\\R&whoami&X 100%%\\!CHANNEL!\\codeslop.exe" goto run',
     );
     const bare = lines.filter(
       (line) => line.includes("whoami") && !/"[^"]*whoami[^"]*"/.test(line),

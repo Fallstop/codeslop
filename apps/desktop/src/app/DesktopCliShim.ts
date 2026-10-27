@@ -11,7 +11,7 @@ const { logInfo, logWarning } = makeComponentLogger("desktop-cli-shim");
 
 export const MARKER = "Written by codeslop: runs the desktop app's bundled slop CLI.";
 // Launchers written before the rebrand carry this marker and are still ours to replace.
-const LEGACY_MARKER = "Written by T3 Code: runs the desktop app's bundled t3 CLI.";
+const LEGACY_MARKER = "Written by codeslop: runs the desktop app's bundled t3 CLI.";
 export const isAppWrittenLauncher = (content: string) =>
   content.includes(MARKER) || content.includes(LEGACY_MARKER);
 

@@ -40,7 +40,7 @@ preview toolkit and the orchestration toolkit.
 Before `ProviderSessionManager` opens a new V2 provider session, it asks
 `McpSessionRegistry` for a credential scoped to:
 
-- the T3 environment;
+- the codeslop environment;
 - the parent T3 thread;
 - the concrete provider instance; and
 - the provider session.
@@ -147,7 +147,7 @@ provider-specific extensions; those remain in flavors such as Grok.
 
 T3 keeps a provider-session HTTP bridge even when Pi supports native MCP.
 `mcp.json` entries override native registrations, and native MCP's default
-60-second request timeout can interrupt long-running T3 tools. The bridge owns
+60-second request timeout can interrupt long-running codeslop tools. The bridge owns
 the injected endpoint and credential and forwards Pi's cancellation signal.
 
 When a provider session credential exists, the adapter writes a T3-owned
@@ -270,9 +270,8 @@ provider session. The request becomes the V2 command
 the timeout expires. A wait timeout does not cancel the child; the result sets
 `waitTimedOut: true`, and the caller can continue with `task_status`. A pending blocking
 question also ends the wait with `hasPendingQuestion: true` and `waitTimedOut: false`.
-If `hasPendingQuestion`, pass `threadId=childThreadId` to `t3_pending_request_list`,
-`t3_pending_request_read` (with `requestId`) and `t3_pending_request_respond`, or ask
-the user; the task's completion still wakes this thread. A pending live approval for the
+If `hasPendingQuestion`, pass `threadId=childThreadId` to `t3_pending_request` with
+action `list`, `read` (with `requestId`), or `respond`, or ask the user; the task's completion still wakes this thread. A pending live approval for the
 task's own unfinished work also ends the wait. Its identity appears in `pendingApproval`;
 it grants no approval authority. Read the fresh full request in the child thread before
 responding, since the durable record can outlive its provider callback. Async questions

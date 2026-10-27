@@ -234,10 +234,10 @@ describe("DesktopLinuxUrlHandler", () => {
 
     return Effect.gen(function* () {
       yield* runRegister(recorded, {
-        environment: { desktopLauncherPath: Option.some("/opt/T3 Code/t3code") },
+        environment: { desktopLauncherPath: Option.some("/opt/codeslop/t3code") },
       });
 
-      assert.include(recorded.files[0]?.content, 'Exec="/opt/T3 Code/t3code" %U');
+      assert.include(recorded.files[0]?.content, "Exec=/opt/codeslop/t3code %U");
     });
   });
 

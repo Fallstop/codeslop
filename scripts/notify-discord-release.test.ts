@@ -21,7 +21,7 @@ import {
 const latestAnnouncement = {
   target: "latest",
   roleId: "222222222222222222",
-  releaseName: "T3 Code v1.2.3",
+  releaseName: "codeslop v1.2.3",
   version: "1.2.3",
   tag: "v1.2.3",
   releaseUrl: new URL("https://github.com/pingdotgg/t3code/releases/tag/v1.2.3"),

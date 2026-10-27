@@ -72,7 +72,7 @@ function makeWindowsRevealWindow() {
     show: vi.fn(),
     moveTop: vi.fn(),
     focus: vi.fn(),
-    getTitle: vi.fn(() => "T3 Code (Dev)"),
+    getTitle: vi.fn(() => "codeslop (Dev)"),
     getBounds: vi.fn(() => ({ x: 100, y: 50, width: 1_200, height: 800 })),
     getContentBounds: vi.fn(() => ({ x: 108, y: 50, width: 1_184, height: 792 })),
     getNativeWindowHandle: vi.fn(() => Buffer.from([41, 0, 0, 0])),
@@ -160,6 +160,22 @@ describe("ElectronWindow", () => {
         assert.strictEqual(error.cause, cause);
       }
       assert.equal(vi.mocked(laterWindow.destroy).mock.calls.length, 1);
+    }).pipe(Effect.provide(layerTest)),
+  );
+
+  it.effect("never falls back to an auxiliary window as the main window", () =>
+    Effect.gen(function* () {
+      const electronWindow = yield* ElectronWindow.ElectronWindow;
+      const auxiliary = yield* electronWindow.create({}, { auxiliary: true });
+      const ordinary = { isDestroyed: () => false } as unknown as Electron.BrowserWindow;
+      Object.assign(auxiliary, { isDestroyed: () => false });
+
+      getAllWindowsMock.mockReturnValue([auxiliary]);
+      assert.isTrue((yield* electronWindow.currentMainOrFirst)._tag === "None");
+
+      getAllWindowsMock.mockReturnValue([auxiliary, ordinary]);
+      const current = yield* electronWindow.currentMainOrFirst;
+      assert.isTrue(current._tag === "Some" && current.value === ordinary);
     }).pipe(Effect.provide(layerTest)),
   );
 });

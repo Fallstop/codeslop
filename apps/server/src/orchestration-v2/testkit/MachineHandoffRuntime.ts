@@ -37,9 +37,24 @@ export const workspaceWithRemote = Effect.gen(function* () {
   return { cwd, remote };
 }).pipe(Effect.provide(NodeServices.layer));
 
+// Handoff fixtures use local bare remotes, which production identity discovery deliberately ignores.
+const repositoryIdentityLayer = Layer.mock(RepositoryIdentityResolver.RepositoryIdentityResolver)({
+  resolve: Effect.fn("MachineHandoffRuntime.resolveRepositoryIdentity")(function* (cwd: string) {
+    const remotes = yield* git(cwd, ["remote", "-v"]);
+    const remote = /^origin\s+(\S+)\s+\(fetch\)$/m.exec(remotes)?.[1];
+    return remote === undefined
+      ? null
+      : {
+          canonicalKey: remote,
+          rootPath: cwd,
+          locator: { source: "git-remote" as const, remoteName: "origin", remoteUrl: remote },
+        };
+  }),
+});
+
 /** The orchestration runtime with the real handoff service over real git. */
 export const machineHandoffRuntime = (adapter: ProviderAdapterV2Shape, name: string) => {
-  const gitLayer = Layer.mergeAll(GitVcsDriver.layer, RepositoryIdentityResolver.layer).pipe(
+  const gitLayer = Layer.mergeAll(GitVcsDriver.layer, repositoryIdentityLayer).pipe(
     Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: `t3-${name}-git-` })),
     Layer.provideMerge(VcsProcess.layer),
     Layer.provideMerge(NodeServices.layer),

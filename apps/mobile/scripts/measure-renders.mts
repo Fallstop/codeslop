@@ -339,7 +339,7 @@ const command = Command.make(
   "measure-renders",
   {
     server: Flag.String("server").pipe(
-      Flag.withDescription("T3 server origin the app is paired with."),
+      Flag.withDescription("codeslop server origin the app is paired with."),
       Flag.withDefault(""),
     ),
     token: Flag.String("token").pipe(

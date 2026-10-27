@@ -18,7 +18,7 @@ and choose **Rescan**.
 
 ### GitHub
 
-T3 Code talks to GitHub's API directly and only needs a token. Any of these works, in this
+codeslop talks to GitHub's API directly and only needs a token. Any of these works, in this
 order of precedence:
 
 1. A token saved in **Settings → Source control → GitHub**. It is kept in the server's secret
@@ -31,17 +31,17 @@ If `gh` is signed in to several accounts or hosts, expand **GitHub** in the same
 the account each host uses or turn a host off. A saved token or `GH_TOKEN` takes precedence
 over that choice; a host turned off stays off either way.
 
-For GitHub Enterprise, sign in with `gh auth login --hostname YOUR_HOST`. T3 Code treats a
+For GitHub Enterprise, sign in with `gh auth login --hostname YOUR_HOST`. codeslop treats a
 custom server name as GitHub once it has a credential for that host.
 
 ### Forgejo and Gitea
 
 Install [Forgejo CLI (`fj`)](https://codeberg.org/forgejo-contrib/forgejo-cli) or
-[Gitea CLI (`tea`)](https://gitea.com/gitea/tea) 0.16 or later on your T3 Code server.
+[Gitea CLI (`tea`)](https://gitea.com/gitea/tea) 0.16 or later on your codeslop server.
 Sign in with `fj --host https://your-server auth add-token` or `tea login add`.
 Repeat for each server you use, including Codeberg.
 
-T3 Code prefers a matching `fj` login and falls back to `tea` when `fj` is unavailable
+codeslop prefers a matching `fj` login and falls back to `tea` when `fj` is unavailable
 or has no login for that server. Once an account is selected, failed actions stay on that
 account. Settings shows the detected CLI. Forgejo and Gitea share one integration entry.
 Servers hosted under a URL subpath, such as `https://example.com/forgejo`, use `tea` because
@@ -77,7 +77,7 @@ Credentials are saved on the environment's server, so select a remote environmen
 it. Saved tokens can't be viewed again; enter a new one to replace it, or choose **Remove** to clear
 everything saved for Bitbucket.
 
-If no credentials are saved, T3 Code falls back to these variables in the server's environment.
+If no credentials are saved, codeslop falls back to these variables in the server's environment.
 Restart the server after changing them:
 
 ```bash
@@ -89,7 +89,7 @@ export T3CODE_BITBUCKET_API_TOKEN="your-token"
 
 For a background service, put these `KEY=VALUE` entries in
 [`service.env`](./background-service.md#configure-the-service-environment)
-under T3 home, then run `slop service restart`. Service installation and updates
+under codeslop home, then run `slop service restart`. Service installation and updates
 preserve that file.
 
 ### Azure DevOps
@@ -122,7 +122,7 @@ Merging a stack lands it through GitCafe, and updating a branch restacks the lay
 ## Start, clone, or publish a project
 
 To start from nothing, choose **New project** in the command palette (`Cmd/Ctrl+K`), or
-**New project** under **Add Project** on any client, and type a name. T3 Code makes a Git
+**New project** under **Add Project** on any client, and type a name. codeslop makes a Git
 repository in `~/.t3/projects` (the `projects` folder of your T3 data directory) with a README,
 an icon, and a first commit, then opens a new thread in it. Until the project has a thread, new
 threads work in its folder, even when your default is a new worktree. The folder is named after the project,
@@ -183,7 +183,7 @@ Press **Escape** before releasing to cancel. Failed closes stay in the list so y
 GitHub, GitLab, and Azure DevOps support auto-merge while checks are outstanding. GitHub also
 supports approving waiting fork workflows and opening a revert pull request for a merged change.
 
-Pull request sharing is off by default. In Settings → Connections → Pull request sharing (Pull
+Pull request sharing is off by default. In Settings → Environments → Pull request sharing (Pull
 request routing under Environments on mobile), choose **Read PRs** or **Read and act** for each
 environment you trust to share its source control access.
 Enable both the original environment and the environment answering its requests on this client.
@@ -243,10 +243,10 @@ Tick a file off in the **Code** tab once you have read it and it collapses; the 
 running count. A tick belongs to the pull request rather than to a commit, so scoping the tab to a
 single commit keeps them. A file pushed to after you cleared it comes back marked **Changed**.
 
-On GitHub these are GitHub's own viewed marks, so a review carries between T3 Code and github.com
-in either direction. Forgejo, GitLab, Bitbucket, and Azure DevOps expose no record T3 Code can read, so the
+On GitHub these are GitHub's own viewed marks, so a review carries between codeslop and github.com
+in either direction. Forgejo, GitLab, Bitbucket, and Azure DevOps expose no record codeslop can read, so the
 server you are connected to keeps them instead: they follow you across the apps connected to that
-server, but the host's own site will not show them, and the count reads **viewed in T3 Code**.
+server, but the host's own site will not show them, and the count reads **viewed in codeslop**.
 
 On mobile, open a changed file and mark it viewed from its header. Viewed files collapse,
 and their marks follow the same rules as on web and desktop.

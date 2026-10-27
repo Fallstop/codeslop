@@ -308,7 +308,7 @@ export default async function t3McpExtension(pi: ExtensionAPI) {
     const extensionPath = env(EXTENSION_PATH_ENV);
     if (extensionPath === undefined || !readOnlyMcpTools.has(name) || typeof pi.getAllTools !== "function") return false;
     // A user extension may own the same name. Only our registered HTTP bridge
-    // may inherit the canonical T3 server's read-only annotation.
+    // may inherit the canonical codeslop server's read-only annotation.
     return pi.getAllTools().some((tool) => tool.name === name &&
       typeof tool.sourceInfo?.path === "string" &&
       NodePath.resolve(tool.sourceInfo.path) === NodePath.resolve(extensionPath));

@@ -75,6 +75,9 @@ import {
 import { UserMessageContextReferenceChip } from "./UserMessageContextChips";
 import { resolvePreviewAnnotationImage } from "./TimelineUserMessageRow.logic";
 
+const BUBBLE_CHIP_CLASS_NAME =
+  "[&_[data-slot=context-chip]]:[--context-chip-ink:var(--context-chip-message,var(--context-chip-accent))]";
+
 function UserVideoAttachment({ file }: { readonly file: ChatFileAttachment }) {
   const ctx = use(TimelineRowCtx);
   // Row updates rebuild attachment objects, so the asset follows only the
@@ -165,9 +168,11 @@ function AutomationMessageRow({ row }: { row: Extract<TimelineRow, { kind: "mess
       <div
         className={cn(
           "min-w-0 max-w-[80%] rounded-2xl bg-message text-message-foreground",
+          BUBBLE_CHIP_CLASS_NAME,
           expanded && "w-full",
         )}
       >
+        <MessageAuthorHeading>Automation</MessageAuthorHeading>
         <FoldedMessageHeader
           icon={CalendarClockIcon}
           label="Automation"
@@ -311,6 +316,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       ? { environmentId: ctx.activeThreadEnvironmentId, threadId: senderThreadId }
       : null,
   );
+  const senderLabel = senderShell?.title.trim() || "Agent";
   const resolvedContext = resolveUserMessageContext(
     userMessage.attribution === "guest" ? { ...row.message, text: userMessage.text } : row.message,
   );
@@ -452,15 +458,24 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       <div
         className={cn(
           "relative min-w-0 max-w-[80%] rounded-2xl text-message-foreground",
+          BUBBLE_CHIP_CLASS_NAME,
           userMessage.attribution === "guest" ? guestBubbleClassName(false) : "bg-message",
           !folded && "p-3",
           folded && expanded && "w-full",
         )}
       >
+        {/* Outside the fold so a collapsed message still has a heading to navigate to. */}
+        <MessageAuthorHeading>
+          {folded
+            ? senderLabel
+            : userMessage.guestName === undefined
+              ? "You"
+              : `${userMessage.guestName} (guest)`}
+        </MessageAuthorHeading>
         {folded ? (
           <FoldedMessageHeader
             icon={MessagesSquareIcon}
-            label={senderShell?.title.trim() || "Agent"}
+            label={senderLabel}
             summary={foldSummary}
             expanded={expanded}
             onToggle={() => setExpanded((value) => !value)}
@@ -476,9 +491,6 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
               folded && !ctx.findActive && "max-h-96 overflow-auto",
             )}
           >
-            <MessageAuthorHeading>
-              {userMessage.guestName === undefined ? "You" : `${userMessage.guestName} (guest)`}
-            </MessageAuthorHeading>
             {(regularImages.length > 0 || userVideos.length > 0) && (
               <div className="mb-2 grid max-w-[210px] grid-cols-2 gap-2">
                 {regularImages.map((image) => (

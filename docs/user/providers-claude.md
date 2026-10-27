@@ -39,7 +39,7 @@ For presets that differ only in API keys or endpoints, use the instance's
 
 Claude Code's verbose mode can stay enabled when you use Claude for text generation, including
 thread titles, branch names, commit messages, and pull request descriptions. On a remote connection,
-T3 Code uses the Claude configuration on the connected server.
+codeslop uses the Claude configuration on the connected server.
 
 ## Compact long conversations
 
@@ -57,13 +57,13 @@ history for that message. The cache lasts about an hour on a Claude
 subscription and 5 minutes with an API key, Bedrock, or Vertex. See [commands and skills](./composer.md#commands-and-skills) for using
 composer commands.
 
-**Compact idle threads** in **Settings > General** controls this for threads
+**Compact idle threads** in **Settings > Providers > Advanced** controls this for threads
 over 200,000 tokens. Each Claude provider's settings can override it:
 
 - **When you return** shows the **Compact** chip described above. This is the default.
 - **Before the cache expires (beta)** compacts an idle thread shortly before its
   prompt cache expires, so coming back does not reprocess the whole conversation.
-  The compaction appears in the thread as a `/compact` turn sent by T3 Code.
+  The compaction appears in the thread as a `/compact` turn sent by codeslop.
 - **Never** skips idle compaction and Claude's resume prompt. **Auto-compact after**
   still applies, and you can still compact by hand.
 
@@ -91,8 +91,8 @@ tool, which refuses skills reserved for manual invocation.
 
 To show Claude task lists in the web and desktop apps, add
 `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` under **Variables** in the Claude instance's
-**Environment** section in **Settings > Providers**. Unfinished tasks stay visible
-between turns in the same Claude session.
+**Environment** section in **Settings > Providers**. Each update shows as a Tasks
+row in the thread; open it to see every step.
 
 ## OpenRouter
 
@@ -110,11 +110,11 @@ If that Claude config directory has a cached Anthropic login, run `/logout` in a
 Claude Code session using that directory before starting the router setup. Cached
 login credentials can conflict with the router token.
 
-Select the model you want in T3 Code. For an OpenRouter model outside the built-in
+Select the model you want in codeslop. For an OpenRouter model outside the built-in
 list, open that Claude instance in **Settings > Providers** and add its full model
 ID with **Add custom model**. Then select it in the chat model picker.
 `ANTHROPIC_DEFAULT_*_MODEL` variables map Claude Code aliases such as `sonnet`; they
-do not replace the explicit model ID selected in T3 Code. Custom models may have
+do not replace the explicit model ID selected in codeslop. Custom models may have
 fewer effort, thinking, or context controls than built-in models.
 
 Verify the model used in OpenRouter's activity dashboard. For current compatibility

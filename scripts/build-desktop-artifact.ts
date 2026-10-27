@@ -2148,14 +2148,7 @@ const findStorePackageDirectory = Effect.fn("findStorePackageDirectory")(functio
  */
 const NATIVE_ADDON_SCAN_DEPTH = 5;
 
-/**
- * Whether a package ships a `.node` addon anywhere in its own tree.
- *
- * The marker files below only describe packages that build or fetch their
- * addon. onnxruntime-node ships prebuilt binaries in the tarball under a path
- * of its own invention, so it carries no marker at all and was inlined into the
- * bundle unnoticed, which broke semantic search in every packaged build.
- */
+// Prebuilt addons can lack install markers, so inspect package contents before bundling.
 const shipsNativeAddon = Effect.fn("shipsNativeAddon")(function* (packageDir: string) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -3587,6 +3580,42 @@ export const validateWindowsPackagedPayload = Effect.fn(
   return { packagedAppDir, fileCount, unpackedFiles } as const;
 });
 
+export class MacPackagedAppMissingError extends Schema.TaggedError<MacPackagedAppMissingError>()(
+  "MacPackagedAppMissingError",
+  { stageDistDir: Schema.String },
+) {
+  override get message(): string {
+    return `Expected electron-builder to leave a packaged .app with Contents/Resources/app.asar under ${this.stageDistDir}/mac*.`;
+  }
+}
+
+export const validateMacPackagedPayload = Effect.fn("desktopArtifact.validateMacPackagedPayload")(
+  function* (input: { readonly stageDistDir: string; readonly verbose?: boolean }) {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const asarPaths: string[] = [];
+    for (const entry of yield* fs.readDirectory(input.stageDistDir)) {
+      if (!entry.startsWith("mac")) continue;
+      const outputDir = path.join(input.stageDistDir, entry);
+      const apps = yield* fs.readDirectory(outputDir).pipe(Effect.orElseSucceed(() => []));
+      for (const app of apps) {
+        if (app.endsWith(".app")) {
+          asarPaths.push(path.join(outputDir, app, "Contents/Resources/app.asar"));
+        }
+      }
+    }
+    if (asarPaths.length === 0) {
+      return yield* new MacPackagedAppMissingError({ stageDistDir: input.stageDistDir });
+    }
+    for (const asarPath of asarPaths) {
+      yield* verifyPackagedBundleIsSelfContained({ asarPath, verbose: input.verbose ?? false });
+    }
+    yield* Effect.log(
+      `[desktop-artifact] Validated macOS payload (${String(asarPaths.length)} app bundle(s)).`,
+    );
+  },
+);
+
 const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(function* (
   options: ResolvedBuildOptions,
 ) {
@@ -4083,6 +4112,10 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
       }),
       verbose: options.verbose,
     });
+  }
+  // x64 builds on arm64 runners; the arm64 check covers the shared JS bundle.
+  if (options.platform === "mac" && options.arch === "arm64" && hostPlatform === "darwin") {
+    yield* validateMacPackagedPayload({ stageDistDir, verbose: options.verbose });
   }
 
   const stageEntries = yield* fs.readDirectory(stageDistDir);

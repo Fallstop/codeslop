@@ -643,7 +643,7 @@ set `VITE_RELEASE_CHANNEL=preview` because their `APP_VERSION` must stay compara
 server's, and the mobile app maps its build variant (`development`, `preview`, `production`), or
 reports `dev` from a development bundle.
 
-Attributes specific to T3 Code use the `t3code.` prefix. The UI runs as `t3code-web` in both a
+Attributes specific to codeslop use the `t3code.` prefix. The UI runs as `t3code-web` in both a
 browser and the desktop window, since it is the same code, and `t3code.client.surface` is `desktop`
 or `web`. The server's `t3code.server.managed_by` is `desktop` when the desktop app launched it and
 `standalone` otherwise. The desktop main process reports `t3code.desktop.mode` as `development` or

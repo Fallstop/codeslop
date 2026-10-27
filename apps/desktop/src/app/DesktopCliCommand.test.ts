@@ -23,7 +23,7 @@ const environmentFor = (
     homeDirectory: input.home,
     baseDir: input.baseDir,
     stateDir: path.join(input.baseDir, "userdata"),
-    serverRoot: "/opt/T3 Code/resources/app.asar",
+    serverRoot: "/opt/codeslop/resources/app.asar",
     appImagePath: Option.none(),
   } as unknown as DesktopEnvironment.DesktopEnvironment["Service"]);
 
@@ -138,7 +138,7 @@ it.layer(NodeServices.layer)("DesktopCliCommand", (it) => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect("finds and removes a link left by a previous T3 home", () =>
+  it.effect("finds and removes a link left by a previous codeslop home", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -165,7 +165,7 @@ it.layer(NodeServices.layer)("DesktopCliCommand", (it) => {
       yield* fs.makeDirectory(path.dirname(legacyLauncher), { recursive: true });
       yield* fs.writeFileString(
         legacyLauncher,
-        "#!/bin/sh\n# Written by T3 Code: runs the desktop app's bundled t3 CLI.\n",
+        "#!/bin/sh\n# Written by codeslop: runs the desktop app's bundled t3 CLI.\n",
       );
       const legacyLink = path.join(home, ".local", "bin", "t3");
       yield* fs.makeDirectory(path.dirname(legacyLink), { recursive: true });

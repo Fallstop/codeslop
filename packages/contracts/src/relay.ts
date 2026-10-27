@@ -331,7 +331,7 @@ export const RelayEnvironmentLinkRequest = Schema.Struct({
   notificationsEnabled: Schema.Boolean,
   liveActivitiesEnabled: Schema.Boolean,
   managedTunnelsEnabled: Schema.Boolean,
-}).annotate({ description: "Links an authenticated cloud user to a T3 environment." });
+}).annotate({ description: "Links an authenticated cloud user to a codeslop environment." });
 export type RelayEnvironmentLinkRequest = typeof RelayEnvironmentLinkRequest.Type;
 
 export const RelayEnvironmentLinkResponse = Schema.Struct({
@@ -382,7 +382,7 @@ export type RelayEnvironmentEndpointUnavailableReason =
 /**
  * Which part of the path from the relay to the environment failed. `tunnel_down`
  * means Cloudflare has no live connector for the tunnel; `origin_unreachable`
- * means the tunnel answered but T3 Code behind it did not. Optional on the wire
+ * means the tunnel answered but codeslop behind it did not. Optional on the wire
  * so old relays and old clients keep working.
  */
 export const RelayEnvironmentEndpointFailure = Schema.Literals([
@@ -1250,6 +1250,22 @@ const RelayHooksGroup = HttpApiGroup.make("hooks")
   )
   .annotate(OpenApi.Description, "Forward webhook requests to an environment.");
 
+export const RelayMobileTelemetrySignal = Schema.Literals(["logs", "metrics", "traces"]);
+export type RelayMobileTelemetrySignal = typeof RelayMobileTelemetrySignal.Type;
+
+// expo-observe appends `<easProjectId>/v1/<signal>` to its endpoint URL and cannot send credentials.
+const RelayMobileTelemetryParams = Schema.Struct({
+  projectId: Schema.String.check(Schema.isGUID()),
+  signal: RelayMobileTelemetrySignal,
+});
+const RelayMobileTelemetryGroup = HttpApiGroup.make("mobileTelemetry")
+  .add(
+    HttpApiEndpoint.post("ingest", "/v1/mobile/observe/:projectId/v1/:signal", {
+      params: RelayMobileTelemetryParams,
+    }),
+  )
+  .annotate(OpenApi.Description, "Receive mobile app telemetry from expo-observe.");
+
 export const RelayApi = HttpApi.make("RelayApi")
   .add(
     RelayHealthGroup,
@@ -1260,6 +1276,7 @@ export const RelayApi = HttpApi.make("RelayApi")
     RelayDpopClientGroup,
     RelayServerGroup,
     RelayHooksGroup,
+    RelayMobileTelemetryGroup,
   )
   .annotate(OpenApi.Title, "codeslop Relay API")
   .annotate(OpenApi.Version, "1.0.0")

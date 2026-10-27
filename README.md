@@ -1,6 +1,6 @@
 # codeslop
 
-**T3 Code except less cringe.**
+**codeslop except less cringe.**
 
 A fork of [pingdotgg/t3code](https://github.com/pingdotgg/t3code), tracking upstream
 and adding:

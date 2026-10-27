@@ -50,11 +50,11 @@ We need to be on the same page with terminology. When communicating, use this la
 - **agent** means the coding agent a user runs inside codeslop. Depending on context, that may also include you.
 - **provider** means the agent runtime or harness codeslop talks to, such as Codex, Claude, Cursor, or OpenCode.
 - **client** means the web, desktop, or mobile UI.
-- **environment** means one running T3 server and the machine, filesystem, provider credentials, and state it owns.
+- **environment** means one running codeslop server and the machine, filesystem, provider credentials, and state it owns.
 - **project** means an environment-local workspace record rooted at a directory.
 - **thread** means the durable conversation and work history for a project.
 - **turn** means one user-to-agent cycle, including follow-up work such as checkpointing.
-- **T3 home** means the base data directory. Runtime state normally lives below its userdata directory.
+- **codeslop home** means the base data directory. Runtime state normally lives below its userdata directory.
 
 ## The three ways to hurt yourself
 
@@ -103,6 +103,7 @@ An empty database is a bad test. Seed your worktree's `.t3` with a copy of real 
 - Use `vp run typecheck`, not `npx tsc`; it caches per package. Both run tsc-rs (`typescript` is the `@tsc-rs/typescript` drop-in).
 - Run `node -e` snippets from `apps/server` or the owning package. `effect` does not resolve from the repo root.
 - Test meaningful logic or observable behavior. Do not render components to static markup to assert props or attributes, or add tests that merely assert callback wiring or mirror the implementation.
+- [Testing](docs/internals/testing.md) carries these same test rules, plus review guidance, for review bots. Change both together.
 - **Do not run repo-wide checks.** No `vp check`, no `vp run -r test`, no `vp run -r typecheck` unless I ask. CI owns the full suite.
 - Backend behavior changes ship with focused tests for that behavior.
 - Proof for a bug fix depends on the bug. Logic, data, state, and protocol bugs get a failing test first (the fewest that fail on `main` for that reason, in the module's existing test file), then the fix. Purely visual bugs (spacing, colour, alignment, a layout shift) get before/after captures as their proof and no test: do not add UI tests for nitpicks, and do not ask for one in review when a capture already shows it. A server-only fix with no visible surface ships the test plus a short runtime transcript.
@@ -136,6 +137,10 @@ An empty database is a bad test. Seed your worktree's `.t3` with a copy of real 
 
 For authorized mobile verification, a missing or outdated native client is an install step, not a blocker. Run `vp run mobile:install <ios|android> [device-id]` on the device host before starting Metro; it targets the only booted simulator or connected Android device when the id is omitted. It installs the dev client for this checkout's native fingerprint from the shared cache in seconds and builds only when no machine has built it yet, so prefer it over `expo run:*`, `xcodebuild`, or `gradlew`, which rebuild from scratch. Its stdout is one JSON line; build output goes to the log it names. See `test-t3-mobile` for the full workflow.
 
+## Evals
+
+`evals/` checks how real models behave with codeslop's model-facing text: agent instructions, MCP tool descriptions and schemas, and generated titles. Before you change that text, read [evals/README.md](evals/README.md) and run the evals it names. When you fix a model behavior bug, add a case that fails before the fix.
+
 ## Pull requests
 
 - Never make a PR unless the developer explicitly asks you to do so.
@@ -145,7 +150,7 @@ For authorized mobile verification, a missing or outdated native client is an in
 - UI changes need before/after images. Motion or timing needs a short video.
 - Upload PR evidence to GitHub. Never commit PR-only screenshots or assets such as `.github/pr-assets/`.
 - One request is one PR. Split it only when the maintainer asks. Outside contributions follow the stricter [one problem per PR](CONTRIBUTING.md#one-problem) rule.
-- When babysitting: call `watch_pull_request` and end your turn. T3 Code wakes you on checks, comments, or conflicts. Do not poll or sleep. Verify each bot finding against the source, fix real ones, dismiss false positives with a written reason. Stay quiet when nothing is new. Stop when the bots are green on the latest commit.
+- When babysitting: call `watch_pull_request` and end your turn. codeslop wakes you on checks, comments, or conflicts. Do not poll or sleep. Verify each bot finding against the source, fix real ones, dismiss false positives with a written reason. Stay quiet when nothing is new. Stop when the bots are green on the latest commit.
 
 ## Documentation
 

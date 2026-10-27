@@ -36,6 +36,7 @@ the version.
   - macOS `x64` DMG
   - Linux `x64` and `arm64` AppImage and `.deb`, from one electron-builder run. The `.deb` updates in the app through electron-updater, which installs it with `dpkg`.
   - Windows `x64` and `arm64` NSIS installer
+- Opens the packaged Linux x64 AppImage (under Xvfb) and macOS arm64 DMG against a seeded database and opens a thread (`scripts/smoke-desktop-app.ts`). A build whose backend or bundle cannot start fails here, so nothing is published. The database in `scripts/fixtures/desktop-launch` is an old snapshot on purpose: the packaged server must migrate it forward, as it does for upgrading users. Do not regenerate it on schema changes.
 - Publishes one GitHub Release with all produced files.
   - Stable tags with a suffix after `X.Y.Z` (for example `1.2.3-alpha.1`) are published as GitHub prereleases.
   - Only plain stable `X.Y.Z` releases are marked as the repository's latest release.
@@ -43,11 +44,11 @@ the version.
   - Automatically generated release notes are pinned to the previous tag in the same channel, so stable compares to the previous stable tag and nightly compares to the previous nightly tag.
 - Includes Electron auto-update metadata (for example `latest*.yml`, `nightly*.yml`, and `*.blockmap`) in release assets.
 - Builds a self-contained CLI archive per platform (`slop-<version>-<platform>-<arch>.tar.gz`, `.zip` on Windows) in the same job as that target's desktop artifact and attaches them to the GitHub Release with a `SHA256SUMS` file, on every channel, for five targets: macOS arm64, Linux x64 and arm64, Windows x64 and arm64. Every archive is smoke-tested on hardware of its own architecture, and every one but the Windows archives is also built and signed there. There is no macOS x64 archive: Node single-executables are unsupported on x64 macOS (the SEA docs list macOS as arm64 only) and the binary segfaults on start; the x64 desktop app is Electron and unaffected.
-  - The archive holds the server as a Node single-executable (`scripts/build-cli-archive.ts`), so unpacking it needs neither Node, npm, nor a compiler. It is the only form in which T3 Code manages a runtime: the desktop's SSH environments, the boot service, `slop update`, and the install scripts all download and verify this archive against `SHA256SUMS`. The `t3` npm package exists for people who run `npx t3` or `npm install -g t3` themselves, and it downloads this same archive too; nothing in the product installs from npm. The `curl | sh` installers are `scripts/install.sh` and `scripts/install.ps1`; the marketing site copies them into its `public/` at build time (`apps/marketing/scripts/stage-install-scripts.mjs`) and serves them at `t3.codes/install.sh` and `/install.ps1`.
-  - The root `package.json` pins `engines.node` to the exact Node version used by development, CI and standalone executables. Keep it exact: cross-target builds download that version, and native executable builds reject a different host Node version. Runtime changes need a new T3 release version because installed runtimes are cached by that version.
+  - The archive holds the server as a Node single-executable (`scripts/build-cli-archive.ts`), so unpacking it needs neither Node, npm, nor a compiler. It is the only form in which codeslop manages a runtime: the desktop's SSH environments, the boot service, `slop update`, and the install scripts all download and verify this archive against `SHA256SUMS`. The `t3` npm package exists for people who run `npx t3` or `npm install -g t3` themselves, and it downloads this same archive too; nothing in the product installs from npm. The `curl | sh` installers are `scripts/install.sh` and `scripts/install.ps1`; the marketing site copies them into its `public/` at build time (`apps/marketing/scripts/stage-install-scripts.mjs`) and serves them at `t3.codes/install.sh` and `/install.ps1`.
+  - The root `package.json` pins `engines.node` to the exact Node version used by development, CI and standalone executables. Keep it exact: cross-target builds download that version, and native executable builds reject a different host Node version. TEMPORARY: Linux arm64 executables build only on a Linux arm64 host and are injected with postject, because Node's `--build-sea` output cannot load on 16 or 64 KiB page kernels. Revert when [nodejs/node#67048](https://github.com/nodejs/node/issues/67048) is fixed. Runtime changes need a new codeslop release version because installed runtimes are cached by that version.
   - macOS archives are signed with the Developer ID certificate and notarized when the Apple secrets are present (ad hoc otherwise, which still runs from `curl`/`tar` installs). Windows executables use the same Azure Trusted Signing setup as the installer. Every native addon in the macOS archive is signed too, since the hardened runtime refuses unsigned libraries.
   - Each archive is extracted and executed (`scripts/smoke-cli-archive.ts`) on its build runner, or on the `verify_runner` for Windows.
-- After the GitHub Release is published, publishes the `t3` npm package with OIDC trusted publishing from the same workflow file. It is only a launcher (`scripts/npm-launcher/t3.mjs`): on first run it downloads its exact version's CLI archive from the GitHub Release, verifies it against `SHA256SUMS`, and unpacks it into `<T3 home>/runtime/versions/<version>`, the layout the install scripts and `slop update` share. The executables are not on npm. They used to be, as `@t3code/t3-<platform>-<arch>` optional dependencies, but npm's publish-time scanning held those 80-250 MB packages back for up to an hour after the launcher was live, and every install in that window got a launcher with no executable. Those packages stay on npm at their old versions and get no new ones. Because the launcher reads from the release, `publish_cli` runs after `release`, never before.
+- After the GitHub Release is published, publishes the `t3` npm package with OIDC trusted publishing from the same workflow file. It is only a launcher (`scripts/npm-launcher/t3.mjs`): on first run it downloads its exact version's CLI archive from the GitHub Release, verifies it against `SHA256SUMS`, and unpacks it into `<codeslop home>/runtime/versions/<version>`, the layout the install scripts and `slop update` share. The executables are not on npm. They used to be, as `@t3code/t3-<platform>-<arch>` optional dependencies, but npm's publish-time scanning held those 80-250 MB packages back for up to an hour after the launcher was live, and every install in that window got a launcher with no executable. Those packages stay on npm at their old versions and get no new ones. Because the launcher reads from the release, `publish_cli` runs after `release`, never before.
   - stable releases publish npm dist-tag `latest`
   - nightly releases publish npm dist-tag `nightly`
   - preview releases publish npm dist-tag `preview`, which nothing resolves unless asked for by name
@@ -149,9 +150,7 @@ Required `production` environment secrets:
 
 After changing a variable or secret, run the **Deploy T3 Connect relay** workflow manually from
 `main` with **force** unchecked. Alchemy compares the values the Worker reads and redeploys it when
-one changed. Check **force** only to redeploy resources with no detected change: a forced run also
-replaces the Postgres runtime role and its password
-([alchemy-run/alchemy#1832](https://github.com/alchemy-run/alchemy/issues/1832)).
+one changed. Check **force** only to redeploy resources with no detected change.
 
 The account-scoped repository credentials are consumed by Alchemy while provisioning relay stages; they
 are not bound into the relay Worker. The production deployment uses an Axiom personal access token,
@@ -210,7 +209,7 @@ A deleted legacy tunnel keeps its allocation, so its hostname is kept. When the 
 - On a build with recovery, the connector is rejected and the host requests a replacement tunnel at
   the same hostname.
 - On an older build with a CLI link, startup provisions a new tunnel.
-- On an older build linked from web or mobile, the host stays offline until T3 Code on that computer
+- On an older build linked from web or mobile, the host stays offline until codeslop on that computer
   is updated.
 
 Ship the web and mobile builds that show the offline reason before enabling legacy cleanup, so a
@@ -227,7 +226,7 @@ column in its first deploy with this change; the legacy switch stays `off` until
    They include ones the reaper skips, so they are an upper bound on the backlog. The share of `wouldDeleteLegacy` in each sweep's `scanned` estimates how
    much of that total is eligible.
 3. Run the legacy steps of the disposable-host canary below.
-4. Before enabling, confirm the web and mobile builds that show the "update T3 Code on that computer"
+4. Before enabling, confirm the web and mobile builds that show the "update codeslop on that computer"
    message are live. Without them, a user whose older host lost its tunnel only sees it as offline.
 5. Set the legacy mode to `enabled`. One sweep deletes at most 100 tunnels, four at a time, and
    stops starting new deletions after 90 seconds. A backlog of 20,000 takes about 17 hours if each
@@ -242,8 +241,7 @@ chart the `attributes.custom.relay.managed_endpoint_reaper.*` fields over time.
 Set the legacy mode back to `off` and deploy if any of these happen:
 
 - `failed` stays above a few per sweep. Read the warning log for the Cloudflare error.
-- Users report an environment that is offline with the update message after they have updated T3
-  Code on that computer and restarted it.
+- Users report an environment that is offline with the update message after they have updated codeslop on that computer and restarted it.
 - Relay request errors rise while sweeps run. Deletions share the Postgres connection pool with
   request handlers.
 
@@ -254,12 +252,12 @@ recover as described above.
 ### Disposable-host canary
 
 This test has not been run against a real Cloudflare account. Run it against a disposable relay
-stage, test Cloudflare account, disposable host, and disposable T3 home. Keep production cleanup at
-`off` or `dry-run` until it passes. Do not stop a daily-use T3 server.
+stage, test Cloudflare account, disposable host, and disposable codeslop home. Keep production cleanup at
+`off` or `dry-run` until it passes. Do not stop a daily-use codeslop server.
 
 1. Deploy the disposable stage with cleanup `dry-run`. Link a first disposable environment through
    web or mobile settings and confirm its tunnel is healthy and recovery is registered.
-2. Stop that host and restart the same T3 home on a different local port. Confirm the public
+2. Stop that host and restart the same codeslop home on a different local port. Confirm the public
    hostname reaches the new port and sends nothing to the old one.
 3. Link a second disposable environment with a server build that predates recovery registration.
    Capture its managed `cloudflared` child PID, confirm it belongs to that host, and pause only that

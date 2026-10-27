@@ -260,7 +260,7 @@ describe("deriveMessagesTimelineRows", () => {
       toolSource: { key: "mcp:node_repl", name: "node repl", kind: "integration" as const },
       input: {
         title: "Restrict the breakpoint to Git actions",
-        code: "await sky.type_text({app:'T3 Code (Nightly)',text:'debug(ga.run)'});",
+        code: "await sky.type_text({app:'codeslop (Nightly)',text:'debug(ga.run)'});",
       },
     };
     const entries = deriveTimelineEntriesFromVisibleTurnItems({
@@ -797,6 +797,62 @@ describe("deriveMessagesTimelineRows", () => {
     expect(dividers[1]).not.toHaveProperty("title");
     expect(laterRows.some((row) => row.kind === "working" && row.compacting !== undefined)).toBe(
       false,
+    );
+  });
+
+  it("shows a skipped compaction as stopped, without a separate interrupted divider", () => {
+    const fixture = makeStreamingTimelineFixture();
+    const [history0, history1, history2, liveUser, , liveAssistant] = fixture.visibleTurnItems;
+    if (liveUser?.item.type !== "user_message" || liveAssistant?.item.type !== "assistant_message")
+      throw new Error("Expected live fixture items");
+    const prompt = {
+      ...liveUser,
+      item: { ...liveUser.item, text: "/compact", idleCompaction: "onReturn" as const },
+    };
+    const compaction = {
+      ...liveAssistant,
+      item: {
+        ...liveAssistant.item,
+        type: "compaction" as const,
+        status: "interrupted" as const,
+        driver: null,
+      },
+    };
+    const interruptResult = {
+      ...liveAssistant,
+      item: {
+        ...liveAssistant.item,
+        id: TurnItemId.make("interrupt-result"),
+        type: "run_interrupt_result" as const,
+        status: "interrupted" as const,
+        message: "Skipped compaction to send a queued message",
+      },
+    };
+    const liveRowsFor = (visibleTurnItems: OrchestrationV2ProjectedTurnItem[]) => {
+      const rows = deriveMessagesTimelineRows({
+        timelineEntries: deriveTimelineEntriesFromVisibleTurnItems({
+          visibleTurnItems: [history0!, history1!, history2!, ...visibleTurnItems],
+          optimisticMessages: [],
+        }),
+        isWorking: false,
+        latestRun: {
+          runId: fixture.runId,
+          status: "interrupted",
+          startedAt: fixture.time(5),
+          completedAt: fixture.time(9),
+        },
+        turnDiffSummaries: [],
+        supportsConversationRollback: false,
+      });
+      return rows.slice(rows.findIndex((row) => row.id.includes("history-assistant")) + 1);
+    };
+
+    expect(liveRowsFor([prompt, compaction, interruptResult])).toMatchObject([
+      { kind: "context-compaction", label: "Context compaction stopped" },
+    ]);
+    // Stopped before the provider started: no compaction row says so, so the interrupt stays.
+    expect(liveRowsFor([prompt, interruptResult]).map((row) => row.id)).toContain(
+      "interrupt-result",
     );
   });
 

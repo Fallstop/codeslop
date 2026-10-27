@@ -21,7 +21,7 @@ import {
   serviceStateHasPendingUpdate,
 } from "./serviceProtocol.ts";
 
-it("reads the served T3 home back out of a rendered unit or plist", () => {
+it("reads the served codeslop home back out of a rendered unit or plist", () => {
   const plan = (baseDir: string) => ({
     program: [`${baseDir}/runtime/versions/1.2.3/slop`, "__service-launcher"],
     baseDir,
@@ -590,7 +590,7 @@ it.layer(NodeServices.layer)("boot service install", (it) => {
     }),
   );
 
-  it.effect("restart leaves a service that serves another T3 home alone", () =>
+  it.effect("restart leaves a service that serves another codeslop home alone", () =>
     Effect.gen(function* () {
       const { service, fs, commands, makeService } = yield* makeHarness();
       yield* service.install();

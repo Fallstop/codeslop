@@ -237,7 +237,7 @@ it.layer(NodeServices.layer)("migrate-dev-db", (it) => {
         { baseDir: destDir, source, projects: 5, threadsPerProject: 10 },
         { sharedHome: sourceDir },
       );
-      assert.include(result.executedMigrations, "59_OrchestrationV2");
+      assert.include(result.executedMigrations, "55_OrchestrationV2");
     }),
   );
 

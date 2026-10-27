@@ -902,10 +902,10 @@ describe("orchestration v2 legacy v1 cutover", () => {
             String(log.message).includes("migration history diverges"),
           );
           assert.deepStrictEqual(divergenceLog?.annotations.divergent, [
-            "41:ThreadSummaryTimeline (this build: MessageEmbeddings)",
+            "41:ThreadSummaryTimeline (this build: AuthSessionClientConnection)",
           ]);
           assert.equal(firstBoot.migration41Name, "ThreadSummaryTimeline");
-          assert.deepStrictEqual(firstBoot.embeddingTableNames, []);
+          assert.deepStrictEqual(firstBoot.embeddingTableNames, ["message_embeddings"]);
 
           assert.equal(firstBoot.importRows.length, ALL_THREADS.length);
           const unhydratedRows = firstBoot.importRows.filter(

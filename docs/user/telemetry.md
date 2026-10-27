@@ -1,6 +1,6 @@
 # Product usage data
 
-The T3 Code server sends product usage events to T3 Code's own endpoint at `ingest.t3.codes`,
+The codeslop server sends product usage events to codeslop's own endpoint at `ingest.t3.codes`,
 associated with a hashed account or installation identifier. To count how many installations one person
 uses, the server also sends hashed account identifiers: your T3 Connect account, your OpenAI and
 Claude accounts when you are signed in, and a random identifier for each device that connects. The endpoint keeps a copy of each
@@ -11,7 +11,7 @@ available.
 Events do not include prompts, responses, file contents, authentication tokens, conversation IDs,
 raw provider events, or child-agent output. Child-agent token use is excluded from the totals.
 
-T3 Code also sends relay connection traces to Axiom to diagnose T3 Connect connectivity.
+codeslop also sends relay connection traces to Axiom to diagnose T3 Connect connectivity.
 
 To disable product events and relay tracing, set `T3CODE_TELEMETRY_ENABLED=false` in the server's
 environment before starting it. Relay tracing also stops when `T3CODE_OTEL_SDK_DISABLED` or
@@ -21,10 +21,20 @@ environment before starting it. Relay tracing also stops when `T3CODE_OTEL_SDK_D
 The desktop app reads `T3CODE_TELEMETRY_ENABLED` from your shell profile (for example `~/.zshrc`) on macOS and
 Linux, so export it there and restart the app. On Windows, set it as a user environment variable.
 
+## Mobile app crash reports
+
+When the iOS or Android app crashes or hits an error, it sends a report to codeslop: the error
+message, the stack trace, the app version, and the device model and OS version. Each launch also
+sends startup timings, and every report carries a random ID for the install. Reports go through
+the T3 Connect relay to Axiom. They do not include your threads, prompts, or connection details,
+but an error message can quote a value the app was handling.
+
+To stop sending them, turn off **Send crash reports** in **Settings > About codeslop > Diagnostics**.
+
 ## Export diagnostics to your own receiver
 
 To send traces, metrics, or logs to an OpenTelemetry receiver, open
-**Settings > General > Diagnostics**, select an environment, and enter each signal's OTLP HTTP
+**Settings > Maintenance > Diagnostics**, select an environment, and enter each signal's OTLP HTTP
 endpoint under **OpenTelemetry export** (for example `http://localhost:4318/v1/traces`). Save, then
 restart that environment's server. The receiver must be reachable from the server's machine.
 **Test** sends an empty export from the server to check an endpoint before or after you save it;

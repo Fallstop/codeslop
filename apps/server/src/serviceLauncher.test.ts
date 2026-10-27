@@ -213,7 +213,7 @@ it.layer(NodeServices.layer)("service state persistence", (it) => {
     }),
   );
 
-  it.effect("stays idle instead of exiting when another server owns the T3 home", () =>
+  it.effect("stays idle instead of exiting when another server owns the codeslop home", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
