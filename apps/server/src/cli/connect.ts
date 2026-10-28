@@ -111,7 +111,7 @@ const authorizeCli = Effect.fn("cloud.cli.authorize")(function* (options: {
     Effect.catchTags({
       CloudCliCredentialRefreshError: () =>
         Console.log(
-          "The stored T3 Connect credential could not be refreshed; signing in again.",
+          "The stored Slop Connect credential could not be refreshed; signing in again.",
         ).pipe(Effect.as(Option.none())),
     }),
   );
@@ -184,24 +184,24 @@ function formatCloudStatus(status: CloudCliStatus, options?: { readonly json?: b
   }
 
   const provisioned = status.revoked
-    ? "removed from T3 Connect"
+    ? "removed from Slop Connect"
     : status.linked
       ? "provisioned"
       : status.desired && status.authenticated
         ? "pending server startup"
         : "not provisioned";
   const nextStep = !status.authenticated
-    ? "Run `slop connect link` to authorize and enable T3 Connect."
+    ? "Run `slop connect link` to authorize and enable Slop Connect."
     : status.revoked
       ? "Run `slop connect link` to link this environment again."
       : !status.desired
-        ? "Run `slop connect link` to enable T3 Connect."
+        ? "Run `slop connect link` to enable Slop Connect."
         : !status.linked
           ? "Start codeslop to provision the environment link and launch its managed tunnel."
           : undefined;
 
   return [
-    "T3 Connect",
+    "Slop Connect",
     `  Exposure: ${status.desired ? "enabled" : "disabled"}`,
     `  Authorization: ${status.authenticated ? "stored credential" : "missing"}`,
     `  Environment link: ${provisioned}`,
@@ -230,7 +230,7 @@ const CLOUD_CLI_LIVE_SERVER_TIMEOUT = Duration.seconds(5);
 const confirmRelayClientInstall = (version: string) =>
   Prompt.run(
     Prompt.Confirm({
-      message: `The codeslop relay client is required for T3 Connect. Download and install version ${version}?`,
+      message: `The codeslop relay client is required for Slop Connect. Download and install version ${version}?`,
       initial: false,
     }),
   );
@@ -382,7 +382,7 @@ const waitForReachability = Effect.fn("cloud.cli.wait_for_reachability")(functio
   yield* Console.error(
     formatAlertBox(
       last === null
-        ? "✕ Could not check T3 Connect\n  The codeslop server on this machine did not answer.\n  Fix: run `slop service status`, then `slop connect status`."
+        ? "✕ Could not check Slop Connect\n  The codeslop server on this machine did not answer.\n  Fix: run `slop service status`, then `slop connect status`."
         : formatReachabilityFailure(last),
     ),
   );
@@ -403,7 +403,7 @@ const logCloudDisconnectFailure = (
   clearAuthorization: boolean,
   cause: Cause.Cause<unknown>,
 ) =>
-  Effect.logWarning("T3 Connect disconnect operation failed.").pipe(
+  Effect.logWarning("Slop Connect disconnect operation failed.").pipe(
     Effect.annotateLogs({
       operation,
       clearAuthorization,
@@ -454,10 +454,10 @@ const reportCloudDisconnectResults = Effect.fn("cloud.cli.report_disconnect_resu
         input.liveResult.cause,
       );
       yield* Console.warn(
-        "T3 Connect is disabled, but the running server could not stop its tunnel.\nRestart that server to stop the connector.",
+        "Slop Connect is disabled, but the running server could not stop its tunnel.\nRestart that server to stop the connector.",
       );
     } else {
-      yield* Console.log("T3 Connect is disabled locally.");
+      yield* Console.log("Slop Connect is disabled locally.");
     }
 
     if (Exit.isFailure(input.relayResult)) {
@@ -469,11 +469,11 @@ const reportCloudDisconnectResults = Effect.fn("cloud.cli.report_disconnect_resu
       yield* Console.warn(
         input.clearAuthorization
           ? "Could not revoke the relay-side environment record before signing out.\nThe stored CLI authorization was still removed locally."
-          : "Could not revoke the relay-side environment record yet.\nRun `slop connect unlink` again when the relay is reachable, or deregister it from the T3 Connect page of your T3 account.",
+          : "Could not revoke the relay-side environment record yet.\nRun `slop connect unlink` again when the relay is reachable, or deregister it from the Slop Connect page of your codeslop account.",
       );
     } else if (input.relayResult.value.status === "not-authenticated") {
       yield* Console.warn(
-        "The relay-side environment record was not revoked.\nDeregister it from the T3 Connect page of your T3 account, or run `slop connect login` and retry.",
+        "The relay-side environment record was not revoked.\nDeregister it from the Slop Connect page of your codeslop account, or run `slop connect login` and retry.",
       );
     } else if (input.relayResult.value.status === "revoked") {
       yield* Console.log("Revoked the relay-side environment record.");
@@ -502,7 +502,7 @@ const disconnectCloud = Effect.fn("cloud.cli.disconnect")(function* (options: {
 
   if (options.clearAuthorization) {
     yield* Console.log(
-      "Signed out of T3 Connect locally.\nThe background service is managed separately with `slop service`.",
+      "Signed out of Slop Connect locally.\nThe background service is managed separately with `slop service`.",
     );
   }
 });
@@ -568,7 +568,7 @@ const linkEnvironmentForConnect = Effect.fn("cloud.cli.link_environment")(functi
       reportRelayClientInstallProgress,
     );
     if (Option.isNone(installed)) {
-      yield* Console.log("T3 Connect setup cancelled. The relay client was not installed.");
+      yield* Console.log("Slop Connect setup cancelled. The relay client was not installed.");
       return null;
     }
     yield* Console.log(formatRelayClientReady(installed.value.version));
@@ -578,7 +578,7 @@ const linkEnvironmentForConnect = Effect.fn("cloud.cli.link_environment")(functi
   yield* CliState.setCliDesiredCloudLink(true, publishOnly ? "publish_only" : "managed");
   if (yield* CliState.dropRevokedCloudLink) {
     yield* Console.log(
-      "Removed the link T3 Connect no longer accepts. The next start links this environment again.",
+      "Removed the link Slop Connect no longer accepts. The next start links this environment again.",
     );
   }
   if (publishOnly) {
@@ -592,12 +592,12 @@ const connectLoginCommand = Command.make("login", {
   ...projectLocationFlags,
   headless: headlessFlag,
 }).pipe(
-  Command.withDescription("Authorize the T3 Connect CLI without enabling remote access."),
+  Command.withDescription("Authorize the Slop Connect CLI without enabling remote access."),
   Command.withHandler((flags) =>
     runCloudCommand(
       flags,
       Effect.gen(function* () {
-        yield* Console.log("T3 Connect\n");
+        yield* Console.log("Slop Connect\n");
         const identity = yield* authorizeCli(flags);
         yield* Console.log(`✓ Signed in${connectedAs(identity)}`);
       }),
@@ -615,12 +615,12 @@ const connectLinkCommand = Command.make("link", {
     Flag.withDefault(false),
   ),
 }).pipe(
-  Command.withDescription("Authorize this environment for T3 Connect on next start."),
+  Command.withDescription("Authorize this environment for Slop Connect on next start."),
   Command.withHandler((flags) =>
     runCloudCommand(
       flags,
       Effect.gen(function* () {
-        yield* Console.log("T3 Connect\n");
+        yield* Console.log("Slop Connect\n");
         const linked = yield* linkEnvironmentForConnect(flags);
         if (linked) {
           const serveCommand = yield* resolveCliCommand("serve");
@@ -640,7 +640,7 @@ const connectStatusCommand = Command.make("status", {
   json: jsonFlag,
 }).pipe(
   Command.withDescription(
-    "Show T3 Connect setup and check that other devices can reach this machine.",
+    "Show Slop Connect setup and check that other devices can reach this machine.",
   ),
   Command.withHandler((flags) =>
     runCloudCommand(
@@ -724,7 +724,7 @@ const connectPublishCommand = Command.make("publish", {
           const linkedNow = Option.isSome(yield* secrets.get(CLOUD_LINKED_USER_ID));
           if (!linkedNow && (yield* CliState.readCliDesiredLinkMode) === "publish_only") {
             yield* CliState.setCliDesiredCloudLink(false);
-            yield* Console.log("Cancelled the pending publish-only T3 Connect link.");
+            yield* Console.log("Cancelled the pending publish-only Slop Connect link.");
           }
           yield* Console.log("Publishing agent activity disabled.");
           return;
@@ -745,7 +745,7 @@ const connectPublishCommand = Command.make("publish", {
         // A desired managed link already covers publishing and must not be downgraded.
         if (yield* CliState.readCliDesiredCloudLink) {
           yield* Console.log(
-            "A T3 Connect link is already pending. Start codeslop to finish provisioning it; publishing starts once it links.",
+            "A Slop Connect link is already pending. Start codeslop to finish provisioning it; publishing starts once it links.",
           );
           return;
         }
@@ -761,7 +761,7 @@ const connectPublishCommand = Command.make("publish", {
 const connectUnlinkCommand = Command.make("unlink", {
   ...projectLocationFlags,
 }).pipe(
-  Command.withDescription("Disable T3 Connect while retaining the stored authorization."),
+  Command.withDescription("Disable Slop Connect while retaining the stored authorization."),
   Command.withHandler((flags) =>
     runCloudCommand(flags, disconnectCloud({ clearAuthorization: false })),
   ),
@@ -770,7 +770,7 @@ const connectUnlinkCommand = Command.make("unlink", {
 const connectLogoutCommand = Command.make("logout", {
   ...projectLocationFlags,
 }).pipe(
-  Command.withDescription("Disable T3 Connect and clear the stored CLI authorization."),
+  Command.withDescription("Disable Slop Connect and clear the stored CLI authorization."),
   Command.withHandler((flags) =>
     runCloudCommand(flags, disconnectCloud({ clearAuthorization: true })),
   ),
@@ -781,7 +781,7 @@ const reportServiceOnboarding = Effect.fn("cli.connect.report_service_onboarding
 ) {
   if (outcome === "pending") {
     yield* Console.log(
-      "\nBackground service restarting\n\nThe server establishes the T3 Connect link once it is back. Check the log above if it does not come back.",
+      "\nBackground service restarting\n\nThe server establishes the Slop Connect link once it is back. Check the log above if it does not come back.",
     );
     return;
   }
@@ -789,8 +789,8 @@ const reportServiceOnboarding = Effect.fn("cli.connect.report_service_onboarding
     const platform = yield* HostProcess.Platform;
     yield* Console.log(
       platform === "darwin"
-        ? "\n✓ Background service ready\n\ncodeslop is set to run while you are logged in to this Mac. The server establishes the T3 Connect link on startup."
-        : "\n✓ Background service ready\n\ncodeslop is set to keep running after you log out. The server establishes the T3 Connect link on startup.",
+        ? "\n✓ Background service ready\n\ncodeslop is set to run while you are logged in to this Mac. The server establishes the Slop Connect link on startup."
+        : "\n✓ Background service ready\n\ncodeslop is set to keep running after you log out. The server establishes the Slop Connect link on startup.",
     );
     return;
   }
@@ -804,12 +804,12 @@ export const connectCommand = Command.make("connect", {
   ...projectLocationFlags,
   headless: headlessFlag,
 }).pipe(
-  Command.withDescription("Set up T3 Connect for this machine."),
+  Command.withDescription("Set up Slop Connect for this machine."),
   Command.withHandler((flags) =>
     runCloudCommand(
       flags,
       Effect.gen(function* () {
-        yield* Console.log("T3 Connect\n");
+        yield* Console.log("Slop Connect\n");
         const linked = yield* linkEnvironmentForConnect(flags);
         if (!linked) {
           return;

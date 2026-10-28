@@ -1214,7 +1214,7 @@ export function ConnectionsSettings({ view }: { readonly view: "environments" | 
                 <AlertDialogDescription>
                   {pendingDesktopServerExposureMode === "network-accessible"
                     ? "Let your other devices connect to codeslop over the network. Pair devices to give them access. codeslop will restart."
-                    : "Devices connected over your local network will disconnect. Existing tunnels, such as T3 Connect or Tailscale HTTPS, keep working. codeslop will restart."}
+                    : "Devices connected over your local network will disconnect. Existing tunnels, such as Slop Connect or Tailscale HTTPS, keep working. codeslop will restart."}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

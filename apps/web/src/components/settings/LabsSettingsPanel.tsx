@@ -33,7 +33,7 @@ function GuestLinksRowWithSignIn() {
   return (
     <SettingsRow
       {...searchableSetting("guest-links")}
-      description="Share a thread with a guest who watches it live in their browser and sends messages you approve. Sign in to T3 Connect to use guest links."
+      description="Share a thread with a guest who watches it live in their browser and sends messages you approve. Sign in to Slop Connect to use guest links."
       control={
         <Button size="sm" variant="outline" onClick={openAuthPrompt}>
           Sign in
@@ -54,7 +54,7 @@ function GuestLinksRow() {
       description={
         <>
           Share a thread with a guest who watches it live in their browser and sends messages you
-          approve. Needs T3 Connect: sign in and link this machine in{" "}
+          approve. Needs Slop Connect: sign in and link this machine in{" "}
           <Link to="/settings/access" className="underline underline-offset-2">
             Sharing & access
           </Link>

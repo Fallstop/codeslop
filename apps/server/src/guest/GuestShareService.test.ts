@@ -292,7 +292,7 @@ it.effect("redeems only a short invite whose signature and share id are both cur
   }).pipe(Effect.provide(layerTest)),
 );
 
-it.effect("refuses guest requests once T3 Connect no longer serves the link's host", () =>
+it.effect("refuses guest requests once Slop Connect no longer serves the link's host", () =>
   Effect.gen(function* () {
     const { guestShares, credential } = yield* shareThread;
     const { token: session } = yield* guestShares.redeem({ credential, name: "Sam" });
@@ -307,7 +307,7 @@ it.effect("refuses guest requests once T3 Connect no longer serves the link's ho
   }).pipe(Effect.provide(layerTest)),
 );
 
-it.effect("closes an open guest stream when T3 Connect stops serving the link's host", () =>
+it.effect("closes an open guest stream when Slop Connect stops serving the link's host", () =>
   Effect.gen(function* () {
     const { guestShares, credential } = yield* shareThread;
     const { token: session } = yield* guestShares.redeem({ credential, name: "Sam" });

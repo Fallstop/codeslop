@@ -20,7 +20,7 @@ export function LinkMachineBadge({ machine }: { readonly machine: LinkableMachin
   if (machine.connected) return null;
   return (
     <Badge variant="outline" size="sm">
-      {machine.connectOnly ? "T3 Connect" : "Not connected"}
+      {machine.connectOnly ? "Slop Connect" : "Not connected"}
     </Badge>
   );
 }
