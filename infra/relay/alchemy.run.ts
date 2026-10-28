@@ -6,11 +6,13 @@ import * as Cloudflare from "@alchemy.run/cloudflare";
 import * as Drizzle from "@alchemy.run/drizzle";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Planetscale from "@alchemy.run/planetscale";
 
 import { PublishClientConfig, tokenDigest } from "./src/clientConfig.ts";
 import * as RelayDb from "./src/db.ts";
 import { MobileSourceMapsUploadCredentials, RelayObservability } from "./src/observability.ts";
+import { SelfHostedDatabase } from "./src/selfHostedDatabase.ts";
 import { isPreviewStage } from "./src/previewStages.ts";
 import { PreviewTunnelSweep, PreviewTunnelSweepProvider } from "./src/previewTunnelSweep.ts";
 import { ManagedEndpointZone, RelayApiZone, RelayDeploymentConfig } from "./src/zone.ts";
@@ -30,7 +32,8 @@ export default Alchemy.Stack(
   },
   Effect.gen(function* () {
     const { stage } = yield* Alchemy.Stack;
-    const db = yield* RelayDb.PlanetscaleDatabase;
+    const selfHostedDb = yield* SelfHostedDatabase;
+    const db = Option.isSome(selfHostedDb) ? undefined : yield* RelayDb.PlanetscaleDatabase;
     const hyperdrive = yield* RelayDb.RelayHyperdrive;
     const managedEndpointZone = yield* ManagedEndpointZone.pipe(Effect.orDie);
     const relayApiZone = yield* RelayApiZone.pipe(Effect.orDie);
@@ -60,8 +63,9 @@ export default Alchemy.Stack(
     });
 
     return {
-      databaseName: db.database.name,
-      databaseBranchName: db.branch?.name ?? "main",
+      databaseName: db?.database.name ?? Option.getOrThrow(selfHostedDb).database,
+      databaseBranchName: db?.branch?.name ?? "main",
+      relayDatabaseTunnelToken: Option.getOrUndefined(selfHostedDb)?.tunnel.token,
       hyperdriveName: hyperdrive.name,
       workerName: api.workerName,
       url: api.url,

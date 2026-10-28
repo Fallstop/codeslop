@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "deploy": "alchemy deploy",
+    "migrate:self-hosted": "node scripts/self-hosted-migrations.ts",
     "push:android:smoke": "node scripts/android-push-smoke.ts",
     "push:android:watch": "node scripts/android-push-watch.ts",
     "tunnels:census": "node scripts/tunnel-census.ts",

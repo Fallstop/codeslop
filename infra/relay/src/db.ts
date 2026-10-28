@@ -8,8 +8,10 @@ import type { EffectPgDatabase } from "drizzle-orm/effect-postgres";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 
 import { relayDatabaseMode } from "./dbConfig.ts";
+import { SelfHostedDatabase } from "./selfHostedDatabase.ts";
 
 export class RelayDb extends Context.Service<
   RelayDb,
@@ -74,12 +76,16 @@ export const PlanetscaleDatabase = Effect.gen(function* () {
 });
 
 export const RelayHyperdrive = Effect.gen(function* () {
-  const { runtimeRole } = yield* PlanetscaleDatabase;
+  const selfHosted = yield* SelfHostedDatabase;
+  const origin = Option.isSome(selfHosted)
+    ? selfHosted.value.origin
+    : (yield* PlanetscaleDatabase).runtimeRole.origin;
   return yield* Cloudflare.Hyperdrive.Connection("RelayHyperdrive", {
-    origin: runtimeRole.origin,
+    origin,
     caching: {
       disabled: true,
     },
-    originConnectionLimit: 40,
+    // Free-plan Hyperdrive accepts 5-20 origin connections.
+    originConnectionLimit: Option.isSome(selfHosted) ? 20 : 40,
   });
 });
