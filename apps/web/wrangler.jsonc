@@ -1,0 +1,11 @@
+// Hosted web app on Cloudflare Workers static assets (the fork's stand-in for vercel.ts).
+// Build with VITE_HOSTED_APP_URL set to the custom domain below, then `wrangler deploy`.
+{
+  "name": "codeslop-web",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application",
+  },
+  "routes": [{ "pattern": "slop.jmw.nz", "custom_domain": true }],
+}
