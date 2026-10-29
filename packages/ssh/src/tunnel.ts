@@ -31,6 +31,7 @@ import {
   resolveSshCommand,
   resolveSshTarget,
   runSshCommand,
+  sshTargetLogFields,
   targetConnectionKey,
 } from "./command.ts";
 import {
@@ -100,15 +101,6 @@ type SshEnvironmentEffectError =
   | SshReadinessError
   | SshPasswordPromptError
   | NetService.NetError;
-
-function sshTargetLogFields(target: DesktopSshEnvironmentTarget) {
-  return {
-    alias: target.alias,
-    hostname: target.hostname,
-    username: target.username,
-    port: target.port,
-  };
-}
 
 function isNodeScriptRunner(runner: RemoteT3RunnerOptions | undefined): boolean {
   return Boolean(runner?.nodeScriptPath?.trim());
@@ -532,11 +524,9 @@ exec "$T3_RUNTIME_DIR/slop" "$@"
 `;
 
 /**
- * Picks the remote's state home the same way every other component does: an
- * already-initialised `~/.codeslop` wins, a pre-rebrand `~/.t3` is used when it
- * is the one holding state, and a fresh host gets `~/.codeslop`. Kept in one
- * place because the launch, pairing, stop, and log-tail scripts must all land on
- * the same directory or they operate on different servers.
+ * Remote state home: initialised `~/.codeslop`, else an initialised legacy
+ * `~/.t3`, else `~/.codeslop`. Launch, pairing, stop, and log-tail scripts must
+ * all share this or they target different servers.
  */
 export const REMOTE_SERVER_HOME_SCRIPT = `t3_state_home_is_initialized() {
   [ -f "$1/userdata/state.sqlite" ] || [ -f "$1/dev/state.sqlite" ]

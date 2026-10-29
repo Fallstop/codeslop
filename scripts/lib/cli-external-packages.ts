@@ -1,6 +1,6 @@
 /** Keep bundler externals and staged runtime dependency roots aligned. */
 // Filesystem-loaded externals need dependencies outside the bundle.
-export const CLI_RUNTIME_EXTERNAL_PREFIXES = [
+const CLI_RUNTIME_EXTERNAL_PREFIXES = [
   // Cursor ships computed Webpack imports and platform helper packages.
   "@cursor/sdk",
   // Playwright reads package.json and browsers.json beside its runtime modules.
@@ -15,19 +15,13 @@ export const CLI_RUNTIME_EXTERNAL_PREFIXES = [
   "node-addon-api",
   "bufferutil",
   "utf-8-validate",
-  // The embedding runtime and its runtime closure (jinja, tokenizers), loaded
-  // through createRequire at the point of use. External so the bundler never
-  // walks into transformers: it statically imports sharp and
-  // onnxruntime-common, and those imports in the emitted graph are
-  // unresolvable inside the single executable, which can only `import`
-  // built-ins.
+  // Embedding runtime, loaded via createRequire. Kept external because
+  // transformers statically imports sharp and onnxruntime-common, which the
+  // single executable cannot `import` (built-ins only).
   "@huggingface/",
-  // Semantic search's embedding runtime. onnxruntime-node loads its prebuilt
-  // addon with `require("../bin/napi-v6/<platform>/<arch>/onnxruntime_binding.node")`,
-  // a path relative to its own lib directory. Inlined into a bundle chunk that
-  // path resolves against apps/server/dist instead and misses, so the model
-  // never loads and semantic search silently degrades to lexical-only.
-  // onnxruntime-common follows it because the runtime requires it by name.
+  // onnxruntime-node requires its addon by a path relative to its own lib dir;
+  // inlined, that resolves against apps/server/dist and semantic search
+  // silently degrades to lexical-only. onnxruntime-common is required by name.
   "onnxruntime-node",
   "onnxruntime-common",
   // @huggingface/transformers statically imports sharp, a libvips addon that
@@ -41,16 +35,9 @@ export const CLI_RUNTIME_EXTERNAL_PREFIXES = [
 ] as const;
 
 /**
- * Declared dependencies of an external package that Node never loads.
- *
- * The closure rule above exists because an external package's runtime
- * `require` resolves from the real filesystem. A dependency reached only by an
- * install script is not part of that closure: onnxruntime-node names adm-zip
- * and global-agent for its postinstall downloader, which pnpm-workspace.yaml
- * disables (`allowBuilds: onnxruntime-node: false`) since the package already
- * ships the CPU binaries we use. Bundling them away is therefore harmless, and
- * exempting them keeps semver, type-fest, escape-string-regexp and the rest of
- * global-agent's tree inside the bundle where they belong.
+ * Declared dependencies of external packages that Node never loads at runtime,
+ * e.g. onnxruntime-node's postinstall downloader deps (adm-zip, global-agent),
+ * disabled via pnpm-workspace.yaml `allowBuilds`. Exempt from the closure rule.
  */
 export const CLI_EXTERNAL_INSTALL_ONLY_DEPENDENCIES = [
   "adm-zip",

@@ -1,18 +1,9 @@
-import * as Base64Url from "effect/encoding/Base64Url";
-import { CheckpointRef, type ThreadId } from "@t3tools/contracts";
-
-export const CHECKPOINT_REFS_PREFIX = "refs/slop/checkpoints";
+const CHECKPOINT_REFS_PREFIX = "refs/slop/checkpoints";
 /**
  * The pre-rebrand namespace. Checkpoint refs are rebuilt from thread and turn rather than read
  * back from stored events, so refs written before the rename are only reachable through this.
  */
-export const LEGACY_CHECKPOINT_REFS_PREFIX = "refs/t3/checkpoints";
-
-export function checkpointRefForThreadTurn(threadId: ThreadId, turnCount: number): CheckpointRef {
-  return CheckpointRef.make(
-    `${CHECKPOINT_REFS_PREFIX}/${Base64Url.encode(threadId)}/turn/${turnCount}`,
-  );
-}
+const LEGACY_CHECKPOINT_REFS_PREFIX = "refs/t3/checkpoints";
 
 /** The same checkpoint ref under the pre-rebrand namespace, or null for refs outside it. */
 export function legacyCheckpointRef(checkpointRef: string): string | null {

@@ -2,13 +2,10 @@ import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
 
 import type {
-  VcsDriverCapabilities,
   VcsError,
   VcsInitInput,
   VcsListRemotesResult,
   VcsListWorkspaceFilesResult,
-  ReviewDiffPreviewInput,
-  ReviewDiffPreviewResult,
   VcsRepositoryIdentity,
 } from "@t3tools/contracts";
 import { CheckpointRef } from "@t3tools/contracts";
@@ -70,12 +67,9 @@ export interface VcsPublishHandoffCommitResult {
 export interface VcsCheckpointOps {
   readonly captureCheckpoint: (input: VcsCaptureCheckpointInput) => Effect.Effect<void, VcsError>;
   /**
-   * Snapshot the whole worktree as a real, fetchable commit for a handoff.
-   *
-   * Unlike a checkpoint this has a parent, because checkpoint refs are
-   * parentless and live under a namespace no remote fetches by default. The
-   * tree is identical in spirit: everything `git add -A` sees, so tracked,
-   * untracked and uncommitted work all travel. Ignored files do not.
+   * Snapshot the worktree (everything `git add -A` sees) as a fetchable commit
+   * for a handoff. Unlike checkpoint refs (parentless, never fetched by
+   * default) it has a parent. Ignored files do not travel.
    */
   readonly publishHandoffCommit: (
     input: VcsPublishHandoffCommitInput,
@@ -98,11 +92,10 @@ export interface VcsCheckpointOps {
 export class VcsDriver extends Context.Service<
   VcsDriver,
   {
-    readonly capabilities: VcsDriverCapabilities;
     readonly execute: (
       input: Omit<VcsProcess.VcsProcessInput, "command">,
     ) => Effect.Effect<VcsProcess.VcsProcessOutput, VcsError>;
-    readonly checkpoints?: VcsCheckpointOps;
+    readonly checkpoints: VcsCheckpointOps;
     readonly detectRepository: (
       cwd: string,
     ) => Effect.Effect<VcsRepositoryIdentity | null, VcsError>;
@@ -116,8 +109,5 @@ export class VcsDriver extends Context.Service<
       relativePaths: ReadonlyArray<string>,
     ) => Effect.Effect<ReadonlyArray<string>, VcsError>;
     readonly initRepository: (input: VcsInitInput) => Effect.Effect<void, VcsError>;
-    readonly getDiffPreview?: (
-      input: ReviewDiffPreviewInput,
-    ) => Effect.Effect<ReviewDiffPreviewResult, VcsError>;
   }
 >()("t3/vcs/VcsDriver") {}

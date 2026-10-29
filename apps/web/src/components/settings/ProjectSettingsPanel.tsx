@@ -5,7 +5,7 @@ import { useEnvironmentsWithScope, readEnvironmentScope } from "../../state/sess
 import {
   deriveProjectGroupingOverrideKey,
   selectProjectGroupingSettings,
-} from "../../logicalProject";
+} from "@t3tools/client-runtime/state/project-grouping";
 import { type SidebarProjectGroupingMode } from "@t3tools/contracts";
 import { updateClientSettings, useClientSettings } from "../../hooks/useSettings";
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectItem } from "../ui/select";
