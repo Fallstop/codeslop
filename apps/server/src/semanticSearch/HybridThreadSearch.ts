@@ -1,14 +1,7 @@
 /**
- * HybridThreadSearch - Thread content search combining the lexical LIKE scan
- * with semantic embedding matches.
- *
- * Serves the existing `orchestration.searchThreads` RPC. Lexical results keep
- * exact-substring recall; semantic results surface threads whose wording
- * differs from the query. The two ranked lists are fused with reciprocal rank
- * fusion. Any semantic-path failure (model not yet downloaded, disabled,
- * repository error) degrades to lexical-only rather than failing the search.
- *
- * @module HybridThreadSearch
+ * Serves `orchestration.searchThreads` by fusing the lexical LIKE scan with semantic
+ * matches (reciprocal rank fusion), so threads with different wording still surface.
+ * Any semantic failure degrades to lexical-only instead of failing the search.
  */
 import type {
   OrchestrationSearchThreadsInput,
@@ -31,11 +24,8 @@ const DEFAULT_LIMIT = 50;
 /** Chunk candidates scanned before per-thread dedupe. */
 const SEMANTIC_CANDIDATE_LIMIT = 48;
 /**
- * Absolute cosine floor. MiniLM is a symmetric similarity model, so scores
- * scale with how closely the query's length matches the chunk's rather than
- * with relevance alone: a one-word query tops out far lower than a sentence.
- * This floor only has to exclude the noise band (unrelated chunks sit near 0);
- * the relative cutoff below does the discriminating.
+ * Absolute cosine floor that only excludes the noise band near 0. MiniLM scores
+ * scale with query length, so the relative cutoff below does the discriminating.
  */
 const MIN_SEMANTIC_SCORE = 0.2;
 /**
@@ -59,16 +49,14 @@ export class HybridThreadSearch extends Context.Service<
   }
 >()("t3/semanticSearch/HybridThreadSearch") {}
 
-export const make = Effect.fn("semanticSearch.hybridThreadSearch.make")(function* () {
+const make = Effect.fn("semanticSearch.hybridThreadSearch.make")(function* () {
   const lexicalSearch = yield* ThreadSearch;
   const model = yield* EmbeddingModel;
   const index = yield* MessageEmbeddingIndex;
   const repository = yield* MessageEmbeddingRepository;
 
-  const semanticMatches = (
-    input: OrchestrationSearchThreadsInput,
-  ): Effect.Effect<ReadonlyArray<OrchestrationThreadSearchMatch>> =>
-    Effect.gen(function* () {
+  const semanticMatches = Effect.fn("HybridThreadSearch.semanticMatches")(
+    function* (input: OrchestrationSearchThreadsInput) {
       if (!(yield* model.isEnabled)) {
         return [];
       }
@@ -128,13 +116,13 @@ export const make = Effect.fn("semanticSearch.hybridThreadSearch.make")(function
         });
       }
       return matches;
-    }).pipe(
-      Effect.catch((error: unknown) =>
-        Effect.logDebug("semanticSearch.query.skipped", { error }).pipe(
-          Effect.as([] as ReadonlyArray<OrchestrationThreadSearchMatch>),
-        ),
+    },
+    Effect.catch((error: unknown) =>
+      Effect.logDebug("semanticSearch.query.skipped", { error }).pipe(
+        Effect.as([] as ReadonlyArray<OrchestrationThreadSearchMatch>),
       ),
-    );
+    ),
+  );
 
   const searchThreads: HybridThreadSearch["Service"]["searchThreads"] = Effect.fn(
     "HybridThreadSearch.searchThreads",
@@ -223,20 +211,3 @@ export const make = Effect.fn("semanticSearch.hybridThreadSearch.make")(function
 });
 
 export const HybridThreadSearchLive = Layer.effect(HybridThreadSearch, make());
-
-/** Lexical-only pass-through for tests that mock ThreadSearch. */
-export const HybridThreadSearchLexicalOnly = Layer.effect(
-  HybridThreadSearch,
-  Effect.gen(function* () {
-    const lexicalSearch = yield* ThreadSearch;
-    return HybridThreadSearch.of({
-      searchThreads: lexicalSearch.search,
-      getStatus: Effect.succeed({
-        state: "disabled",
-        modelId: "",
-        indexedMessages: 0,
-        pendingMessages: 0,
-      }),
-    });
-  }),
-);

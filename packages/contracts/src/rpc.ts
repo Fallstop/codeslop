@@ -980,7 +980,7 @@ const WsServerReportClientActivityRpc = Rpc.make(WS_METHODS.serverReportClientAc
   error: EnvironmentAuthorizationError,
 });
 
-export const WsSemanticSearchGetStatusRpc = Rpc.make(SEMANTIC_SEARCH_WS_METHODS.getStatus, {
+const WsSemanticSearchGetStatusRpc = Rpc.make(SEMANTIC_SEARCH_WS_METHODS.getStatus, {
   payload: SemanticSearchGetStatusInput,
   success: SemanticSearchStatus,
   error: EnvironmentAuthorizationError,

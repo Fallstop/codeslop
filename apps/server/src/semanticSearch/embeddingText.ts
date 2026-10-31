@@ -17,7 +17,7 @@ export const EMBEDDING_SCHEME_VERSION = 2;
  * each vector on one topic, which is what palette-length queries look like.
  */
 export const EMBEDDING_CHUNK_MAX_CHARS = 320;
-export const EMBEDDING_CHUNK_OVERLAP_CHARS = 64;
+const EMBEDDING_CHUNK_OVERLAP_CHARS = 64;
 /** Very long messages (pasted logs, huge diffs) are truncated, not fully indexed. */
 export const EMBEDDING_MAX_CHUNKS_PER_MESSAGE = 48;
 /** Chunks shorter than this carry no useful signal (e.g. "ok", "thanks"). */

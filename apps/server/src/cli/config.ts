@@ -46,7 +46,7 @@ export const baseDirFlag = Flag.String("base-dir").pipe(
   ),
   Flag.optional,
 );
-export const runtimeStatePathFlag = Flag.String("runtime-state-path").pipe(
+const runtimeStatePathFlag = Flag.String("runtime-state-path").pipe(
   Flag.withDescription(
     "Where to publish this server's runtime record. Defaults to server-runtime.json under the state directory; set it when another server already owns that slot.",
   ),

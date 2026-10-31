@@ -13,8 +13,8 @@ import * as Scope from "effect/Scope";
 import * as Electron from "electron";
 
 export const DESKTOP_HOST = "app";
-export const DESKTOP_PRODUCTION_SCHEME = "codeslop";
-export const DESKTOP_DEVELOPMENT_SCHEME = "codeslop-dev";
+const DESKTOP_PRODUCTION_SCHEME = "codeslop";
+const DESKTOP_DEVELOPMENT_SCHEME = "codeslop-dev";
 
 export function getDesktopScheme(isDevelopment: boolean): string {
   return isDevelopment ? DESKTOP_DEVELOPMENT_SCHEME : DESKTOP_PRODUCTION_SCHEME;

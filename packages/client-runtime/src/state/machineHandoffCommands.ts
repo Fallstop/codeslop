@@ -1,11 +1,7 @@
 /**
- * The command that spans two environments: it reads from the origin and
- * writes to the target. `EnvironmentRegistry.run` only swaps the supervisor,
- * so calls for two environments nest freely inside one effect.
- *
- * `singleFlight` on the handoff id: a bundle is carried once, and a second
- * "Continue" or a re-render joins the running transfer instead of starting
- * another.
+ * The one command spanning two environments; `EnvironmentRegistry.run` only
+ * swaps the supervisor, so calls for both nest inside one effect. `singleFlight`
+ * on the handoff id makes a second "Continue" join the running transfer.
  */
 import {
   MachineHandoffId,
@@ -53,7 +49,7 @@ import {
 } from "./runtime.ts";
 
 /** One readable failure for the banner; the causes span several RPC error types. */
-export class MachineHandoffTransferError extends Data.TaggedError("MachineHandoffTransferError")<{
+class MachineHandoffTransferError extends Data.TaggedError("MachineHandoffTransferError")<{
   readonly message: string;
 }> {}
 
@@ -100,7 +96,7 @@ function awaitAtomValue<A, B>(
   });
 }
 
-export function createMachineHandoffCommandAtoms<R, E>(
+function createMachineHandoffCommandAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry.EnvironmentRegistry | Crypto.Crypto | R, E>,
   options: {
     readonly threadShellAtom: (ref: {

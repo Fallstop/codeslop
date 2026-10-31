@@ -6,14 +6,9 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 
-// Electron safeStorage derives its encryption key from an OS-keyring item
-// whose name follows the app's name: pre-rebrand installs hold the key in
-// "t3code Safe Storage" (dev: "t3code-dev Safe Storage"), while the rebranded
-// app looks up "codeslop Safe Storage" and would otherwise mint a fresh key on
-// first launch — leaving every catalog encrypted under the legacy key
-// undecryptable. Mirroring the legacy userData-dir adoption in
-// DesktopAppIdentity, this module copies the legacy key under the new item
-// name before anything can decrypt (or lazily create) it.
+// safeStorage's key lives in an OS-keyring item named after the app, so the rebranded
+// app would mint a fresh "codeslop Safe Storage" key and strand catalogs encrypted under
+// "t3code Safe Storage". Copy the legacy key under the new name before anything decrypts.
 
 const textEncoder = new TextEncoder();
 
@@ -48,7 +43,7 @@ export interface SafeStorageKeychainItems {
   readonly legacyApplication: string;
 }
 
-export const resolveSafeStorageKeychainItems = (environment: {
+const resolveSafeStorageKeychainItems = (environment: {
   readonly userDataDirName: string;
   readonly legacyUserDataDirName: string;
 }): SafeStorageKeychainItems => ({

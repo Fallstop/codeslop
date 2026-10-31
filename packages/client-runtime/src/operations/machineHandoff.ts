@@ -1,11 +1,7 @@
 /**
- * Carries a thread from one machine to another. Servers never talk to each
- * other, so the client that can reach both does the carrying: it asks the
- * origin to stop and stage the thread, copies the staged bundle across by
- * offset, has the target adopt it, then tells the origin the work moved.
- *
- * The two machines arrive as ports so the ordering is testable without two
- * live connections.
+ * Carries a thread between machines. Servers never talk to each other, so the
+ * client that reaches both stages on the origin, copies the bundle across,
+ * has the target adopt it, then marks the origin moved.
  */
 import {
   MACHINE_HANDOFF_CHUNK_BYTES,
@@ -23,7 +19,7 @@ export type MachineHandoffProgress =
   | { readonly stage: "adopting" };
 
 /** The origin parked or dropped the handoff before it could be carried. */
-export class MachineHandoffNotStagedError extends Data.TaggedError("MachineHandoffNotStagedError")<{
+class MachineHandoffNotStagedError extends Data.TaggedError("MachineHandoffNotStagedError")<{
   readonly message: string;
 }> {}
 
@@ -60,13 +56,9 @@ export function describeMachineHandoffFailure(cause: unknown): string {
 }
 
 /**
- * Moves the thread and returns what the target adopted. With `resume`, carries
- * a handoff that is already staged, such as one another client started.
- *
- * The target adopts before the origin is marked complete: a failure between
- * the two leaves the work landed and the origin still showing "ready", which a
- * resume finishes (adopt is idempotent). The reverse would mark a thread moved
- * to a machine that never received it.
+ * Moves the thread; `resume` carries one already staged. The target adopts
+ * before the origin is marked complete, so a failure in between leaves a
+ * resumable "ready" origin rather than a thread marked moved but never received.
  */
 export const runMachineHandoff = Effect.fn("MachineHandoff.run")(function* <E>(input: {
   readonly resume: boolean;

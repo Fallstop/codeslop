@@ -8,7 +8,6 @@ import {
   settlePromise,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { useCallback } from "react";
 
 import type {
   ThreadActionMenuHandoffState,
@@ -48,7 +47,7 @@ function handoffFailed(title: string, description: string) {
 }
 
 /** Confirms taking a landed thread back, since the other machine may still be running it. */
-export async function confirmTakeBack(thread: EnvironmentThreadShell): Promise<boolean> {
+async function confirmTakeBack(thread: EnvironmentThreadShell): Promise<boolean> {
   const api = readLocalApi();
   if (!api) return false;
   const label = machineHandoffLabel(thread.machineHandoff?.target);
@@ -70,56 +69,50 @@ export async function confirmTakeBack(thread: EnvironmentThreadShell): Promise<b
 export function useMachineHandoffActions() {
   const cancel = useAtomCommand(threadEnvironment.cancelMachineHandoff, { reportFailure: false });
 
-  const cancelHandoff = useCallback(
-    async (thread: EnvironmentThreadShell) => {
-      const result = await cancel({
-        environmentId: thread.environmentId,
-        input: { threadId: thread.id },
-      });
-      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-        const failure = squashAtomCommandFailure(result);
-        handoffFailed(
-          "Could not take the thread back",
-          failure instanceof Error ? failure.message : "An error occurred.",
-        );
-      }
-    },
-    [cancel],
-  );
+  const cancelHandoff = async (thread: EnvironmentThreadShell) => {
+    const result = await cancel({
+      environmentId: thread.environmentId,
+      input: { threadId: thread.id },
+    });
+    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      const failure = squashAtomCommandFailure(result);
+      handoffFailed(
+        "Could not take the thread back",
+        failure instanceof Error ? failure.message : "An error occurred.",
+      );
+    }
+  };
 
-  return useCallback(
-    async (action: ThreadActionMenuId, thread: EnvironmentThreadShell): Promise<boolean> => {
-      if (action.startsWith("hand-off:")) {
-        const environmentId = action.slice("hand-off:".length);
-        const target = readMachineHandoffTargets(thread).find(
-          (candidate) => candidate.environmentId === environmentId,
-        );
-        if (target === undefined || "unavailable" in target) return true;
-        const failure = await runMachineHandoffAction(thread, {
-          type: "start",
-          target,
-          // A thread that was working keeps working on the other machine.
-          continueWork: threadRuntimeIsActive(thread.runtime),
-        });
-        if (failure !== null) handoffFailed(`Could not hand off to ${target.label}`, failure);
+  return async (action: ThreadActionMenuId, thread: EnvironmentThreadShell): Promise<boolean> => {
+    if (action.startsWith("hand-off:")) {
+      const environmentId = action.slice("hand-off:".length);
+      const target = readMachineHandoffTargets(thread).find(
+        (candidate) => candidate.environmentId === environmentId,
+      );
+      if (target === undefined || "unavailable" in target) return true;
+      const failure = await runMachineHandoffAction(thread, {
+        type: "start",
+        target,
+        // A thread that was working keeps working on the other machine.
+        continueWork: threadRuntimeIsActive(thread.runtime),
+      });
+      if (failure !== null) handoffFailed(`Could not hand off to ${target.label}`, failure);
+      return true;
+    }
+    switch (action) {
+      case "cancel-handoff":
+        await cancelHandoff(thread);
+        return true;
+      case "take-back":
+        if (await confirmTakeBack(thread)) await cancelHandoff(thread);
+        return true;
+      case "hand-back": {
+        const failure = await runMachineHandoffAction(thread, { type: "hand-back" });
+        if (failure !== null) handoffFailed("Could not hand the thread back", failure);
         return true;
       }
-      switch (action) {
-        case "cancel-handoff":
-          await cancelHandoff(thread);
-          return true;
-        case "take-back":
-          if (await confirmTakeBack(thread)) await cancelHandoff(thread);
-          return true;
-        case "hand-back": {
-          const failure = await runMachineHandoffAction(thread, { type: "hand-back" });
-          if (failure !== null) handoffFailed("Could not hand the thread back", failure);
-          return true;
-        }
-        default:
-          return false;
-      }
-    },
-    [cancelHandoff],
-  );
+      default:
+        return false;
+    }
+  };
 }

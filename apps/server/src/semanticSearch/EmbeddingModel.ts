@@ -1,16 +1,7 @@
 /**
- * EmbeddingModel - Local sentence-embedding runtime for semantic thread search.
- *
- * Wraps a lazily-loaded `@huggingface/transformers` feature-extraction
- * pipeline. The feature is opt-in via the `semanticSearchEnabled` server
- * setting; enabling it downloads the model once into `<stateDir>/models`
- * (~25MB) after which everything runs fully locally — no message text ever
- * leaves the machine. Download progress is tracked for the settings-page
- * status readout. Load failures (offline first run, unsupported runtime) mark
- * the model unavailable and are retried with a backoff, so semantic search
- * degrades to lexical-only instead of failing the server.
- *
- * @module EmbeddingModel
+ * Local sentence embeddings for semantic thread search; message text never leaves
+ * the machine. The model downloads once into `<stateDir>/models` when enabled, and
+ * load failures retry with backoff so search degrades to lexical-only.
  */
 import * as NodeModule from "node:module";
 
@@ -27,7 +18,7 @@ import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { EMBEDDING_SCHEME_VERSION } from "./embeddingText.ts";
 
-export const DEFAULT_EMBEDDING_MODEL_ID = "Xenova/all-MiniLM-L6-v2";
+const DEFAULT_EMBEDDING_MODEL_ID = "Xenova/all-MiniLM-L6-v2";
 
 const requireFromHere = NodeModule.createRequire(import.meta.url);
 type TransformersModule = typeof import("@huggingface/transformers");
@@ -114,7 +105,7 @@ interface TransformersProgressEvent {
   readonly total?: number;
 }
 
-export const make = Effect.fn("semanticSearch.embeddingModel.make")(function* () {
+const make = Effect.fn("semanticSearch.embeddingModel.make")(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const serverSettings = yield* ServerSettingsService;
   const path = yield* Path.Path;
@@ -137,12 +128,9 @@ export const make = Effect.fn("semanticSearch.embeddingModel.make")(function* ()
 
   const loadPipeline = Effect.tryPromise({
     try: async () => {
-      // `require`, not `import`: the package is a runtime external, and a
-      // static or bundler-visible dynamic import would put its own imports of
-      // sharp and onnxruntime-common in the emitted module graph. The single
-      // executable can only `import` built-ins, so those would pass the
-      // bundler and then throw inside the binary. Its CJS entry point loads
-      // from the node_modules tree staged beside the executable.
+      // `require`, not `import`: the single executable can only `import` built-ins, so a
+      // bundler-visible import of this runtime external would pull sharp and
+      // onnxruntime-common into the module graph and throw inside the binary.
       const transformers = loadTransformers();
       transformers.env.cacheDir = cacheDir;
       const pipeline = await transformers.pipeline("feature-extraction", modelId, {

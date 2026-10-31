@@ -15,7 +15,7 @@ import { environmentPresentations } from "./presentation";
 import { environmentProjects } from "./projects";
 import { environmentThreadShells } from "./threads";
 
-export const machineHandoff = createMachineHandoffClient(connectionAtomRuntime, {
+const machineHandoff = createMachineHandoffClient(connectionAtomRuntime, {
   registry: appAtomRegistry,
   threadShellAtom: environmentThreadShells.threadShellAtom,
   presentationsAtom: environmentPresentations.presentationsAtom,

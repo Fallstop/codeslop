@@ -1,20 +1,7 @@
 /**
- * ClaudeSessionTransfer — move a Claude Code session between machines.
- *
- * Claude Code addresses a session by directory, not by any record it keeps:
- * `<configDir>/projects/<slug(realpath(cwd))>/<sessionId>.jsonl`. Putting the
- * transcript at the path the target's cwd hashes to is the whole transplant —
- * `--resume <sessionId>` then finds it and the conversation continues with its
- * real context.
- *
- * Verified against claude 2.1.238 by resuming a transplanted transcript from a
- * different working directory: context survived, no trust prompt, and the
- * resumed turn appended locally so the session becomes a native one on the
- * target. The `cwd` recorded inside individual records is deliberately NOT
- * rewritten — a transcript legitimately holds several cwds once an agent moves
- * between subdirectories, and resume does not read them.
- *
- * @module provider/Drivers/ClaudeSessionTransfer
+ * Claude Code finds a session at `<configDir>/projects/<slug(realpath(cwd))>/<id>.jsonl`,
+ * so placing the transcript where the target's cwd hashes lets `--resume` continue it
+ * (verified with claude 2.1.238). Per-record `cwd` values stay as-is; resume ignores them.
  */
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -53,16 +40,14 @@ export function claudeProjectSlug(absolutePath: string): string {
  * follow symlinks, and fall back to the path as given when it does not exist
  * yet (the CLI does the same).
  */
-export const resolveSlugPath = Effect.fn("ClaudeSessionTransfer.resolveSlugPath")(function* (
-  cwd: string,
-) {
+const resolveSlugPath = Effect.fn("ClaudeSessionTransfer.resolveSlugPath")(function* (cwd: string) {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const resolved = path.resolve(cwd);
   return yield* fileSystem.realPath(resolved).pipe(Effect.orElseSucceed(() => resolved));
 });
 
-export const claudeSessionFilePath = Effect.fn("ClaudeSessionTransfer.claudeSessionFilePath")(
+const claudeSessionFilePath = Effect.fn("ClaudeSessionTransfer.claudeSessionFilePath")(
   function* (input: {
     readonly configDir: string;
     readonly cwd: string;

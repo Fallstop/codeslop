@@ -1,12 +1,7 @@
 /**
- * MessageEmbeddingIndex - In-memory vector index over message embedding chunks.
- *
- * Vectors persist in the message_embeddings table; this service keeps them
- * resident so a search is a brute-force cosine scan (fine at chat scale)
- * instead of a per-query blob read of the whole table. Hydrated lazily from
- * SQLite on first demand, then kept in sync by the indexer's writes.
- *
- * @module MessageEmbeddingIndex
+ * Keeps message embedding vectors resident so search is a brute-force cosine scan
+ * (fine at chat scale) instead of a per-query read of message_embeddings.
+ * Hydrated lazily from SQLite, then kept in sync by the indexer's writes.
  */
 import type { MessageId, ThreadId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
@@ -55,7 +50,7 @@ export class MessageEmbeddingIndex extends Context.Service<
   }
 >()("t3/semanticSearch/MessageEmbeddingIndex") {}
 
-export const make = Effect.fn("semanticSearch.messageEmbeddingIndex.make")(function* () {
+const make = Effect.fn("semanticSearch.messageEmbeddingIndex.make")(function* () {
   const repository = yield* MessageEmbeddingRepository;
   const entries = new Map<MessageId, MessageEntry>();
   const loadMutex = yield* Semaphore.make(1);
