@@ -1,0 +1,90 @@
+name: Deploy cloud (fork)
+
+# The fork's Slop Connect relay (slop-relay.jmw.nz) and hosted web app (slop.jmw.nz).
+# Upstream's deploy-relay.yml stays gated to pingdotgg/t3code so merges stay clean.
+# The relay database is private behind a tunnel, so migrations are not applied here:
+# run `node infra/relay/scripts/self-hosted-migrations.ts | psql ...` before pushing new ones.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Redeploy every relay resource, including ones with no detected changes.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloud-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy relay and hosted web app
+    if: github.repository == 'Fallstop/codeslop' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: ${{ vars.HOSTED_APP_URL }}
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_DEPLOY_API_TOKEN }}
+      ALCHEMY_TELEMETRY_DISABLED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup dependencies
+        uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --filter=t3code-relay... --filter=@t3tools/scripts... --filter=@t3tools/web...
+
+      - name: Deploy relay
+        run: vp run --filter t3code-relay deploy --stage prod --yes --no-input ${{ inputs.force && '--force' || '' }}
+        env:
+          T3CODE_RELAY_CLIENT_CONFIG_ENV: ${{ runner.temp }}/relay-client-config.env
+          AXIOM_ORG_ID: ${{ vars.AXIOM_ORG_ID }}
+          AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
+          RELAY_DOMAIN: ${{ vars.RELAY_DOMAIN }}
+          RELAY_API_ZONE_NAME: ${{ vars.RELAY_API_ZONE_NAME }}
+          RELAY_TUNNEL_ZONE_NAME: ${{ vars.RELAY_TUNNEL_ZONE_NAME }}
+          RELAY_DATABASE_HOST: ${{ vars.RELAY_DATABASE_HOST }}
+          RELAY_DATABASE_NAME: ${{ vars.RELAY_DATABASE_NAME }}
+          RELAY_DATABASE_USER: ${{ vars.RELAY_DATABASE_USER }}
+          RELAY_DATABASE_PASSWORD: ${{ secrets.RELAY_DATABASE_PASSWORD }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
+          CLERK_JWT_AUDIENCE: ${{ vars.CLERK_JWT_AUDIENCE }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          APNS_ENABLED: "false"
+          FCM_SERVICE_ACCOUNT: ${{ secrets.FCM_SERVICE_ACCOUNT }}
+
+      - name: Load relay client config
+        run: |
+          config_path="$RUNNER_TEMP/relay-client-config.env"
+          for key in T3CODE_MOBILE_OTLP_TRACES_TOKEN T3CODE_RELAY_CLIENT_OTLP_TRACES_TOKEN; do
+            echo "::add-mask::$(sed -n "s/^$key=//p" "$config_path")"
+          done
+          cat "$config_path" >> "$GITHUB_ENV"
+
+      - name: Build hosted web app
+        run: vp run --filter @t3tools/web build
+        env:
+          VITE_HOSTED_APP_URL: ${{ vars.HOSTED_APP_URL }}
+          T3CODE_CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
+          T3CODE_CLERK_JWT_TEMPLATE: ${{ vars.CLERK_JWT_TEMPLATE }}
+          T3CODE_CLERK_CLI_OAUTH_CLIENT_ID: ${{ vars.CLERK_CLI_OAUTH_CLIENT_ID }}
+
+      - name: Deploy hosted web app
+        working-directory: apps/web
+        run: vp dlx wrangler@4.156.0 deploy
