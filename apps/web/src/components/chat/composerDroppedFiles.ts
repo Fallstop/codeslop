@@ -4,11 +4,9 @@ import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 const WINDOWS_ABSOLUTE_PATH_REGEX = /^(?:[a-z]:[\\/]|\\\\)/i;
 
 /**
- * Whether a host path still names the same file on the environment that will
- * run the turn. A drop only ever carries the client machine's path, so a
- * Windows path handed to a Linux backend (a WSL-hosted local environment)
- * points at nothing. An unknown platform is trusted: callers only resolve
- * paths once they know the environment is this machine's own backend.
+ * Whether a dropped host path names a file on the environment running the turn: a Windows
+ * path handed to a WSL backend points at nothing. Unknown platforms are trusted, since callers
+ * only resolve paths for this machine's own backend.
  */
 export function isPathUsableOnPlatform(
   path: string,

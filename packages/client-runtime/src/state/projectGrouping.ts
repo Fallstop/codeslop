@@ -68,12 +68,9 @@ function deriveRepositoryRelativeProjectPath(
   return normalizedProjectPath.slice(rootPrefix.length).replaceAll("\\", "/");
 }
 
-// Home directories differ per machine — /Users/me on macOS, /home/me on
-// Linux, c:\users\me on Windows, /mnt/c/users/me from WSL — so path grouping
-// compares home-relative paths. Anything outside a recognizable home stays
-// absolute and only matches an identical path on the other machine. Case
-// follows the platform, so a Windows checkout only ever groups with another
-// Windows checkout.
+// Home directories differ per machine (macOS, Linux, Windows, WSL), so grouping compares
+// home-relative paths; anything outside a recognizable home stays absolute. Case follows
+// the platform, so a Windows checkout only groups with another Windows checkout.
 const HOME_PREFIX_PATTERN =
   /^(?:\/(?:[Uu]sers|home)\/[^/]+|\/root|\/mnt\/[a-z]\/[Uu]sers\/[^/]+|[a-z]:\\users\\[^\\]+)(?=[/\\]|$)/;
 

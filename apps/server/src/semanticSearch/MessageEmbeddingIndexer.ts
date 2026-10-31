@@ -1,14 +1,7 @@
 /**
- * MessageEmbeddingIndexer - Background loop that keeps message embeddings
- * current.
- *
- * Opportunistic work: each tick runs only while a foreground client is active
- * (BackgroundPolicy), drains a bounded number of stale-message batches, and
- * never fails the loop — embedding problems degrade semantic search rather
- * than crash the server. Orphaned rows (deleted threads/messages) are swept
- * periodically.
- *
- * @module MessageEmbeddingIndexer
+ * Keeps message embeddings current. Ticks only while a foreground client is active, drains
+ * a bounded batch of stale messages, sweeps orphans periodically, and never fails the loop:
+ * embedding problems degrade semantic search instead of crashing the server.
  */
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -133,7 +126,7 @@ const startIndexer = Effect.gen(function* () {
     tick.pipe(
       // Model-unavailable is expected (first download pending, offline); the
       // model service already logged and set its retry backoff.
-      Effect.catchTag("EmbeddingModelUnavailableError", () => Effect.void),
+      Effect.catchTags({ EmbeddingModelUnavailableError: () => Effect.void }),
       Effect.catch((error: unknown) =>
         Effect.logWarning("semanticSearch.indexer.tick-failed", { error }),
       ),

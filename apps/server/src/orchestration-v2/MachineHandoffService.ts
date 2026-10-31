@@ -309,8 +309,8 @@ const make = Effect.gen(function* () {
       .pipe(Effect.mapError((cause) => refuse("Could not mark the handoff ready.", cause)));
   });
 
-  const cleanup: MachineHandoffServiceShape["cleanup"] = (input) =>
-    Effect.gen(function* () {
+  const cleanup: MachineHandoffServiceShape["cleanup"] = Effect.fn("MachineHandoffService.cleanup")(
+    function* (input) {
       const manifest = yield* staging.readManifest(input.handoffId);
       yield* staging.discard(input.handoffId);
       const thread = yield* threads.getThreadRecords(input.threadId, []);
@@ -323,14 +323,17 @@ const make = Effect.gen(function* () {
         ? yield* findRemoteByUrl(git, cwd, manifest.value.git.remoteUrl)
         : ((yield* identities.resolve(cwd))?.locator.remoteName ?? null);
       yield* deleteRefs(git, { cwd, ref: machineHandoffRef(input.handoffId), remote });
-    }).pipe(
-      Effect.catchCause((cause) =>
-        Effect.logWarning("Machine handoff cleanup was incomplete", {
-          handoffId: input.handoffId,
-          cause,
-        }),
+    },
+    (effect, input) =>
+      effect.pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("Machine handoff cleanup was incomplete", {
+            handoffId: input.handoffId,
+            cause,
+          }),
+        ),
       ),
-    );
+  );
 
   const readBundle: MachineHandoffServiceShape["readBundle"] = Effect.fn(
     "MachineHandoffService.readBundle",

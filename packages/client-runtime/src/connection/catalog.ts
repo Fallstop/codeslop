@@ -70,12 +70,9 @@ function isLoopbackUrl(rawUrl: string): boolean {
 }
 
 /**
- * True when the entry's backend answers on this machine's loopback interface —
- * the desktop's own server, or a second local backend such as WSL. Those stay
- * reachable with every network interface down, so callers must not gate them on
- * the platform's offline signal, which only describes routes off this machine.
- * SSH entries are excluded: their forward is loopback, but the host it reaches
- * is not.
+ * True when the entry's backend answers on this machine's loopback (the desktop's own server,
+ * or WSL), so it stays reachable offline and must not be gated on the offline signal. SSH
+ * entries are excluded: their forward is loopback, but the host it reaches is not.
  */
 export function isLoopbackCatalogEntry(entry: ConnectionCatalogEntry): boolean {
   switch (entry.target._tag) {

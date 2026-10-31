@@ -4,7 +4,7 @@ import {
 } from "@t3tools/client-runtime/machine-handoff";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { ArrowRightLeftIcon } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useState } from "react";
 
 import { useMachineHandoffActions } from "../../hooks/useMachineHandoffActions";
 import { runMachineHandoffAction, useMachineHandoffProgress } from "../../state/machineHandoff";
@@ -30,77 +30,72 @@ export function useMachineHandoffBannerItem(
   // "Continued from" is an arrival note; dismissing it lasts for the session.
   const [dismissedArrivals, setDismissedArrivals] = useState<ReadonlySet<string>>(new Set());
 
-  const run = useCallback(
-    (action: MachineHandoffBannerAction) => {
-      if (thread === null) return;
-      // A transfer reports through its progress and must stay cancellable.
-      const transfers = action === "continue" || action === "retry";
-      if (!transfers) setBusy(true);
-      void (async () => {
-        if (action === "continue" || action === "retry") {
-          const failure = await runMachineHandoffAction(thread, { type: action });
-          if (failure !== null) {
-            toastManager.add(
-              stackedThreadToast({ type: "error", title: "Handoff failed", description: failure }),
-            );
-          }
-        } else {
-          await handleMenuAction(
-            action === "cancel"
-              ? "cancel-handoff"
-              : action === "hand-back"
-                ? "hand-back"
-                : "take-back",
-            thread,
+  const run = (action: MachineHandoffBannerAction) => {
+    if (thread === null) return;
+    // A transfer reports through its progress and must stay cancellable.
+    const transfers = action === "continue" || action === "retry";
+    if (!transfers) setBusy(true);
+    void (async () => {
+      if (action === "continue" || action === "retry") {
+        const failure = await runMachineHandoffAction(thread, { type: action });
+        if (failure !== null) {
+          toastManager.add(
+            stackedThreadToast({ type: "error", title: "Handoff failed", description: failure }),
           );
         }
-      })().finally(() => {
-        if (!transfers) setBusy(false);
-      });
-    },
-    [handleMenuAction, thread],
-  );
+      } else {
+        await handleMenuAction(
+          action === "cancel"
+            ? "cancel-handoff"
+            : action === "hand-back"
+              ? "hand-back"
+              : "take-back",
+          thread,
+        );
+      }
+    })().finally(() => {
+      if (!transfers) setBusy(false);
+    });
+  };
 
-  return useMemo(() => {
-    if (thread === null) return null;
-    const banner = machineHandoffBanner(thread, progress);
-    if (banner === null) return null;
-    const arrivalKey =
-      thread.machineHandoff === null && thread.continuedFrom !== null
-        ? `${thread.id}:${thread.continuedFrom.handoffId}`
-        : null;
-    if (arrivalKey !== null && dismissedArrivals.has(arrivalKey)) return null;
-    return {
-      id: `machine-handoff:${thread.id}`,
-      variant: banner.tone,
-      icon: <ArrowRightLeftIcon />,
-      title: banner.title,
-      ...(banner.description === null ? {} : { description: banner.description }),
-      ...(banner.actions.length === 0
-        ? {}
-        : {
-            actions: (
-              <>
-                {banner.actions.map((action) => (
-                  <Button
-                    key={action}
-                    size="xs"
-                    variant="ghost"
-                    disabled={busy}
-                    onClick={() => run(action)}
-                  >
-                    {ACTION_LABELS[action]}
-                  </Button>
-                ))}
-              </>
-            ),
-          }),
-      ...(arrivalKey === null
-        ? {}
-        : {
-            dismissLabel: "Dismiss handoff note",
-            onDismiss: () => setDismissedArrivals((current) => new Set([...current, arrivalKey])),
-          }),
-    };
-  }, [busy, dismissedArrivals, progress, run, thread]);
+  if (thread === null) return null;
+  const banner = machineHandoffBanner(thread, progress);
+  if (banner === null) return null;
+  const arrivalKey =
+    thread.machineHandoff === null && thread.continuedFrom !== null
+      ? `${thread.id}:${thread.continuedFrom.handoffId}`
+      : null;
+  if (arrivalKey !== null && dismissedArrivals.has(arrivalKey)) return null;
+  return {
+    id: `machine-handoff:${thread.id}`,
+    variant: banner.tone,
+    icon: <ArrowRightLeftIcon />,
+    title: banner.title,
+    ...(banner.description === null ? {} : { description: banner.description }),
+    ...(banner.actions.length === 0
+      ? {}
+      : {
+          actions: (
+            <>
+              {banner.actions.map((action) => (
+                <Button
+                  key={action}
+                  size="xs"
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() => run(action)}
+                >
+                  {ACTION_LABELS[action]}
+                </Button>
+              ))}
+            </>
+          ),
+        }),
+    ...(arrivalKey === null
+      ? {}
+      : {
+          dismissLabel: "Dismiss handoff note",
+          onDismiss: () => setDismissedArrivals((current) => new Set([...current, arrivalKey])),
+        }),
+  };
 }

@@ -2,7 +2,7 @@ import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { type ScopedThreadRef, SourceControlProviderKind } from "@t3tools/contracts";
 import { ExternalLinkIcon, FileCodeIcon } from "lucide-react";
-import { memo, useMemo } from "react";
+import { memo } from "react";
 
 import { cn } from "~/lib/utils";
 import {
@@ -38,60 +38,53 @@ function useReviewFindingTargets(
   threadRef: ScopedThreadRef | undefined,
 ): ReviewFindingTargets {
   const threadShell = useThreadShell(threadRef ?? null);
-  const projectRef = useMemo(
-    () =>
-      threadRef && threadShell
-        ? scopeProjectRef(threadRef.environmentId, threadShell.projectId)
-        : null,
-    [threadRef, threadShell],
-  );
+  const projectRef =
+    threadRef && threadShell
+      ? scopeProjectRef(threadRef.environmentId, threadShell.projectId)
+      : null;
   const project = useProject(projectRef);
 
-  return useMemo(() => {
-    const openFile = threadRef
-      ? (finding: ReviewFinding) => {
-          useRightPanelStore
-            .getState()
-            .openFile(threadRef, finding.file, finding.line ?? undefined);
-        }
-      : null;
+  const openFile = threadRef
+    ? (finding: ReviewFinding) => {
+        useRightPanelStore.getState().openFile(threadRef, finding.file, finding.line ?? undefined);
+      }
+    : null;
 
-    const pullRequest = parseReviewPullRequestReference(messageText);
-    if (!pullRequest) {
-      return { fileUrl: null, pullRequest: null, openFile };
-    }
+  const pullRequest = parseReviewPullRequestReference(messageText);
+  if (!pullRequest) {
+    return { fileUrl: null, pullRequest: null, openFile };
+  }
 
-    // A URL in the report names its own repository; a bare "PR #2292" is about the repository the
-    // thread is working in, which is the only other one this client can name.
-    const identity = project?.repositoryIdentity;
-    const host =
-      pullRequest.host ??
-      (identity
-        ? sourceControlClients.changeRequestHost(identity, SourceControlProviderKind.make("github"))
-        : null);
-    const repository =
-      pullRequest.repository ??
-      identity?.displayName ??
-      (identity?.owner && identity.name ? `${identity.owner}/${identity.name}` : null);
-    if (!host || !repository || !isGithubReviewHost(host)) {
-      return { fileUrl: null, pullRequest: null, openFile };
-    }
+  // A URL in the report names its own repository; a bare PR number refers to the repository
+  // the thread is working in, the only other one this client can name.
+  const identity = project?.repositoryIdentity;
+  const host =
+    pullRequest.host ??
+    (identity
+      ? sourceControlClients.changeRequestHost(identity, SourceControlProviderKind.make("github"))
+      : null);
+  const repository =
+    pullRequest.repository ??
+    identity?.displayName ??
+    (identity?.owner && identity.name ? `${identity.owner}/${identity.name}` : null);
+  if (!host || !repository || !isGithubReviewHost(host)) {
+    return { fileUrl: null, pullRequest: null, openFile };
+  }
 
-    const target = { host, repository, number: pullRequest.number };
-    return {
-      fileUrl: (finding: ReviewFinding) =>
-        buildGithubPullRequestFileUrl({ ...target, file: finding.file, line: finding.line }),
-      pullRequest: {
-        url: buildGithubPullRequestFilesUrl(target),
-        label: `#${pullRequest.number}`,
-      },
-      openFile,
-    };
-  }, [messageText, project, threadRef]);
+  const target = { host, repository, number: pullRequest.number };
+  return {
+    fileUrl: (finding: ReviewFinding) =>
+      buildGithubPullRequestFileUrl({ ...target, file: finding.file, line: finding.line }),
+    pullRequest: {
+      url: buildGithubPullRequestFilesUrl(target),
+      label: `#${pullRequest.number}`,
+    },
+    openFile,
+  };
 }
 
 const LOCATION_CLASS_NAME =
-  "min-w-0 break-all text-left font-mono text-muted-foreground text-xs transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70";
+  "min-w-0 break-all text-left font-mono text-muted-foreground text-xs transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70";
 
 function ReviewFindingLocation({
   finding,
@@ -204,11 +197,8 @@ const ReviewFindingRow = memo(function ReviewFindingRow({
 });
 
 /**
- * A review report as a list of places to go. `/code-review` and the agents built on it end their
- * turn with a JSON array of findings, which reads as a wall of quoted JSON in the transcript: the
- * file and line are named but not clickable, and selecting a summary drags the punctuation along
- * with it. Each row here opens its file in the pull request diff at that line, keeps the prose as
- * prose, and copies as markdown.
+ * Renders a `/code-review` findings array as rows that open each file in the pull request
+ * diff at its line, keep the prose as prose, and copy as markdown.
  */
 export const ReviewFindingsCard = memo(function ReviewFindingsCard({
   findings,

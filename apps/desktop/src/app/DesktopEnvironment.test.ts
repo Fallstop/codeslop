@@ -38,11 +38,9 @@ const makeEnvironment = (
 ) => DesktopEnvironment.DesktopEnvironment.pipe(Effect.provide(layerEnvironment(overrides, env)));
 
 describe("DesktopEnvironment", () => {
-  // The layer is built before Electron emits `ready`, and `ready` arrives from
-  // the event loop: one suspension here and the Clerk bridge registers its
-  // scheme too late, which kills startup. `runSync` throws on a suspended
-  // effect, so an async probe sneaking back into state-home resolution fails
-  // here rather than on a user's machine.
+  // The layer builds before Electron's `ready`; one suspension and the Clerk bridge
+  // registers its scheme too late, killing startup. `runSync` throws on a suspended
+  // effect, so an async probe in state-home resolution fails here, not on a user's machine.
   it("builds without yielding to the event loop", () => {
     // oxlint-disable-next-line t3code/no-manual-effect-runtime-in-tests -- runSync IS the assertion: it throws on a suspended effect, which it.effect would happily await.
     const environment = Effect.runSync(makeEnvironment());

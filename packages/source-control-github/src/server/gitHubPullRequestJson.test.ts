@@ -344,6 +344,7 @@ describe("pull request detail decoding", () => {
           rebaseMergeAllowed: true,
           autoMergeAllowed: true,
           viewerPermission: "WRITE",
+          viewerDefaultMergeMethod: "MERGE",
           pullRequest: {
             number: 7,
             title: "Detail",
@@ -944,6 +945,7 @@ describe("repository access decoding", () => {
           rebaseMergeAllowed: true,
           autoMergeAllowed: true,
           viewerPermission: viewerPermission ?? null,
+          viewerDefaultMergeMethod: "MERGE",
         },
       },
     });
@@ -968,8 +970,8 @@ describe("repository access decoding", () => {
     }
   });
 
-  it("reads the viewer's default merge method, and drops one it has no strategy for", () => {
-    const withDefault = (viewerDefaultMergeMethod?: string | null) =>
+  it("reads the viewer's default merge method", () => {
+    const withDefault = (viewerDefaultMergeMethod: string) =>
       JSON.stringify({
         data: {
           repository: {
@@ -977,7 +979,7 @@ describe("repository access decoding", () => {
             squashMergeAllowed: true,
             rebaseMergeAllowed: true,
             viewerPermission: "WRITE",
-            ...(viewerDefaultMergeMethod === undefined ? {} : { viewerDefaultMergeMethod }),
+            viewerDefaultMergeMethod,
           },
         },
       });
@@ -987,15 +989,6 @@ describe("repository access decoding", () => {
     expect(expectSuccess(decodeRepositoryAccessJson(withDefault("MERGE"))).defaultMergeMethod).toBe(
       "merge",
     );
-    expect(
-      expectSuccess(decodeRepositoryAccessJson(withDefault("FAST_FORWARD"))).defaultMergeMethod,
-    ).toBeUndefined();
-    expect(
-      expectSuccess(decodeRepositoryAccessJson(withDefault())).defaultMergeMethod,
-    ).toBeUndefined();
-    expect(
-      expectSuccess(decodeRepositoryAccessJson(withDefault(null))).defaultMergeMethod,
-    ).toBeUndefined();
   });
 
   it("withholds write where gh names no permission, which is not a standing it gave", () => {

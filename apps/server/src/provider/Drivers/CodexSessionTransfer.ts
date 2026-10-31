@@ -1,19 +1,7 @@
 /**
- * CodexSessionTransfer — move a Codex conversation between machines.
- *
- * Codex resolves `thread/resume` by scanning `<CODEX_HOME>/sessions` for the
- * rollout file carrying the thread id, so a transplant is one file copy. It
- * needs no row in `state_N.sqlite` (that database is an index, not the source
- * of truth) and it does not care which date directory the file sits in.
- *
- * Verified against codex-cli 0.149.0: a home containing only `auth.json` and
- * one rollout resumed successfully from a different working directory, and
- * still resumed with the rollout deliberately filed under the wrong date. The
- * recorded `cwd` in `session_meta` and the origin paths inside `world_state`
- * are left untouched — resume takes the cwd from the caller and refreshes
- * environment state, so a resumed agent reports its real directory.
- *
- * @module provider/Drivers/CodexSessionTransfer
+ * Codex resolves `thread/resume` by scanning `<CODEX_HOME>/sessions` for the rollout file,
+ * so a transplant is one file copy: no state_N.sqlite row, any date directory (verified with
+ * codex-cli 0.149.0). Recorded cwds stay as-is; resume takes the cwd from the caller.
  */
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -36,27 +24,29 @@ export const findCodexRolloutPath = Effect.fn("CodexSessionTransfer.findCodexRol
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
 
-    const walk = (directory: string): Effect.Effect<string | null, never, never> =>
-      Effect.gen(function* () {
-        const entries = yield* fileSystem
-          .readDirectory(directory)
-          .pipe(Effect.orElseSucceed(() => [] as ReadonlyArray<string>));
-        for (const entry of entries) {
-          const entryPath = path.join(directory, entry);
-          if (isRolloutFor(entry, input.threadId)) {
-            return entryPath;
-          }
-          const info = yield* fileSystem.stat(entryPath).pipe(Effect.option);
-          const isDirectory = info._tag === "Some" && info.value.type === "Directory";
-          if (isDirectory) {
-            const found = yield* walk(entryPath);
-            if (found !== null) {
-              return found;
-            }
+    // Untraced: a span per directory would flood the trace.
+    const walk: (directory: string) => Effect.Effect<string | null> = Effect.fnUntraced(function* (
+      directory: string,
+    ) {
+      const entries = yield* fileSystem
+        .readDirectory(directory)
+        .pipe(Effect.orElseSucceed(() => [] as ReadonlyArray<string>));
+      for (const entry of entries) {
+        const entryPath = path.join(directory, entry);
+        if (isRolloutFor(entry, input.threadId)) {
+          return entryPath;
+        }
+        const info = yield* fileSystem.stat(entryPath).pipe(Effect.option);
+        const isDirectory = info._tag === "Some" && info.value.type === "Directory";
+        if (isDirectory) {
+          const found = yield* walk(entryPath);
+          if (found !== null) {
+            return found;
           }
         }
-        return null;
-      });
+      }
+      return null;
+    });
 
     return yield* walk(path.join(input.codexHome, SESSIONS_DIRECTORY));
   },

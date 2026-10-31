@@ -90,6 +90,7 @@ it.effect("keeps branch deletion on the credential that passed source repository
                   rebaseMergeAllowed: true,
                   autoMergeAllowed: true,
                   viewerPermission: "READ",
+                  viewerDefaultMergeMethod: "MERGE",
                   pullRequest: {
                     viewerCanUpdate: false,
                     viewerDidAuthor: false,

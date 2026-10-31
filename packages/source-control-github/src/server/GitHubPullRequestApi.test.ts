@@ -53,6 +53,7 @@ const coreResponse = (pullRequest: Readonly<Record<string, unknown>> = {}) => ({
       rebaseMergeAllowed: true,
       autoMergeAllowed: true,
       viewerPermission: "WRITE",
+      viewerDefaultMergeMethod: "MERGE",
       pullRequest: {
         number: 7,
         title: "Pull request 7",
@@ -3590,6 +3591,7 @@ layer("GitHubPullRequestApi.layer", (it) => {
                   rebaseMergeAllowed: true,
                   autoMergeAllowed: true,
                   viewerPermission: "READ",
+                  viewerDefaultMergeMethod: "MERGE",
                   pullRequest: {
                     viewerCanUpdate: true,
                     viewerDidAuthor: true,
@@ -3637,6 +3639,7 @@ layer("GitHubPullRequestApi.layer", (it) => {
                   squashMergeAllowed: true,
                   rebaseMergeAllowed: true,
                   viewerPermission: "WRITE",
+                  viewerDefaultMergeMethod: "MERGE",
                 },
               },
             }),

@@ -30,7 +30,7 @@ function SemanticSearchStatusLine({ status }: { status: SemanticSearchStatus | n
           <span>
             Downloading model
             {totalBytes > 0
-              ? ` — ${formatMegabytes(downloadedBytes)} of ${formatMegabytes(totalBytes)}`
+              ? `: ${formatMegabytes(downloadedBytes)} of ${formatMegabytes(totalBytes)}`
               : "…"}
           </span>
           <div
@@ -52,11 +52,11 @@ function SemanticSearchStatusLine({ status }: { status: SemanticSearchStatus | n
     case "ready":
       return status.pendingMessages > 0 ? (
         <span>
-          Indexing chats — {status.pendingMessages.toLocaleString()} to go (
+          Indexing chats: {status.pendingMessages.toLocaleString()} to go (
           {status.indexedMessages.toLocaleString()} done). Search improves as it fills in.
         </span>
       ) : (
-        <span>Ready — {status.indexedMessages.toLocaleString()} messages indexed.</span>
+        <span>Ready. {status.indexedMessages.toLocaleString()} messages indexed.</span>
       );
     case "error":
       return (

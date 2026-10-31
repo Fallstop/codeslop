@@ -443,7 +443,7 @@ export const PullRequestCoreRepositoryRepository = Schema.Struct({
   /** The users permission level on the repository. Will return null if authenticated as an GitHub App. */
   viewerPermission: Schema.NullOr(GraphQL.enumLiterals(Shared.RepositoryPermission.literals)),
   /** The last used merge method by the viewer or the default for the repository. */
-  viewerDefaultMergeMethod: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  viewerDefaultMergeMethod: GraphQL.enumLiterals(Shared.PullRequestMergeMethod.literals),
   /** Returns a single pull request from the current repository by number. */
   pullRequest: Schema.NullOr(PullRequestCoreRepositoryPullRequestPullRequest)
 })
@@ -1073,7 +1073,7 @@ export const RepositoryAccessRepositoryRepository = Schema.Struct({
   /** The users permission level on the repository. Will return null if authenticated as an GitHub App. */
   viewerPermission: Schema.NullOr(GraphQL.enumLiterals(Shared.RepositoryPermission.literals)),
   /** The last used merge method by the viewer or the default for the repository. */
-  viewerDefaultMergeMethod: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  viewerDefaultMergeMethod: GraphQL.enumLiterals(Shared.PullRequestMergeMethod.literals)
 })
 export interface RepositoryAccessRepositoryRepository extends Schema.Struct.Type<typeof RepositoryAccessRepositoryRepository.fields> {}
 

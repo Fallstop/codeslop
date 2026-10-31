@@ -1,13 +1,8 @@
 import { sha256 } from "@noble/hashes/sha2";
 
 /**
- * A single entry from a code review report. `/code-review` (and the review agents built on it)
- * end their turn with a JSON array of these, so the chat renders that array as a list of places
- * to go rather than as a wall of quoted JSON.
- *
- * The field names mirror the review contract on the wire — `failure_scenario` included — and the
- * optional ones come from the harness `ReportFindings` tool, which reports the same finding with
- * a category and a verify verdict attached.
+ * One finding from a `/code-review` report. Field names mirror the wire contract
+ * (`failure_scenario` included); the optional ones come from the harness `ReportFindings` tool.
  */
 export interface ReviewFinding {
   readonly file: string;
@@ -63,12 +58,9 @@ function parseFinding(entry: unknown): ReviewFinding | null {
 }
 
 /**
- * The findings behind a fenced JSON block, or null for any other JSON.
- *
- * Every entry has to carry a file and a summary before the block is claimed: a review report is
- * only recognisable by its shape, and rendering an unrelated array as findings would hide data
- * the reader asked to see as JSON. A partially valid array is not a review report either — one
- * unparsed entry means the whole block stays a code block, so nothing is silently dropped.
+ * The findings behind a fenced JSON block, or null for any other JSON. Every entry must carry
+ * a file and a summary, and one unparsed entry keeps the whole block as code, so unrelated
+ * arrays are never hidden and nothing is silently dropped.
  */
 export function parseReviewFindings(source: string): ReadonlyArray<ReviewFinding> | null {
   let parsed: unknown;
@@ -97,10 +89,9 @@ export function parseReviewFindings(source: string): ReadonlyArray<ReviewFinding
 }
 
 /**
- * The change request a review report is about, read from the words around it — the reviewer names
- * its target ("Reviewed PR #2292", or the full URL) before listing what it found. A URL also
- * carries the host and repository, which is what makes a link possible when the thread's own
- * project is not the repository under review.
+ * The change request a review report names before its findings, as a bare number or a full URL.
+ * A URL also carries host and repository, which makes a link possible when the thread's project
+ * is not the repository under review.
  */
 export function parseReviewPullRequestReference(text: string): ReviewPullRequestReference | null {
   const url = PULL_REQUEST_URL_PATTERN.exec(text);
@@ -173,7 +164,7 @@ export function formatReviewFindingLocation(finding: ReviewFinding): string {
 /** One finding as markdown, so a copied finding pastes as a readable comment. */
 export function formatReviewFindingMarkdown(finding: ReviewFinding): string {
   return [
-    `**${formatReviewFindingLocation(finding)}** — ${finding.summary}`,
+    `**${formatReviewFindingLocation(finding)}**: ${finding.summary}`,
     ...(finding.failureScenario ? ["", finding.failureScenario] : []),
   ].join("\n");
 }

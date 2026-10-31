@@ -1,12 +1,6 @@
 /**
- * MessageEmbeddingRepository - Persistence interface for semantic-search
- * embedding chunks.
- *
- * Rows are derived data keyed off the V2 message projection: each embeddable
- * message is split into chunks and every chunk stores one vector. Staleness is
- * tracked by comparing the stored message_updated_at against the source row.
- *
- * @module MessageEmbeddingRepository
+ * Semantic-search embedding chunks, derived from the V2 message projection: one vector
+ * per chunk, with staleness tracked by comparing stored message_updated_at to the source.
  */
 import {
   IsoDateTime,
