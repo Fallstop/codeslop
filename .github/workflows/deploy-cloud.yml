@@ -53,6 +53,7 @@ jobs:
       - name: Deploy relay
         run: vp run --filter t3code-relay deploy --stage prod --yes --no-input ${{ inputs.force && '--force' || '' }}
         env:
+          # Written only when its inputs change; the web build reads the stack outputs instead.
           T3CODE_RELAY_CLIENT_CONFIG_ENV: ${{ runner.temp }}/relay-client-config.env
           AXIOM_ORG_ID: ${{ vars.AXIOM_ORG_ID }}
           AXIOM_TOKEN: ${{ secrets.AXIOM_TOKEN }}
@@ -69,13 +70,24 @@ jobs:
           APNS_ENABLED: "false"
           FCM_SERVICE_ACCOUNT: ${{ secrets.FCM_SERVICE_ACCOUNT }}
 
+      # Same read as release.yml's relay_public_config job.
       - name: Load relay client config
+        working-directory: infra/relay
         run: |
-          config_path="$RUNNER_TEMP/relay-client-config.env"
-          for key in T3CODE_MOBILE_OTLP_TRACES_TOKEN T3CODE_RELAY_CLIENT_OTLP_TRACES_TOKEN; do
-            echo "::add-mask::$(sed -n "s/^$key=//p" "$config_path")"
-          done
-          cat "$config_path" >> "$GITHUB_ENV"
+          set -euo pipefail
+          output="$(npx alchemy state read codeslopRelay/prod/output --backend cloudflare --log-level error --no-input | sed -n '/^{/,$p')"
+          field() {
+            jq -er --arg key "$1" '.[$key] | if type == "object" then .__redacted__ else . end | select(. != null and . != "")' <<<"$output" \
+              || { echo "Relay stack output is missing $1" >&2; exit 1; }
+          }
+          token="$(field clientTracingToken)"
+          echo "::add-mask::$token"
+          {
+            echo "T3CODE_RELAY_URL=$(field url)"
+            echo "T3CODE_RELAY_CLIENT_OTLP_TRACES_URL=$(field clientTracingUrl)"
+            echo "T3CODE_RELAY_CLIENT_OTLP_TRACES_DATASET=$(field clientTracingDataset)"
+            echo "T3CODE_RELAY_CLIENT_OTLP_TRACES_TOKEN=$token"
+          } >> "$GITHUB_ENV"
 
       - name: Build hosted web app
         run: vp run --filter @t3tools/web build
