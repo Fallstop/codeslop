@@ -90,6 +90,23 @@ it.layer(NodeServices.layer)("ClaudeHome", (it) => {
           KEEP: "1",
         });
 
+        const launchingEnvironment = { PATH: "/usr/bin" };
+        const inherited = yield* mergeClaudeProcessEnvironment(
+          { homePath },
+          instance,
+          launchingEnvironment,
+        );
+        const scoped = yield* makeClaudeEnvironment({ homePath }, inherited);
+        const overridden = yield* mergeClaudeProcessEnvironment(
+          { homePath },
+          [{ name: "PATH", value: "/custom/bin", sensitive: false }],
+          launchingEnvironment,
+        );
+        launchingEnvironment.PATH = "/home/me/.local/bin:/usr/bin";
+        expect({ ...inherited }.PATH).toBe(launchingEnvironment.PATH);
+        expect({ ...scoped }.PATH).toBe(launchingEnvironment.PATH);
+        expect(overridden.PATH).toBe("/custom/bin");
+
         yield* fileSystem.writeFileString(
           path.join(homePath, "settings.json"),
           JSON.stringify({ env: { CLAUDE_CODE_ENTRYPOINT: "custom" } }),

@@ -38,11 +38,13 @@ export const makeClaudeEnvironment = Effect.fn("makeClaudeEnvironment")(function
   const homePath = config.homePath.trim();
   if (homePath.length === 0) return resolvedBaseEnv;
   const resolvedHomePath = yield* resolveClaudeHomePath(config);
-  return {
-    ...resolvedBaseEnv,
-    // Changing HOME hides macOS Keychain credentials; use CLAUDE_CONFIG_DIR to keep login access.
-    CLAUDE_CONFIG_DIR: resolvedHomePath,
-  };
+  const environment = Object.defineProperties(
+    { ...resolvedBaseEnv },
+    Object.getOwnPropertyDescriptors(resolvedBaseEnv),
+  );
+  // Changing HOME hides macOS Keychain credentials; use CLAUDE_CONFIG_DIR to keep login access.
+  environment.CLAUDE_CONFIG_DIR = resolvedHomePath;
+  return environment;
 });
 
 // A Claude Code session that launched T3 exports these. A claude spawned with them acts as part of
@@ -80,11 +82,23 @@ export const mergeClaudeProcessEnvironment = Effect.fn("mergeClaudeProcessEnviro
   // an Electron app they start (T3 Code itself, VS Code) would run as Node and exit.
   delete baseEnvironment.ELECTRON_RUN_AS_NODE;
   const environment = yield* mergeProviderInstanceEnvironment(instanceEnvironment, baseEnvironment);
+  const windows = (yield* HostProcess.Platform) === "win32";
+  if (
+    !instanceEnvironment?.some(
+      (variable) => (windows ? variable.name.toUpperCase() : variable.name) === "PATH",
+    )
+  ) {
+    // Desktop shell discovery can replace PATH after this provider instance is created.
+    Object.defineProperty(environment, "PATH", {
+      enumerable: true,
+      configurable: true,
+      get: () => hostEnvironment.PATH,
+    });
+  }
   const settingsEntrypoint = (yield* readClaudeSettingsEnv(config, undefined, environment))
     .CLAUDE_CODE_ENTRYPOINT;
-  return settingsEntrypoint
-    ? { ...environment, CLAUDE_CODE_ENTRYPOINT: settingsEntrypoint }
-    : environment;
+  if (settingsEntrypoint) environment.CLAUDE_CODE_ENTRYPOINT = settingsEntrypoint;
+  return environment;
 });
 
 /** managed-mcp.json excludes other MCP config and forbids --strict-mcp-config; omit the flag when present. */
