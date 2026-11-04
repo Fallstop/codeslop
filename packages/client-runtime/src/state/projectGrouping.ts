@@ -101,12 +101,6 @@ export function derivePhysicalProjectKey(
   return derivePhysicalProjectKeyFromPath(project.environmentId, project.workspaceRoot);
 }
 
-export function deriveProjectGroupingOverrideKey(
-  project: Pick<EnvironmentProject, "environmentId" | "workspaceRoot">,
-): string {
-  return derivePhysicalProjectKey(project);
-}
-
 export function getProjectOrderKey(
   project: Pick<EnvironmentProject, "environmentId" | "workspaceRoot">,
 ): string {
@@ -118,7 +112,7 @@ function resolveProjectGroupingMode(
   settings: ProjectGroupingSettings,
 ): SidebarProjectGroupingMode {
   return (
-    settings.sidebarProjectGroupingOverrides?.[deriveProjectGroupingOverrideKey(project)] ??
+    settings.sidebarProjectGroupingOverrides?.[derivePhysicalProjectKey(project)] ??
     settings.sidebarProjectGroupingMode
   );
 }
