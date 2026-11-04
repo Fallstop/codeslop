@@ -34,7 +34,7 @@ const claudeTransfer = (homePath: string) =>
       attachmentsDir: homePath,
       fileSystem,
       path: yield* Path.Path,
-      crypto: undefined as never,
+      random: undefined as never,
       idAllocator: yield* IdAllocator.IdAllocatorV2,
       queryRunner: {
         allocateSessionId: unused,
@@ -50,11 +50,11 @@ const claudeTransfer = (homePath: string) =>
 const codexTransfer = (homePath: string) =>
   Effect.gen(function* () {
     const adapter = yield* CodexAdapterV2.makeCodexAdapterV2({
+      digest: undefined as never,
       instanceId: CodexAdapterV2.CODEX_DEFAULT_INSTANCE_ID,
       settings: DEFAULT_CODEX_SETTINGS,
       environment: {},
       clientFactory: { open: () => Effect.die("unused") },
-      crypto: undefined as never,
       fileSystem: yield* FileSystem.FileSystem,
       nativeSessions: { homePath, path: yield* Path.Path },
       idAllocator: yield* IdAllocator.IdAllocatorV2,

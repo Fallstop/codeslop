@@ -1,3 +1,4 @@
+import * as Redacted from "effect/Redacted";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -95,7 +96,11 @@ const makeSpawnerLayer = (input: {
           return yield* Effect.die("unexpected pipe command");
         }
         const stdin = yield* collectStdin(command.options.stdin);
-        const call: SpawnedCommand = { command: command.command, args: command.args, stdin };
+        const call: SpawnedCommand = {
+          command: command.command,
+          args: command.args.map((arg) => (typeof arg === "string" ? arg : Redacted.value(arg))),
+          stdin,
+        };
         input.calls.push(call);
         return makeProcess(input.respond(call));
       }),

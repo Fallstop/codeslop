@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { EnvironmentId, type OrchestrationV2DomainEvent } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -57,7 +58,7 @@ export const machineHandoffRuntime = (adapter: ProviderAdapterV2Shape, name: str
   const gitLayer = Layer.mergeAll(GitVcsDriver.layer, repositoryIdentityLayer).pipe(
     Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: `t3-${name}-git-` })),
     Layer.provideMerge(VcsProcess.layer),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     Layer.orDie,
   );
   return ProviderReplayHarness.layerWithRegistry(
@@ -66,6 +67,7 @@ export const machineHandoffRuntime = (adapter: ProviderAdapterV2Shape, name: str
     {
       machineHandoffLayer: MachineHandoffService.layer.pipe(
         Layer.provide(gitLayer),
+        Layer.provide(NodeCrypto.layer),
         Layer.provide(
           Layer.mock(ServerEnvironment.ServerEnvironment)({
             getDescriptor: Effect.succeed({

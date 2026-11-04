@@ -1,3 +1,4 @@
+import * as Arr from "effect/Array";
 import * as Effect from "effect/Effect";
 import * as Migrator from "effect/sql/Migrator";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -50,7 +51,7 @@ export const reconcileCodeslopMigrations = Effect.fn("reconcileCodeslopMigration
   const upstream = history
     .filter((row) => row.migration_id >= 45)
     .map((row) => ({ ...row, migration_id: row.migration_id - 4 }));
-  if (upstream.length > 0) {
+  if (Arr.isArrayNonEmpty(upstream)) {
     yield* sql`INSERT INTO effect_sql_migrations ${sql.insert(upstream)}`;
   }
 });

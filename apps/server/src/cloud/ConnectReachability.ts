@@ -68,10 +68,11 @@ export function classifyReachability(
   const restart = "Restart codeslop. If it stays, run `slop connect` again.";
 
   if (!facts.managedTunnelConfigured) {
+    // A running server reads the link `slop connect` stores only at startup.
     return fail(
       "not_linked",
       "The server has not set up a Slop Connect tunnel.",
-      "Run `slop connect`, then restart the server (`slop service restart`) so it applies the link.",
+      "Run `slop connect`, then restart codeslop so it applies the link.",
     );
   }
   if (connector === null) {

@@ -12,7 +12,7 @@ import {
   type ProjectId,
   type ThreadId,
 } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import { Atom, type AtomRegistry } from "effect/reactivity";
@@ -97,7 +97,10 @@ function awaitAtomValue<A, B>(
 }
 
 function createMachineHandoffCommandAtoms<R, E>(
-  runtime: Atom.AtomRuntime<EnvironmentRegistry.EnvironmentRegistry | Crypto.Crypto | R, E>,
+  runtime: Atom.AtomRuntime<
+    EnvironmentRegistry.EnvironmentRegistry | SecureRandom.SecureRandom | R,
+    E
+  >,
   options: {
     readonly threadShellAtom: (ref: {
       readonly environmentId: EnvironmentId;
@@ -118,14 +121,16 @@ function createMachineHandoffCommandAtoms<R, E>(
     execute: Effect.fn("execute")(function* (input: RunMachineHandoffInput, registry) {
       const environments = yield* EnvironmentRegistry.EnvironmentRegistry;
       const context = yield* Effect.context<
-        EnvironmentRegistry.EnvironmentRegistry | Crypto.Crypto
+        EnvironmentRegistry.EnvironmentRegistry | SecureRandom.SecureRandom
       >();
       const inEnvironment = <A, EE>(
         environmentId: EnvironmentId,
         effect: Effect.Effect<
           A,
           EE,
-          EnvironmentSupervisor | EnvironmentRegistry.EnvironmentRegistry | Crypto.Crypto
+          | EnvironmentSupervisor
+          | EnvironmentRegistry.EnvironmentRegistry
+          | SecureRandom.SecureRandom
         >,
       ) =>
         environments.run(environmentId, effect).pipe(
@@ -233,7 +238,10 @@ function createMachineHandoffCommandAtoms<R, E>(
  * Shared by web and mobile, which only supply their own atoms.
  */
 export function createMachineHandoffClient<R, E>(
-  runtime: Atom.AtomRuntime<EnvironmentRegistry.EnvironmentRegistry | Crypto.Crypto | R, E>,
+  runtime: Atom.AtomRuntime<
+    EnvironmentRegistry.EnvironmentRegistry | SecureRandom.SecureRandom | R,
+    E
+  >,
   options: {
     readonly registry: AtomRegistry.AtomRegistry;
     readonly threadShellAtom: (ref: {
