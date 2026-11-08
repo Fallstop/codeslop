@@ -13,8 +13,8 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import * as SecureRandom from "effect/crypto/SecureRandom";
-import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import { Atom, type AtomRegistry } from "effect/reactivity";
 
 import type { EnvironmentPresentation } from "../connection/presentation.ts";
@@ -49,9 +49,12 @@ import {
 } from "./runtime.ts";
 
 /** One readable failure for the banner; the causes span several RPC error types. */
-class MachineHandoffTransferError extends Data.TaggedError("MachineHandoffTransferError")<{
-  readonly message: string;
-}> {}
+class MachineHandoffTransferError extends Schema.TaggedError<MachineHandoffTransferError>()(
+  "MachineHandoffTransferError",
+  { message: Schema.String },
+) {}
+
+const isMachineHandoffTransferError = Schema.is(MachineHandoffTransferError);
 
 export interface RunMachineHandoffInput {
   readonly handoffId: MachineHandoffId;
@@ -222,7 +225,7 @@ function createMachineHandoffCommandAtoms<R, E>(
       }).pipe(
         Effect.ensuring(Effect.sync(() => registry.set(progressAtom(handoffId), null))),
         Effect.mapError((cause) =>
-          cause instanceof MachineHandoffTransferError
+          isMachineHandoffTransferError(cause)
             ? cause
             : new MachineHandoffTransferError({ message: cause.message }),
         ),

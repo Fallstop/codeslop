@@ -65,6 +65,10 @@ export class WorkspaceEntriesReadDirectoryError extends Schema.TaggedError<Works
     cause: Schema.Defect(),
   },
 ) {
+  get pathMissing(): boolean {
+    return (this.cause as NodeJS.ErrnoException | undefined)?.code === "ENOENT";
+  }
+
   override get message(): string {
     const cwd = this.cwd ? ` from '${this.cwd}'` : "";
     return `Failed to read workspace directory '${this.parentPath}' while browsing '${this.partialPath}'${cwd}.`;
@@ -177,9 +181,10 @@ const searchOutsideRoot = Effect.fn("WorkspaceEntries.searchOutsideRoot")(functi
 
   // Mid-typing targets are routinely nonexistent or unreadable; completion
   // answers with no entries rather than failing the search.
-  const dirents = yield* Effect.tryPromise(() =>
-    NodeFSP.readdir(parentPath, { withFileTypes: true }),
-  ).pipe(Effect.orElseSucceed(() => []));
+  const dirents = yield* Effect.tryPromise({
+    try: () => NodeFSP.readdir(parentPath, { withFileTypes: true }),
+    catch: () => null,
+  }).pipe(Effect.orElseSucceed(() => []));
 
   // Shell completion behavior: dotfiles only surface when asked for with a
   // `.` fragment. Listing them unprompted would bury a home directory's real

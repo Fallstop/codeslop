@@ -10,8 +10,8 @@ import {
   type OrchestrationV2MachineHandoffManifest,
   type OrchestrationV2ReadMachineHandoffBundleResult,
 } from "@t3tools/contracts";
-import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 
 export type MachineHandoffProgress =
   | { readonly stage: "staging" }
@@ -19,9 +19,10 @@ export type MachineHandoffProgress =
   | { readonly stage: "adopting" };
 
 /** The origin parked or dropped the handoff before it could be carried. */
-class MachineHandoffNotStagedError extends Data.TaggedError("MachineHandoffNotStagedError")<{
-  readonly message: string;
-}> {}
+class MachineHandoffNotStagedError extends Schema.TaggedError<MachineHandoffNotStagedError>()(
+  "MachineHandoffNotStagedError",
+  { message: Schema.String },
+) {}
 
 export interface MachineHandoffPorts<E> {
   /** Asks the origin to stage the thread: a start, or a retry of a failed handoff. */
