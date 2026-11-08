@@ -1,4 +1,3 @@
-import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as Deferred from "effect/Deferred";
@@ -12,6 +11,8 @@ import * as NetService from "@t3tools/shared/Net";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
+import * as Sink from "effect/Sink";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as Stream from "effect/Stream";
 import { vi } from "vite-plus/test";
 
@@ -71,6 +72,24 @@ import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as MacPermissions from "../permissions/MacPermissions.ts";
 import * as PreviewManager from "../preview/Manager.ts";
 
+const spawnerWithNoKeyringEntry = ChildProcessSpawner.make(() =>
+  Effect.succeed(
+    ChildProcessSpawner.makeHandle({
+      pid: ChildProcessSpawner.ProcessId(1),
+      stdout: Stream.empty,
+      stderr: Stream.empty,
+      all: Stream.empty,
+      exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(1)),
+      isRunning: Effect.succeed(false),
+      kill: () => Effect.void,
+      stdin: Sink.drain,
+      getInputFd: () => Sink.drain,
+      getOutputFd: () => Stream.empty,
+      unref: Effect.succeed(Effect.void),
+    }),
+  ),
+);
+
 it.effect.each([false, true])(
   "stops backends together before flushing history and cancels Linux registration, stop defect=%s",
   (stopDefect) =>
@@ -92,7 +111,8 @@ it.effect.each([false, true])(
         });
       const runApp = DesktopApp.program
         .pipe(
-          Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+          Effect.provide(NodeCrypto.layer),
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawnerWithNoKeyringEntry),
           Effect.provideService(DesktopAppIdentity.DesktopAppIdentity, {
             resolveUserDataPath: Effect.succeed("/isolated/userdata"),
             configure: record("identity"),
