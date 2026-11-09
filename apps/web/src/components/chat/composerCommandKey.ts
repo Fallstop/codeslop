@@ -30,7 +30,7 @@ import type { Dispatch, RefObject, SetStateAction } from "react";
 
 /**
  * The composer's key handling inside the editor: send shortcuts, the slash/mention menu,
- * prompt history on ArrowUp/ArrowDown, plan-mode toggle, and list continuation.
+ * prompt history on ArrowUp/ArrowDown, plan-mode toggle, prompt suggestions on Tab, and list continuation.
  * Returns the editor's key handler; it reads the inputs captured by the render that built it.
  */
 export function composerCommandKeyHandler(input: {
@@ -41,7 +41,6 @@ export function composerCommandKeyHandler(input: {
   readonly isCompacting: boolean;
   readonly followUpBehavior: ChatComposerProps["settings"]["followUpBehavior"];
   readonly isSoftwareKeyboardOpen: boolean;
-  readonly planModeUiEnabled: boolean;
   readonly isLiteralPendingAnswer: boolean;
   readonly pendingUserInputs: ReadonlyArray<PendingUserInput>;
   readonly promptHistoryEntries: ChatComposerProps["promptHistoryEntries"];
@@ -68,7 +67,6 @@ export function composerCommandKeyHandler(input: {
   readonly setComposerTrigger: (trigger: ComposerTrigger | null) => void;
   readonly setComposerHighlightedItemId: Dispatch<SetStateAction<string | null>>;
   readonly dismissComposerTrigger: (trigger: ComposerTrigger | null) => void;
-  readonly toggleInteractionMode: () => void;
   readonly nudgeComposerMenuHighlight: (key: "ArrowDown" | "ArrowUp") => void;
   readonly onSelectComposerItem: (item: ComposerCommandItem) => void;
   /** Tab on a path suggestion completes it in place; false falls back to selecting it. */
@@ -88,6 +86,9 @@ export function composerCommandKeyHandler(input: {
     dispatchMode: ComposerDispatchMode,
     submissionIntent: ComposerSubmissionIntent,
   ) => void;
+  /** Predicted next prompt that Tab fills into an empty composer; Escape dismisses it. */
+  readonly promptSuggestion: string | null;
+  readonly dismissPromptSuggestion: () => void;
 }) {
   const {
     keybindings,
@@ -97,7 +98,6 @@ export function composerCommandKeyHandler(input: {
     isCompacting,
     followUpBehavior,
     isSoftwareKeyboardOpen,
-    planModeUiEnabled,
     isLiteralPendingAnswer,
     pendingUserInputs,
     promptHistoryEntries,
@@ -118,7 +118,6 @@ export function composerCommandKeyHandler(input: {
     setComposerTrigger,
     setComposerHighlightedItemId,
     dismissComposerTrigger,
-    toggleInteractionMode,
     nudgeComposerMenuHighlight,
     onSelectComposerItem,
     continueComposerPathItem,
@@ -126,6 +125,8 @@ export function composerCommandKeyHandler(input: {
     readComposerSnapshot,
     applyPromptReplacement,
     submitComposer,
+    promptSuggestion,
+    dismissPromptSuggestion,
   } = input;
 
   // The composer persists across threads. A recall from thread A must not
@@ -214,16 +215,18 @@ export function composerCommandKeyHandler(input: {
       prompt: promptRef.current,
     });
     if (key === "Tab" && event.shiftKey && submissionIntent === null) {
-      if (applyListEdit(event, listOutdentForTab)) return true;
-      if (!planModeUiEnabled) return false;
-      toggleInteractionMode();
-      return true;
+      return applyListEdit(event, listOutdentForTab);
     }
     const { trigger } = resolveActiveComposerTrigger();
     const menuIsActive =
       !isLiteralPendingAnswer && (composerMenuOpenRef.current || trigger !== null);
     if (key === "Escape") {
-      if (!menuIsActive || event.isComposing || event.keyCode === 229) return false;
+      if (event.isComposing || event.keyCode === 229) return false;
+      if (!menuIsActive && promptSuggestion !== null && promptRef.current.length === 0) {
+        dismissPromptSuggestion();
+        return true;
+      }
+      if (!menuIsActive) return false;
       dismissComposerTrigger(trigger);
       composerMenuOpenRef.current = false;
       return true;
@@ -250,6 +253,21 @@ export function composerCommandKeyHandler(input: {
         onSelectComposerItem(selectedItem);
         return true;
       }
+    }
+    if (
+      key === "Tab" &&
+      promptSuggestion !== null &&
+      promptRef.current.length === 0 &&
+      !menuIsActive &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.isComposing &&
+      event.keyCode !== 229
+    ) {
+      // The typing guard must see this draft, so an approval that lands next is not answered with it.
+      return applyPromptReplacement(0, 0, promptSuggestion);
     }
     if ((key === "ArrowUp" || key === "ArrowDown") && submissionIntent === null) {
       return navigatePromptHistory(key === "ArrowUp" ? "backward" : "forward", event);

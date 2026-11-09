@@ -1,3 +1,4 @@
+// @effect-diagnostics nodeBuiltinImport:off - node:path.win32 stands in for a Windows host in one test.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
@@ -6,6 +7,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
 import * as Path from "effect/Path";
+import * as NodePath from "node:path";
 import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import * as ChildProcess from "effect/process/ChildProcess";
@@ -15,6 +17,7 @@ import * as HostProcess from "@t3tools/shared/HostProcess";
 
 import * as ProcessRunner from "../processRunner.ts";
 import {
+  isVersionExecutable,
   ensurePinnedRuntimeInstalled,
   isUnpublishedRelease,
   pinnedRuntimeCommand,
@@ -376,6 +379,17 @@ it.layer(NodeServices.layer)("ensurePinnedRuntimeInstalled", (it) => {
   );
 });
 
+it("isVersionExecutable accepts only <version>/slop, never another drive or program", () => {
+  const win32 = NodePath.win32 as unknown as Path.Path;
+  assert.isTrue(
+    isVersionExecutable(win32, "C:\\slop\\versions", "C:\\slop\\versions\\1.0.0\\slop.exe"),
+  );
+  assert.isFalse(isVersionExecutable(win32, "C:\\slop\\versions", "D:\\slop.exe"));
+  assert.isFalse(
+    isVersionExecutable(win32, "C:\\slop\\versions", "C:\\slop\\versions\\1.0.0\\node.exe"),
+  );
+});
+
 it.layer(NodeServices.layer)("prunePinnedRuntimes", (it) => {
   const lsofRunner = (stdout: string) =>
     ProcessRunner.ProcessRunner.of({
@@ -609,7 +623,7 @@ it.layer(NodeServices.layer)("prunePinnedRuntimes", (it) => {
         yield* fs.chmod(entry, 0o755);
         const link = path.join(baseDir, "slop");
         yield* fs.symlink(entry, link);
-        // Its argv names only the link, as with `t3 serve` run from PATH. Removing the link after
+        // Its argv names only the link, as with `slop serve` run from PATH. Removing the link after
         // spawning leaves the process's executable as the only reference.
         const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
         yield* spawner.spawn(ChildProcess.make(link, ["-e", "setTimeout(() => {}, 30_000)"]));

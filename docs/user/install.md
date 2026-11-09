@@ -20,9 +20,12 @@ On Windows, in PowerShell:
 irm https://raw.githubusercontent.com/Fallstop/codeslop/main/scripts/install.ps1 | iex
 ```
 
-This puts `slop` in `~/.local/bin`. If your shell reports `command not found`
-afterwards, that directory is not on your `PATH` yet; the installer prints the
-line to add. Set `T3CODE_CHANNEL=nightly` to install the nightly train, or
+This installs the `slop` binary to `~/.local/bin`. If that folder is not on your
+`PATH` yet, the installer says so and, for zsh, bash on Linux, and fish, prints
+a command to add it. On Windows, `slop` works in the same PowerShell window right
+away; add the folder to your `PATH` for new windows. If a `slop` that the
+installer or the desktop app did not create is already there, it leaves that
+one alone and stops. Set `T3CODE_CHANNEL=nightly` to install the nightly train, or
 `T3CODE_VERSION` to pin an exact version.
 
 | Task                                             | Command                                                                   |
@@ -43,8 +46,12 @@ If `slop` or `slop start` reports an already running server, connect to that ser
 instead. Stop it before starting a replacement, or use a different `--base-dir`
 for an independent server.
 
-To try codeslop once without installing it, run `npx t3@latest` instead (needs
-Node.js for `npx`).
+To try codeslop once without installing it, run `npx slop@latest` instead (needs
+Node.js for `npx`). It offers to install the `slop` command first. If you say no,
+it asks again at the next minor release, and `npx slop install` installs it later.
+`npx slop` always runs the version npm picked, even when a `slop` is installed. On
+the nightly train, run your installed `slop` (for example `slop connect`), not
+`npx slop`, which runs the latest stable release.
 
 ### Intel Macs
 
@@ -122,12 +129,14 @@ Nix manages both the desktop app and the bundled
 
 ### The `t3` command
 
-The desktop app includes the `t3` command-line tool. To run it from any
-terminal, open **Settings → About** and choose **Install** next to
-**slop command**. On macOS and Linux it adds a `slop` link to a folder on your
-`PATH`; on Windows it adds the app's command folder to your `PATH`. Open a new
-terminal afterwards. **Remove** takes it off again. If you already have `t3`
-from npm, it stays as it is.
+The desktop app includes the `slop` command-line tool. A new install sets it up
+on first launch; after an update, or any time, choose **Install** next to
+**slop command** in **Settings → About**. On macOS and Linux it adds a `slop` link
+in `~/.local/bin` (or `~/bin`); on Windows it adds the app's command folder to
+your `PATH`. Open a new terminal afterwards. If the folder is not on your
+`PATH`, **Add to PATH** on the Welcome page or in **Settings → About** adds one
+line to your shell's startup file. **Remove** takes it off, and the app does not
+add it again. If you already have another `slop`, it stays as it is.
 
 ### Windows Subsystem for Linux
 

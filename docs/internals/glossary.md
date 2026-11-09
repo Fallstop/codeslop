@@ -36,6 +36,8 @@ Terms whose meaning matters across codeslop. Architecture and lifecycle constrai
 | Provider            | The agent runtime codeslop controls, such as Codex or Claude Code.                                           |
 | Driver              | The integration for a provider kind.                                                                         |
 | Provider instance   | One configured provider, with its own settings and lifecycle. Multiple instances can use the same driver.    |
+| Text generation     | App-owned one-shot writing, such as thread titles, commit messages, and transcript cleanup.                  |
+| Text generator      | A model API used only for text generation. Its id fills a model selection; agent surfaces never list it.     |
 | Adapter             | The boundary translating a provider's native protocol into codeslop operations and events.                   |
 | Session             | The provider runtime attached to a thread. A session can be stopped and resumed without deleting the thread. |
 | Runtime mode        | The thread's permission policy. See [permission modes](../user/permission-modes.md).                         |
@@ -71,7 +73,7 @@ thread through `ThreadLaunchService`. Idempotent per handoff. See
 
 #### State home
 
-The base directory one environment keeps its data in: the database, worktrees, caches, and secrets. Every component resolves it through the same rule in [stateHome.ts][25] — whichever candidate already holds a `state.sqlite` wins, and the current name breaks the tie. Installed apps choose between `~/.codeslop` and a pre-rebrand `~/.t3`; a linked git worktree chooses between `.slop` and `.t3` inside the worktree. `T3CODE_HOME` overrides the choice entirely.
+The base directory one environment keeps its data in: the database, worktrees, caches, and secrets. Every component resolves it through the same rule in [stateHome.ts][25] — whichever candidate already holds a `state.sqlite` wins, and the current name breaks the tie. Installed apps choose between `~/.codeslop` and a pre-rebrand `~/.t3`; a linked git worktree chooses between `.t3` and `.t3` inside the worktree. `T3CODE_HOME` overrides the choice entirely.
 
 The rule is duplicated deliberately in four places because they cannot share a runtime: [DesktopStatePaths.ts][26] resolves it synchronously before Electron is ready, [os-jank.ts][27] resolves it inside Effect, `scripts/dev-runner.ts` resolves it for dev commands, and `REMOTE_SERVER_HOME_SCRIPT` in [tunnel.ts][28] resolves it in POSIX `sh` on a remote host. They must stay in agreement: when they disagree, one machine serves two databases with two environment ids.
 

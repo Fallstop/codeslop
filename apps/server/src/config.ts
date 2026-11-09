@@ -42,6 +42,7 @@ export interface ServerDerivedPaths {
   readonly environmentThemesDir: string;
   readonly providerStatusCacheDir: string;
   readonly worktreesDir: string;
+  readonly worktreeCheckoutCacheDir: string;
   readonly attachmentsDir: string;
   /** Bundles staged while a thread moves between machines, one directory per handoff. */
   readonly handoffDir: string;
@@ -167,6 +168,7 @@ export const deriveServerPaths = Effect.fn(function* (
     environmentThemesDir: join(stateDir, "themes"),
     providerStatusCacheDir,
     worktreesDir: join(baseDir, "worktrees"),
+    worktreeCheckoutCacheDir: join(providerStatusCacheDir, "worktree-checkouts"),
     attachmentsDir,
     handoffDir: join(stateDir, "handoff"),
     browserArtifactsDir: join(stateDir, "browser-artifacts"),
