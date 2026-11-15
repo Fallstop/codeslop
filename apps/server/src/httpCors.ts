@@ -16,3 +16,5 @@ export const DESKTOP_RENDERER_ORIGINS = [
   "t3code://app",
   "t3code-dev://app",
 ] as const;
+/** MCP refuses every browser Origin with 403, so the browser CORS layer must not answer for it. */
+export const MCP_HTTP_PATH = "/mcp";

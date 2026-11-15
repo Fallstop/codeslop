@@ -37,6 +37,7 @@ const claudeTransfer = (homePath: string) =>
       random: undefined as never,
       idAllocator: yield* IdAllocator.IdAllocatorV2,
       queryRunner: {
+        subagentModel: () => Effect.succeed(null),
         allocateSessionId: unused,
         open: () => unused,
         forkSession: () => unused,

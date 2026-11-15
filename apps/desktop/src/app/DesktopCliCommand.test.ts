@@ -160,7 +160,7 @@ it.layer(NodeServices.layer)("DesktopCliCommand", (it) => {
         expect(yield* fs.exists(upgradedLink)).toBe(false);
         expect((yield* upgraded.install).installedPath).toBe(upgradedLink);
       }
-    }).pipe(Effect.scoped),
+    }),
   );
 
   it.effect("never replaces or removes a slop it did not create", () =>
@@ -201,8 +201,8 @@ it.layer(NodeServices.layer)("DesktopCliCommand", (it) => {
       expect(yield* command.state).toMatchObject({ onPath: false, shadowedBy: launcher });
       expect((yield* Effect.flip(command.install)).message).toContain("Could not set up");
       yield* command.uninstall;
-      expect(yield* fs.readFileString(launcher)).toBe("npm's slop\n");
-    }).pipe(Effect.scoped),
+      expect(yield* fs.readFileString(launcher)).toBe("npm's t3\n");
+    }),
   );
 
   it.effect("finds and removes a link left by a previous codeslop home", () =>
@@ -258,8 +258,8 @@ it.layer(NodeServices.layer)("DesktopCliCommand", (it) => {
         path.join(home, "new-t3", "bin", "slop"),
       );
       expect(yield* fs.exists(path.join(home, ".local", "bin", "slop"))).toBe(false);
-      expect(yield* fs.readFileString(path.join(home, "bin", "slop.staging"))).toBe("mine");
-    }).pipe(Effect.scoped),
+      expect(yield* fs.readFileString(path.join(home, "bin", "t3.staging"))).toBe("mine");
+    }),
   );
 
   it.effect("refuses to install behind another slop that runs first", () =>
@@ -309,7 +309,7 @@ it.layer(NodeServices.layer)("DesktopCliCommand", (it) => {
         installedPath: path.join(home, ".local", "bin", "slop"),
       });
       expect(installed.shadowedBy).toBeUndefined();
-    }).pipe(Effect.scoped),
+    }),
   );
 
   it.effect.skipIf(HostProcess.Platform.defaultValue() === "win32")(
@@ -343,7 +343,7 @@ it.layer(NodeServices.layer)("DesktopCliCommand", (it) => {
           onPath: true,
           installedPath: path.join(home, ".local", "bin", "slop"),
         });
-      }).pipe(Effect.scoped),
+      }),
   );
 
   it.effect(
@@ -382,6 +382,8 @@ it.layer(NodeServices.layer)("DesktopCliCommand", (it) => {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const home = yield* fs.makeTempDirectoryScoped();
+      const env: NodeJS.ProcessEnv = { PATH: path.join(home, ".local", "bin"), SHELL: "/bin/zsh" };
+      const launcher = path.join(home, ".t3", "bin", "slop");
       const legacyLauncher = path.join(home, ".t3", "bin", "t3");
       yield* fs.makeDirectory(path.dirname(legacyLauncher), { recursive: true });
       yield* fs.writeFileString(
@@ -395,12 +397,24 @@ it.layer(NodeServices.layer)("DesktopCliCommand", (it) => {
       yield* fs.makeDirectory(path.dirname(foreign), { recursive: true });
       yield* fs.writeFileString(foreign, "npm's t3\n");
 
-      const command = yield* commandIn({ home });
-      expect((yield* command.install).installedPath).toBe(path.join(home, ".local", "bin", "slop"));
-      expect(yield* fs.exists(legacyLink)).toBe(false);
-      expect(yield* fs.exists(legacyLauncher)).toBe(false);
-      expect(yield* fs.readFileString(foreign)).toBe("npm's t3\n");
-    }).pipe(Effect.scoped),
+      const command = yield* commandIn({ home, env });
+      const installed = yield* command.install;
+
+      expect(yield* fs.exists(launcher)).toBe(true);
+      expect(installed).toMatchObject({
+        onPath: true,
+        installedPath: path.join(home, ".local", "bin", "slop"),
+      });
+      expect(installed.shadowedBy).toBeUndefined();
+      expect(yield* command.state).toEqual(installed);
+
+      const removed = yield* command.uninstall;
+      expect(removed.installedPath).toBeNull();
+      expect(removed.onPath).toBe(true);
+      expect(yield* command.state).toEqual(removed);
+      expect(yield* fs.exists(installed.installedPath!)).toBe(false);
+      expect(yield* fs.exists(launcher)).toBe(true);
+    }),
   );
 
   it.effect("leaves the Windows PATH alone when it cannot be read", () =>
@@ -439,7 +453,7 @@ it.layer(NodeServices.layer)("DesktopCliCommand", (it) => {
       const reader = yield* commandIn({ home, platform: "win32" }, inherited.spawner);
       yield* reader.install;
       expect(inherited.registry).toMatchObject({ path: `${userPath};${launcherDir}`, writes: 1 });
-    }).pipe(Effect.scoped),
+    }),
   );
 
   it.effect("does not claim or remove a Windows PATH entry the user added", () =>
@@ -472,6 +486,6 @@ it.layer(NodeServices.layer)("DesktopCliCommand", (it) => {
       yield* (yield* commandIn({ home: besideHome, platform: "win32" }, beside.spawner))
         .installOnFirstLaunch;
       expect(beside.registry).toMatchObject({ path: "C:\\Tools", writes: 0 });
-    }).pipe(Effect.scoped),
+    }),
   );
 });

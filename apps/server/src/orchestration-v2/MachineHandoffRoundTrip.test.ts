@@ -131,6 +131,7 @@ const targetMachine = (input: {
   const launch = ThreadLaunch.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
+        orchestrator,
         WorktreeSetupTracker.layer,
         Layer.mock(ProjectCloneTracker.ProjectCloneTracker)({ get: () => Effect.succeed(null) }),
         Layer.mock(TerminalManager.TerminalManager)({ close: () => Effect.void }),

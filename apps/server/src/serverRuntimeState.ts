@@ -6,9 +6,9 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import { writeFileStringAtomically } from "@t3tools/shared/atomicWrite";
+import { formatHostForUrl, isWildcardHost } from "@t3tools/shared/hostClassification";
 import packageJson from "../package.json" with { type: "json" };
 import type * as ServerConfig from "./config.ts";
-import { formatHostForUrl, isWildcardHost } from "./startupAccess.ts";
 
 export const PersistedServerRuntimeState = Schema.Struct({
   version: Schema.Literal(1),
@@ -135,7 +135,12 @@ export const reassertServerRuntimeState = Effect.fn(
  */
 export const readLiveServerRuntimeState = Effect.fn(
   "serverRuntimeState.readLiveServerRuntimeState",
-)(function* (input: { readonly runtimeStatePath: string; readonly baseDir: string }) {
+)(function* (target: string | { readonly runtimeStatePath: string; readonly baseDir: string }) {
+  const pathService = yield* Path.Path;
+  const input =
+    typeof target === "string"
+      ? { runtimeStatePath: target, baseDir: pathService.dirname(pathService.dirname(target)) }
+      : target;
   const primary = yield* readPersistedServerRuntimeState(input.runtimeStatePath);
   if (Option.isSome(primary) && isProcessAlive(primary.value.pid)) {
     return primary;

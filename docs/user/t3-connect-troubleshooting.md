@@ -78,6 +78,8 @@ Fix:
 1. Make sure the host is awake and online.
 2. On the host, run `slop connect status`.
 3. If the check fails only on the host, check the host's DNS, VPN, or proxy.
+   If it says the host's network has an old cached answer, wait: it usually
+   clears within about 30 minutes.
 
 ## This device can't reach T3 Connect
 
@@ -116,6 +118,10 @@ an active link between your account and the host.
 - **This device is still loading its Slop Connect sign-in.** Wait a moment;
   codeslop retries on its own. If it keeps waiting, reload or restart codeslop on
   this device.
+- **The host is waiting for you to approve this device.** The host requires
+  approval for new devices. Approve the code this device shows from a device
+  that is already connected, or run `t3 auth connect-device approve <code>` on
+  the host. See [Approve new devices](./remote-access.md#approve-new-devices).
 - **Your account reached its tunnel limit.** Remove an environment you do not
   use from your T3 account's T3 Connect page, or
   [link a paid T3 Chat account](./remote-access.md#more-machines-with-t3-chat)
@@ -134,13 +140,13 @@ This app needs a newer codeslop on the host. Update codeslop on the host. See
 
 ## T3 Connect returned an error
 
-| Error                                                     | Fix                                                                                                                                               |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `environment_link_limit_exceeded` or managed tunnel limit | Remove an unused environment or link a paid T3 Chat account, then restart codeslop on the host.                                                   |
-| `auth_invalid` or `invalid_bearer`                        | Run `slop connect login`. If credentials were revoked, run `slop connect logout`, then `slop connect` again. Restart the server after signing in. |
-| Expired or invalid link proof                             | Check the host's date and time, update codeslop, then restart it.                                                                                 |
-| HTTP 403 without a recognized error                       | Check relay access, proxies, and firewall rules. Keep any Cloudflare Ray ID for a bug report.                                                     |
-| HTTP 408, 429, or 5xx                                     | Wait a few minutes. codeslop retries temporary failures on its own.                                                                               |
+| Error                                                     | Fix                                                                                                                                                                                                   |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `environment_link_limit_exceeded` or managed tunnel limit | Remove an unused environment or link a paid T3 Chat account, then restart codeslop on the host.                                                                                                       |
+| `auth_invalid` or `invalid_bearer`                        | Run `slop connect login`. If credentials were revoked, run `slop connect logout`, then `slop connect` again. Restart the server after signing in.                                                     |
+| Expired or invalid link proof                             | Check the host's date and time, update codeslop, then restart it.                                                                                                                                     |
+| HTTP 403 without a recognized error                       | If the host requires approval for new devices, update codeslop on this device and approve it. Otherwise check relay access, proxies, and firewall rules. Keep any Cloudflare Ray ID for a bug report. |
+| HTTP 408, 429, or 5xx                                     | Wait a few minutes. codeslop retries temporary failures on its own.                                                                                                                                   |
 
 After you fix a permanent rejection, restart the host's server with
 `slop service restart`. For a foreground server, stop it and run `slop serve` again.
