@@ -65,8 +65,12 @@ function recoveryHint(error: RelayProtectedError): string {
       return "Unlink an unused environment in Slop Connect, then restart codeslop on this machine.";
     case "RelayAuthInvalidError":
       return "Run `slop connect login` to check this machine's authorization. If the stored credential was revoked, sign out with `slop connect logout`, then run `slop connect` again. Restart codeslop after signing in.";
-    case "RelayEnvironmentLinkProofExpiredError":
     case "RelayEnvironmentLinkProofInvalidError":
+      if (error.reason === "environment_key_mismatch") {
+        return "T3 Connect already has this environment linked with a different key. Unlink it in T3 Connect, then restart codeslop on this machine.";
+      }
+      return "Check this machine's date and time, update codeslop, then restart it.";
+    case "RelayEnvironmentLinkProofExpiredError":
       return "Check this machine's date and time, update codeslop, then restart it.";
     default:
       return "Retry when the relay is available. If this continues, include the trace ID when reporting it.";

@@ -6,7 +6,8 @@
 # Merges take the incoming lockfile; run `pnpm install` afterwards to regenerate it.
 # The driver lives in local git config: git config merge.pnpm-lock.driver "cp %B %A"
 pnpm-lock.yaml merge=pnpm-lock
-# GitHub's and Expo's GraphQL schemas and the operations graphqlgen writes from them.
+# GitHub's, Linear's and Expo's GraphQL schemas and the operations graphqlgen writes from them.
 packages/source-control-github/schema/** linguist-generated
+packages/issue-tracker-linear/schema/** linguist-generated
 apps/server/schema/** linguist-generated
 **/*.graphql.ts linguist-generated

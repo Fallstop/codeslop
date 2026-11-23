@@ -1,6 +1,7 @@
 import { T3_PROJECT_FILE_NAMES, type EnvironmentId, type T3ProjectFile } from "@t3tools/contracts";
 import { parseT3ProjectFile } from "@t3tools/shared/t3ProjectFile";
 import { executeAtomQuery } from "@t3tools/client-runtime/state/runtime";
+import { AsyncResult } from "effect/reactivity";
 
 import {
   getProjectFileQueryAtom,
@@ -28,6 +29,22 @@ export async function readT3ProjectFile(
     // Matches the server loader: the first existing file wins outright, even
     // when its contents fail to parse.
     return parseT3ProjectFile(data.contents);
+  }
+  return null;
+}
+
+/** The project's t3.json from an earlier read, or `undefined` when none has loaded yet. */
+export function peekT3ProjectFile(
+  environmentId: EnvironmentId,
+  workspaceRoot: string,
+): T3ProjectFile | null | undefined {
+  for (const fileName of T3_PROJECT_FILE_NAMES) {
+    const result = appAtomRegistry.get(
+      getProjectFileQueryAtom(environmentId, workspaceRoot, fileName),
+    );
+    if (!AsyncResult.isSuccess(result)) return undefined;
+    const data = resolveProjectFileQueryData(environmentId, workspaceRoot, fileName, result.value);
+    if (data?.exists && !data.truncated) return parseT3ProjectFile(data.contents);
   }
   return null;
 }
