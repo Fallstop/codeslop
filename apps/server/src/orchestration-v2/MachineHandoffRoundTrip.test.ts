@@ -18,6 +18,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as TaskFolders from "../workspace/TaskFolders.ts";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 
@@ -133,6 +134,7 @@ const targetMachine = (input: {
       Layer.mergeAll(
         orchestrator,
         WorktreeSetupTracker.layer,
+        Layer.mock(TaskFolders.TaskFolders)({ plan: () => Effect.succeed(null) }),
         Layer.mock(ProjectCloneTracker.ProjectCloneTracker)({ get: () => Effect.succeed(null) }),
         Layer.mock(TerminalManager.TerminalManager)({ close: () => Effect.void }),
         projects,
